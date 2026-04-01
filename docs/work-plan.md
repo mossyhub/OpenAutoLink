@@ -1,7 +1,5 @@
 # OpenAutoLink — Work Plan
 
-Adapted from carlink_native's remaining-work-plan.md. Only items that apply to the new bridge-only architecture are included. CPC200-specific items are dropped.
-
 ---
 
 ## 🔄 Carry-Forward Issues (Bridge-Side)
@@ -31,16 +29,17 @@ These exist in the current bridge code and will need fixing regardless of the ap
 ### 5. Bluetooth HFP Not Working
 - BT pairing works, BLE works, RFCOMM ch8 works, WiFi credential exchange works
 - HFP (Hands-Free Profile) NOT connected → no BT audio routing for calls
+- **Architecture:** Phone pairs via BT to the SBC/bridge, NOT to the car. Call/voice audio must flow: Phone → BT HFP → SBC → bridge captures SCO audio → forwards over TCP to app
 - **Needed for:** phone calls, voice assistant, proper AA auto-connect
 
 ---
 
 ## 🔧 Bridge Protocol Migration (OAL)
 
-The bridge currently outputs CPC200 framing. It needs to speak OAL protocol to the new app.
+The bridge needs to output OAL protocol to the app.
 
 ### Control Channel (Port 5288) → JSON Lines
-- [ ] Replace CPC200 binary packets with JSON line messages
+- [ ] JSON line messages for all control communication
 - [ ] Hello handshake with capabilities exchange
 - [ ] Phone connected/disconnected events
 - [ ] Audio start/stop per purpose
@@ -49,13 +48,13 @@ The bridge currently outputs CPC200 framing. It needs to speak OAL protocol to t
 - [ ] Config echo on settings change
 - [ ] Mic start/stop signals
 
-### Video Channel (Port 5290) → 12-byte Header
-- [ ] Replace CPC200 VIDEO_DATA (16+20 byte headers) with OAL 12-byte header
+### Video Channel (Port 5290) → 16-byte Header
+- [ ] OAL 16-byte header: payload_length, width, height, pts_ms, flags
 - [ ] Flags: keyframe bit, codec config bit, EOS bit
 - [ ] First frame must be codec config (SPS/PPS)
 
 ### Audio Channel (Port 5289) → 8-byte Header
-- [ ] Replace CPC200 AUDIO_DATA headers with OAL 8-byte header
+- [ ] OAL 8-byte header: direction, purpose, sample_rate, channels, length
 - [ ] Direction field (0=playback, 1=mic capture)
 - [ ] Purpose field for routing (media/nav/assistant/call/alert)
 - [ ] Bidirectional: bridge→app playback, app→bridge mic
@@ -72,14 +71,14 @@ The bridge currently outputs CPC200 framing. It needs to speak OAL protocol to t
 See [docs/architecture.md](architecture.md) for full component island breakdown and public APIs.
 
 ### M1: Connection Foundation
-- [ ] Gradle project scaffold (min SDK 32, Compose, DataStore)
-- [ ] Transport island: TCP connect, JSON control parsing, reconnect
-- [ ] Session state machine (IDLE → CONNECTING → BRIDGE_CONNECTED → PHONE_CONNECTED → STREAMING)
-- [ ] ProjectionScreen with SurfaceView + connection status HUD
+- [x] Gradle project scaffold (min SDK 32, Compose, DataStore)
+- [x] Transport island: TCP connect, JSON control parsing, reconnect
+- [x] Session state machine (IDLE → CONNECTING → BRIDGE_CONNECTED → PHONE_CONNECTED → STREAMING)
+- [x] ProjectionScreen with SurfaceView + connection status HUD
 
 ### M2: Video
 - [ ] MediaCodec decoder with codec selection (H.264/H.265/VP9)
-- [ ] OAL video frame parsing (12-byte header)
+- [ ] OAL video frame parsing (16-byte header)
 - [ ] NAL parsing for SPS/PPS extraction
 - [ ] Stats overlay (FPS, codec, drops)
 
@@ -88,6 +87,11 @@ See [docs/architecture.md](architecture.md) for full component island breakdown 
 - [ ] OAL audio frame parsing (8-byte header)
 - [ ] Audio focus management (request/release/duck)
 - [ ] Purpose routing (media/nav/assistant/call/alert)
+- [ ] Dual audio path support — all audio flows through the bridge via TCP:
+  - **AA session audio** (aasdk channels): media, navigation, alerts — decoded by aasdk, sent as PCM over OAL
+  - **BT HFP audio** (phone → SBC Bluetooth): phone calls, voice assistant — bridge captures SCO audio from HFP and forwards as PCM over OAL with call/assistant purpose
+- [ ] Detect active audio purpose and manage focus (e.g., duck media during call)
+- [ ] Handle call audio transitions: ring, in-call, call end
 
 ### M4: Touch + Input
 - [ ] Touch forwarding with coordinate scaling
@@ -95,9 +99,10 @@ See [docs/architecture.md](architecture.md) for full component island breakdown 
 - [ ] JSON touch serialization to control channel
 
 ### M5: Microphone + Voice
-- [ ] Timer-based mic capture
+- [ ] Timer-based mic capture from car's mic (via AAOS AudioRecord)
 - [ ] Send on audio channel (direction=1)
 - [ ] Bridge mic_start/mic_stop control messages
+- [ ] Coordinate mic routing: bridge forwards mic PCM to aasdk for AA voice, and to BT SCO for phone calls
 
 ### M6: Settings + Config
 - [ ] DataStore preferences (codec, resolution, fps, display mode)
@@ -164,10 +169,10 @@ If Copilot starts losing context or producing lower quality output mid-milestone
 
 ---
 
-## 💡 Future Ideas (from carlink_native)
+## 💡 Future Ideas
 
 ### Two-Way Config Sync
-- Bridge sends config echo after settings update (partially implemented in carlink_native)
+- Bridge sends config echo after settings update
 - App populates settings dialog from bridge echo, showing actual running config
 
 ### Stats Overlay Enhancements
