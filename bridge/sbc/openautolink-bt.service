@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenAutoLink Bluetooth (BLE + HSP + AA RFCOMM)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 2
+EnvironmentFile=-/etc/openautolink.env
+EnvironmentFile=-/boot/firmware/openautolink.env
+ExecStart=/usr/bin/python3 /opt/openautolink/scripts/aa_bt_all.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

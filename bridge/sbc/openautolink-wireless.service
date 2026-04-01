@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenAutoLink Wireless (WiFi AP)
+After=openautolink-car-net.service network.target bluetooth.target
+Before=openautolink.service
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/openautolink.env
+EnvironmentFile=-/boot/firmware/openautolink.env
+ExecStart=/opt/openautolink/start-wireless.sh
+ExecStop=/opt/openautolink/stop-wireless.sh
+
+[Install]
+WantedBy=multi-user.target
