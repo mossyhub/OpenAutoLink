@@ -110,12 +110,23 @@ See [docs/architecture.md](architecture.md) for full component island breakdown 
 - [ ] VHAL properties (37 properties via Car API reflection)
 - [ ] Navigation state display + maneuver icons
 
-### M8: Polish
+### M8: Cluster Display
+- [ ] Cluster service for navigation: turn-by-turn maneuver icons, distance, road names
+- [ ] Cluster service for media: album artwork, track info from Spotify/Apple Music/etc.
+- [ ] Handle GM restrictions (third-party cluster services may be killed — detect and recover)
+- [ ] Fallback rendering if cluster service is blocked
+
+### M9: Steering Wheel Controls
+- [ ] Media button mapping: skip forward, skip back, play/pause via `KeyEvent` interception
+- [ ] Volume controls via `AudioManager` or `KeyEvent`
+- [ ] Voice button interception: intercept the AAOS voice/assistant `KeyEvent` (currently launches Google Assistant) and forward as AA voice trigger to activate Gemini on the phone
+- [ ] Investigate `KEYCODE_VOICE_ASSIST` / `KEYCODE_SEARCH` interception feasibility on GM AAOS (may require accessibility service or input method)
+
+### M10: Polish
 - [ ] Diagnostics screen
 - [ ] Error recovery (reconnect, codec reset)
 - [ ] Display modes (fullscreen, system bars)
 - [ ] Overlay buttons (settings, stats)
-- [ ] Cluster service (if GM allows third-party)
 
 ---
 
