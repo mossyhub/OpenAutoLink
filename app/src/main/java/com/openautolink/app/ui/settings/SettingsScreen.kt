@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -231,87 +232,59 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Select the USB Ethernet adapter used to reach the bridge. " +
-                    "The selected interface is saved for automatic reconnection.",
+            text = "Select the network interface used to reach the bridge.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp),
         )
 
-        if (networkInterfaces.isEmpty()) {
-            Text(
-                text = "No Ethernet adapters detected.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Dropdown — always shown, even when empty
+        var dropdownExpanded by remember { mutableStateOf(false) }
+        val savedIfaceName = uiState.networkInterface
+        val selectedIface = networkInterfaces.find { it.name == savedIfaceName }
+        val effectiveSelection = selectedIface ?: networkInterfaces.firstOrNull()
+
+        @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+        ExposedDropdownMenuBox(
+            expanded = dropdownExpanded,
+            onExpandedChange = { dropdownExpanded = it },
+            modifier = Modifier
+                .fillMaxWidth(0.5f)
+                .testTag("networkInterfaceDropdown"),
+        ) {
+            OutlinedTextField(
+                value = when {
+                    networkInterfaces.isEmpty() -> "No interfaces found"
+                    effectiveSelection != null -> "${effectiveSelection.displayName} — ${effectiveSelection.ipAddress ?: "no IP"}"
+                    savedIfaceName.isNotBlank() -> "$savedIfaceName (not present)"
+                    else -> "Select interface"
+                },
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Network Adapter") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                modifier = Modifier
+                    .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            FilledTonalButton(
-                onClick = { viewModel.scanNetworkInterfaces() },
-                modifier = Modifier.testTag("rescanInterfacesButton"),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Usb,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Rescan")
-            }
-        } else {
-            var dropdownExpanded by remember { mutableStateOf(false) }
-            val selectedIface = networkInterfaces.find { it.name == uiState.networkInterface }
-            // Auto-select the first/only interface if none saved yet
-            val effectiveSelection = selectedIface ?: networkInterfaces.firstOrNull()
-
-            LaunchedEffect(effectiveSelection, uiState.networkInterface) {
-                if (uiState.networkInterface.isBlank() && effectiveSelection != null) {
-                    viewModel.selectNetworkInterface(effectiveSelection.name)
-                }
-            }
-
-            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-            ExposedDropdownMenuBox(
-                expanded = dropdownExpanded,
-                onExpandedChange = { dropdownExpanded = it },
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .testTag("networkInterfaceDropdown"),
-            ) {
-                OutlinedTextField(
-                    value = effectiveSelection?.let {
-                        "${it.name} — ${it.ipAddress ?: "no IP"}"
-                    } ?: "Select interface",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Ethernet Adapter") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
-                    modifier = Modifier
-                        .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth(),
-                )
-
+            if (networkInterfaces.isNotEmpty()) {
                 ExposedDropdownMenu(
                     expanded = dropdownExpanded,
                     onDismissRequest = { dropdownExpanded = false },
                 ) {
                     networkInterfaces.forEach { iface ->
+                        val isSelected = iface.name == savedIfaceName
                         DropdownMenuItem(
                             text = {
                                 Column {
                                     Text(
-                                        text = iface.name,
+                                        text = iface.displayName,
                                         style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.SemiBold,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     )
                                     Text(
-                                        text = "MAC: ${iface.macAddress}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = "IP: ${iface.ipAddress ?: "not assigned"}",
+                                        text = "IP: ${iface.ipAddress ?: "not assigned"} | ${iface.macAddress}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = if (iface.ipAddress != null) MaterialTheme.colorScheme.primary
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -327,42 +300,45 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
                     }
                 }
             }
+        }
 
-            // Show details of the currently selected interface
-            if (effectiveSelection != null) {
-                Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-                Surface(
-                    tonalElevation = 1.dp,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(0.5f),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        SettingRow("Interface", effectiveSelection.name)
+        // Show details of the selected interface
+        if (effectiveSelection != null) {
+            Surface(
+                tonalElevation = 1.dp,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(0.5f),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    SettingRow("Interface", effectiveSelection.name)
+                    SettingRow("Transport", effectiveSelection.transport)
+                    if (effectiveSelection.macAddress.isNotBlank()) {
                         SettingRow("MAC", effectiveSelection.macAddress)
-                        SettingRow("IP", effectiveSelection.ipAddress ?: "not assigned")
-                        SettingRow("Status", if (effectiveSelection.isUp) "Up" else "Down")
                     }
+                    SettingRow("IP", effectiveSelection.ipAddress ?: "not assigned")
+                    SettingRow("Status", if (effectiveSelection.isUp) "Up" else "Down")
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            FilledTonalButton(
+                onClick = { viewModel.scanNetworkInterfaces() },
+                modifier = Modifier.testTag("rescanInterfacesButton"),
             ) {
-                FilledTonalButton(
-                    onClick = { viewModel.scanNetworkInterfaces() },
-                    modifier = Modifier.testTag("rescanInterfacesButton"),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Usb,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Rescan")
-                }
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Rescan")
             }
         }
 

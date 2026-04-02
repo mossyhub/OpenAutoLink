@@ -129,22 +129,12 @@ if [ -d /etc/avahi/services ] && [ -f "${TMP_DIR}/openautolink.service" ]; then
 fi
 
 # SSL certificates for Android Auto TLS handshake
-# aasdk looks in /etc/aasdk/ first. Generate if not present.
-CERT_DIR="/etc/aasdk"
-if [ ! -f "${CERT_DIR}/headunit.crt" ] || [ ! -f "${CERT_DIR}/headunit.key" ]; then
-    echo "  Generating SSL certificates for AA..."
-    mkdir -p "${CERT_DIR}"
-    openssl req -x509 -newkey rsa:2048 -nodes \
-        -keyout "${CERT_DIR}/headunit.key" \
-        -out "${CERT_DIR}/headunit.crt" \
-        -days 3650 \
-        -subj "/CN=OpenAutoLink/O=OpenAutoLink" \
-        2>/dev/null
-    chmod 600 "${CERT_DIR}/headunit.key"
-    chmod 644 "${CERT_DIR}/headunit.crt"
-    echo "  Certificates: ${CERT_DIR}/headunit.{crt,key}"
-else
-    echo "  SSL certificates already exist in ${CERT_DIR}/"
+# aasdk has embedded certs (JVC Kenwood AA cert) that work with all phones.
+# Do NOT generate custom certs — they cause SSL handshake failures.
+# If /etc/aasdk/ exists with custom certs from a previous install, remove them.
+if [ -d "/etc/aasdk" ]; then
+    echo "  Removing custom certs (aasdk uses embedded certs)"
+    rm -rf "/etc/aasdk"
 fi
 echo ""
 

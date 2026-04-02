@@ -22,7 +22,19 @@ if [ "${OAL_WIRELESS_ENABLE:-0}" != "1" ]; then
     exit 0
 fi
 
-IFACE="${OAL_WIRELESS_INTERFACE:-wlan0}"
+IFACE="${OAL_WIRELESS_INTERFACE:-}"
+if [ -z "$IFACE" ]; then
+    # Auto-detect: find the first wireless interface
+    for path in /sys/class/net/*/wireless; do
+        [ -d "$path" ] && IFACE=$(basename "$(dirname "$path")") && break
+    done
+    if [ -z "$IFACE" ]; then
+        echo "[wifi] ERROR: No wireless interface found"
+        echo "[wifi] Set OAL_WIRELESS_INTERFACE in /etc/openautolink.env"
+        exit 1
+    fi
+    echo "[wifi] Auto-detected wireless interface: $IFACE"
+fi
 BAND_PREF="${OAL_WIRELESS_BAND:-5ghz}"
 CHANNEL_OVERRIDE="${OAL_WIRELESS_CHANNEL:-}"
 SSID="${OAL_WIRELESS_SSID:-}"
@@ -64,11 +76,19 @@ AVAILABLE_5G_CHANNELS=""
 if [ -n "$PHY" ]; then
     PHY_INFO=$(iw phy "phy${PHY}" info 2>/dev/null)
 
-    if echo "$PHY_INFO" | grep -q "5[0-9][0-9][0-9].*MHz"; then
+    if echo "$PHY_INFO" | grep -q "5[12][0-9][0-9].*MHz"; then
         SUPPORTS_5GHZ=true
-        # Find DFS-free 5GHz channels (no "radar detection" or "no IR")
-        AVAILABLE_5G_CHANNELS=$(echo "$PHY_INFO" | grep -E "5[0-9]+.*MHz.*\[" | grep -v "disabled" | grep -v "no IR" | grep -v "radar" | sed 's/.*\[\([0-9]*\)\].*/\1/' | tr '\n' ' ')
-        echo "[wifi] 5GHz supported. DFS-free channels: ${AVAILABLE_5G_CHANNELS:-none}"
+        # Find usable 5GHz channels:
+        # - Must be in 5150-5885 MHz range (exclude 6GHz channels that start at 5955)
+        # - Must not be disabled
+        # - Must not require radar detection (DFS)
+        # Channels with "no IR" are okay — hostapd with ieee80211d=1 can override
+        AVAILABLE_5G_CHANNELS=$(echo "$PHY_INFO" | \
+            grep -E '^\s+\* 5[12348][0-9]{2}\.0 MHz \[' | \
+            grep -v "disabled" | \
+            grep -v "radar" | \
+            sed 's/.*\[\([0-9]*\)\].*/\1/' | tr '\n' ' ')
+        echo "[wifi] 5GHz supported. Usable channels: ${AVAILABLE_5G_CHANNELS:-none}"
     fi
 
     if echo "$PHY_INFO" | grep -qi "VHT"; then
@@ -139,6 +159,8 @@ interface=${IFACE}
 driver=nl80211
 ssid=${SSID}
 country_code=${COUNTRY}
+ieee80211d=1
+ieee80211h=1
 hw_mode=a
 channel=${CHANNEL}
 ieee80211n=1
@@ -161,14 +183,17 @@ EOF
         echo "[wifi] 802.11ac VHT80 enabled (center=$CENTER_IDX)"
     fi
 else
-    # 2.4GHz config
+    # 2.4GHz config — maximize throughput with HT40 if available
     cat > "$CONF" << EOF
 interface=${IFACE}
 driver=nl80211
 ssid=${SSID}
+country_code=${COUNTRY}
+ieee80211d=1
 hw_mode=g
 channel=${CHANNEL}
 ieee80211n=1
+ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40][RX-STBC1]
 wmm_enabled=1
 wpa=2
 wpa_passphrase=${PASSWORD}
@@ -187,9 +212,12 @@ if ! hostapd -B "$CONF"; then
 interface=${IFACE}
 driver=nl80211
 ssid=${SSID}
+country_code=${COUNTRY}
+ieee80211d=1
 hw_mode=g
 channel=6
 ieee80211n=1
+ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40][RX-STBC1]
 wmm_enabled=1
 wpa=2
 wpa_passphrase=${PASSWORD}

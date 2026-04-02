@@ -76,7 +76,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val updateChecker = UpdateChecker(application)
     private val appInstaller = AppInstaller(application)
     private val bridgeDiscovery = BridgeDiscovery(application)
-    private val interfaceScanner = NetworkInterfaceScanner()
+    private val interfaceScanner = NetworkInterfaceScanner(application)
 
     val updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val discoveredBridges: StateFlow<List<DiscoveredBridge>> = bridgeDiscovery.discoveredBridges

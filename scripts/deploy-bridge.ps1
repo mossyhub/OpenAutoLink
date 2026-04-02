@@ -14,7 +14,10 @@ $Target = "${SbcUser}@${SbcHost}"
 
 function Invoke-Ssh {
     param([string]$Command)
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     ssh $Target $Command
+    $ErrorActionPreference = $oldEAP
     if ($LASTEXITCODE -ne 0) { throw "SSH command failed: $Command" }
 }
 
@@ -129,9 +132,9 @@ if ($Full) {
         Write-Host "  $($f.Final)" -ForegroundColor DarkGray
     }
 
-    # Generate TLS certs if missing
-    Write-Host ">>> Checking TLS certificates..." -ForegroundColor Yellow
-    Invoke-Ssh "sudo mkdir -p /etc/aasdk && if [ ! -f /etc/aasdk/headunit.crt ] || [ ! -f /etc/aasdk/headunit.key ]; then sudo openssl req -x509 -newkey rsa:2048 -nodes -keyout /etc/aasdk/headunit.key -out /etc/aasdk/headunit.crt -days 3650 -subj '/CN=OpenAutoLink/O=OpenAutoLink' 2>/dev/null && sudo chmod 600 /etc/aasdk/headunit.key && sudo chmod 644 /etc/aasdk/headunit.crt && echo '  Generated new certs'; else echo '  Certs already exist'; fi"
+    # Note: aasdk has embedded TLS certs (JVC Kenwood AA cert) that work with all phones.
+    # Do NOT generate custom certs — custom self-signed certs cause SSL handshake failures.
+    # If /etc/aasdk/ exists with bad certs, remove it so aasdk falls back to embedded ones.
 
     # Enable services
     Write-Host ">>> Enabling systemd services..." -ForegroundColor Yellow

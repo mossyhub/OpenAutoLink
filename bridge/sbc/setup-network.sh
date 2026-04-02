@@ -38,6 +38,43 @@ DNSMASQ_CONF="/tmp/openautolink-ssh-dnsmasq.conf"
 CAR_IFACE=""
 SSH_IFACE=""
 
+# ── NIC Detection ─────────────────────────────────────────────────────
+# Auto-detect onboard ethernet: different SBCs use different names.
+#   RPi:   eth0
+#   Radxa: end0
+#   Others: enp*, eno*, ens*
+# USB NICs typically show as enx* (MAC-based name) or usb0 (gadget).
+find_onboard_nic() {
+    # Check common onboard NIC names in priority order
+    for name in eth0 end0; do
+        if [ -d "/sys/class/net/$name" ]; then
+            echo "$name"
+            return 0
+        fi
+    done
+    # Fallback: first non-lo, non-usb, non-wlan, non-enx interface
+    for path in /sys/class/net/*; do
+        local iface=$(basename "$path")
+        case "$iface" in
+            lo|usb*|wlan*|enx*) continue ;;
+            *) echo "$iface"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# Find USB/external NICs (enx* = MAC-based naming from udev)
+find_usb_nics() {
+    for path in /sys/class/net/enx*; do
+        [ -d "$path" ] && basename "$path"
+    done
+}
+
+ONBOARD_NIC=$(find_onboard_nic)
+if [ -z "$ONBOARD_NIC" ]; then
+    echo "[net] WARNING: Could not detect onboard NIC"
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 assign_car_ip() {
@@ -162,7 +199,7 @@ create_usb_gadget() {
     echo "0x01"   > "$GADGET/bDeviceProtocol"
 
     mkdir -p "$GADGET/strings/0x409"
-    local serial=$(cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':' | tail -c 5 | tr 'a-f' 'A-F' || echo "0000")
+    local serial=$(cat /sys/class/net/${ONBOARD_NIC:-eth0}/address 2>/dev/null | tr -d ':' | tail -c 5 | tr 'a-f' 'A-F' || echo "0000")
     echo "OpenAutoLink-$serial" > "$GADGET/strings/0x409/serialnumber"
     echo "OpenAutoLink" > "$GADGET/strings/0x409/manufacturer"
     echo "OpenAutoLink AA Bridge" > "$GADGET/strings/0x409/product"
@@ -236,34 +273,32 @@ do_setup() {
         if create_usb_gadget; then
             echo "[net] USB gadget created. Waiting ${GADGET_TIMEOUT}s for car to detect it..."
             if wait_for_carrier usb0 "$GADGET_TIMEOUT"; then
-                # USB gadget works! usb0 = car, eth0 = SSH
+                # USB gadget works! usb0 = car, onboard NIC = SSH
                 assign_car_ip usb0
-                if ip link show eth0 &>/dev/null; then
-                    setup_ssh_dhcp eth0
+                if [ -n "$ONBOARD_NIC" ] && ip link show "$ONBOARD_NIC" &>/dev/null; then
+                    setup_ssh_dhcp "$ONBOARD_NIC"
                 fi
-                echo "[net] AUTO result: usb0=car, eth0=SSH"
+                echo "[net] AUTO result: usb0=car, ${ONBOARD_NIC:-?}=SSH"
                 return 0
             else
                 echo "[net] USB gadget: no carrier. Car didn't detect it."
-                echo "[net] Falling back to eth0=car..."
+                echo "[net] Falling back to ${ONBOARD_NIC:-?}=car..."
             fi
         else
-            echo "[net] USB gadget setup failed. Falling back to eth0=car..."
+            echo "[net] USB gadget setup failed. Falling back to ${ONBOARD_NIC:-?}=car..."
         fi
 
-        # Step 2: Fallback — eth0 = car
-        if ip link show eth0 &>/dev/null; then
-            assign_car_ip eth0
-            echo "[net] AUTO fallback: eth0=car"
-            # Look for any other NIC for SSH
-            for iface in eth1 eth2 eth3; do
-                if ip link show "$iface" &>/dev/null; then
-                    setup_ssh_dhcp "$iface"
-                    break
-                fi
+        # Step 2: Fallback — onboard NIC = car
+        if [ -n "$ONBOARD_NIC" ] && ip link show "$ONBOARD_NIC" &>/dev/null; then
+            assign_car_ip "$ONBOARD_NIC"
+            echo "[net] AUTO fallback: ${ONBOARD_NIC}=car"
+            # Look for any USB NIC for SSH
+            for iface in $(find_usb_nics); do
+                setup_ssh_dhcp "$iface"
+                break
             done
         else
-            echo "[net] ERROR: No network interfaces available"
+            echo "[net] ERROR: No onboard NIC found (tried: eth0, end0)"
             return 1
         fi
         ;;
@@ -272,8 +307,8 @@ do_setup() {
         echo "[net] Forced USB gadget mode"
         if create_usb_gadget; then
             assign_car_ip usb0
-            if ip link show eth0 &>/dev/null; then
-                setup_ssh_dhcp eth0
+            if [ -n "$ONBOARD_NIC" ] && ip link show "$ONBOARD_NIC" &>/dev/null; then
+                setup_ssh_dhcp "$ONBOARD_NIC"
             fi
         else
             echo "[net] ERROR: USB gadget failed and mode is forced"
@@ -282,19 +317,17 @@ do_setup() {
         ;;
 
     external-nic)
-        echo "[net] Forced external NIC mode — eth0=car"
-        if ip link show eth0 &>/dev/null; then
-            assign_car_ip eth0
+        echo "[net] Forced external NIC mode — ${ONBOARD_NIC:-?}=car"
+        if [ -n "$ONBOARD_NIC" ] && ip link show "$ONBOARD_NIC" &>/dev/null; then
+            assign_car_ip "$ONBOARD_NIC"
         else
-            echo "[net] ERROR: eth0 not found"
+            echo "[net] ERROR: No onboard NIC found (tried: eth0, end0)"
             return 1
         fi
-        # SSH on any remaining NIC
-        for iface in eth1 eth2 eth3; do
-            if ip link show "$iface" &>/dev/null; then
-                setup_ssh_dhcp "$iface"
-                break
-            fi
+        # SSH on any USB NIC
+        for iface in $(find_usb_nics); do
+            setup_ssh_dhcp "$iface"
+            break
         done
         ;;
 
