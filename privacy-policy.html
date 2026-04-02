@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — OpenAutoLink</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h2 { margin-top: 2em; color: #222; }
+        h3 { color: #444; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+        a { color: #0366d6; }
+    </style>
+</head>
+<body>
+
+<h1>Privacy Policy — OpenAutoLink</h1>
+<p><strong>Last updated:</strong> April 2, 2026</p>
+
+<h2>Overview</h2>
+<p>OpenAutoLink is an Android Automotive OS (AAOS) app that wirelessly projects Android Auto from your phone onto your car's infotainment screen via a bridge device on your local network. This privacy policy explains what data the app accesses, how it is used, and how it is protected.</p>
+
+<h2>Data Collection</h2>
+<p><strong>OpenAutoLink does not collect, store, transmit, or share any personal data with the developer, any third party, or any remote server.</strong> The app operates entirely on your local network between your car's head unit and your bridge device. No data leaves your vehicle's local network.</p>
+
+<h2>Permissions and Their Purpose</h2>
+
+<h3>Microphone (<code>RECORD_AUDIO</code>)</h3>
+<p>The app captures audio from the car's built-in microphone to enable hands-free voice commands (e.g., "Hey Google") and phone calls through Android Auto. Microphone audio is sent only to the bridge device on your local network, which forwards it to your phone's Android Auto session. <strong>Audio is never recorded, stored, or transmitted outside your local network.</strong></p>
+
+<h3>Location (<code>ACCESS_FINE_LOCATION</code>, <code>ACCESS_COARSE_LOCATION</code>)</h3>
+<p>The app reads GPS location and NMEA satellite data from the car's built-in GNSS receiver. This data is forwarded to your phone via the bridge device to improve Android Auto navigation accuracy (e.g., in tunnels or urban canyons where the phone's GPS signal is weak). <strong>Location data is never stored or transmitted outside your local network.</strong></p>
+
+<h3>Network (<code>INTERNET</code>, <code>ACCESS_NETWORK_STATE</code>)</h3>
+<p>The app connects to the bridge device over your car's local Ethernet or Wi-Fi network using TCP. These permissions are required for the three TCP connections that carry video, audio, and control data between the app and the bridge. <strong>No internet connections are made to external servers</strong>, except optionally checking for app updates from GitHub (if self-update is enabled by the user).</p>
+
+<h3>Install Packages (<code>REQUEST_INSTALL_PACKAGES</code>)</h3>
+<p>Used only for the optional self-update feature. When enabled, the app can download and install updated versions of itself from GitHub Releases. This feature is off by default and must be manually enabled in Settings.</p>
+
+<h3>Vehicle Data (<code>CAR_SPEED</code>, <code>CAR_ENERGY</code>, <code>CAR_POWERTRAIN</code>, <code>CAR_EXTERIOR_ENVIRONMENT</code>, <code>CAR_INFO</code>)</h3>
+<p>The app reads vehicle sensor data (speed, gear, battery level, temperature, etc.) from the car's Vehicle HAL to forward to your phone's Android Auto session. This enables the phone to display accurate vehicle information. <strong>Vehicle data is sent only to the bridge device on your local network and is never stored or transmitted externally.</strong></p>
+
+<h3>Foreground Service (<code>FOREGROUND_SERVICE</code>, <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code>)</h3>
+<p>Required to keep audio playback and the projection session active while the app is in use. The app does not run in the background when not actively projecting.</p>
+
+<h3>Car App Permissions (<code>NAVIGATION_TEMPLATES</code>, <code>ACCESS_SURFACE</code>)</h3>
+<p>Required by the Android Automotive Car App Library to render navigation information on the instrument cluster and access the display surface for video rendering.</p>
+
+<h2>Sensor Data</h2>
+<p>The app reads accelerometer, gyroscope, and magnetic field sensors from the car's head unit hardware to provide inertial measurement data to Android Auto. This improves navigation accuracy during GPS signal loss (tunnels, parking garages). This sensor data is sent only to the bridge device on your local network.</p>
+
+<h2>Data Storage</h2>
+<p>The app stores only user preferences locally on the device using Android DataStore:</p>
+<ul>
+    <li>Bridge connection settings (IP address, port)</li>
+    <li>Video/audio configuration (codec, resolution, FPS)</li>
+    <li>Display preferences</li>
+    <li>Self-update settings</li>
+</ul>
+<p>No personal data, location history, audio recordings, or vehicle data is stored.</p>
+
+<h2>Third-Party Services</h2>
+<p>OpenAutoLink does not integrate with any third-party analytics, advertising, crash reporting, or tracking services.</p>
+<p>The optional self-update feature checks <code>github.com</code> for new releases. No personal data is sent in this request.</p>
+
+<h2>Data Security</h2>
+<p>All communication between the app and the bridge device occurs over your car's local network. The app does not expose any network services or accept incoming connections from external networks.</p>
+
+<h2>Children's Privacy</h2>
+<p>OpenAutoLink does not collect any data from any users, including children.</p>
+
+<h2>Changes to This Policy</h2>
+<p>If this privacy policy is updated, the new version will be published at this URL and the "Last updated" date will be revised.</p>
+
+<h2>Contact</h2>
+<p>For questions about this privacy policy, open an issue on the project's GitHub repository:<br>
+<a href="https://github.com/mossyhub/openautolink">https://github.com/mossyhub/openautolink</a></p>
+
+</body>
+</html>
