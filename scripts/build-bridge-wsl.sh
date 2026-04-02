@@ -10,7 +10,7 @@
 set -eu
 
 # Where the repo lives on the Windows side (may be /mnt/d/...)
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 # Fast native WSL filesystem paths
 WSL_SRC="$HOME/openautolink-src"
@@ -74,7 +74,8 @@ if [ ! -f CMakeCache.txt ]; then
         -DPI_AA_AASDK_SOURCE_DIR="$AASDK_DIR" \
         -DPI_AA_OPENAUTO_SOURCE_DIR="$OPENAUTO_DIR" \
         -DSKIP_BUILD_ABSL=ON \
-        -DSKIP_BUILD_PROTOBUF=ON
+        -DSKIP_BUILD_PROTOBUF=ON \
+        -DBUILD_AASDK_STATIC=ON
     echo ""
 fi
 

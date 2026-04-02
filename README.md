@@ -77,7 +77,7 @@ Most ARM64 SBCs with the above specs should work. The bridge binary is a generic
 ```
 
 1. **Ethernet cable** goes from the SBC's onboard Ethernet port to the USB Ethernet adapter
-2. **USB Ethernet adapter** plugs into the car's USB port — the head unit sees it as a network device and assigns it an IP on the `192.168.222.x` subnet. In my 24 Blazer, it is always assigning 192.168.222.108 no matter waht SUB NIC I have tested with.
+2. **USB Ethernet adapter** plugs into the car's USB port — the head unit sees it as a network device and assigns it an IP on the `192.168.222.x` subnet. In my 24 Blazer, it is always assigning 192.168.222.108 no matter what USB NIC I have tested with.
 3. **SBC gets power** from a 12 V USB-C adapter (cigarette lighter outlet) or a spare USB port in the car
 4. **Phone** pairs with the SBC over Bluetooth, joins the SBC's 5 GHz WiFi AP, and streams Android Auto wirelessly
 

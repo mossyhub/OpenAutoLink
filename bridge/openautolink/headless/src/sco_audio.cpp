@@ -73,7 +73,8 @@ void ScoAudio::listen_thread_func() {
 
     struct sockaddr_sco addr{};
     addr.sco_family = AF_BLUETOOTH;
-    bacpy(&addr.sco_bdaddr, BDADDR_ANY);
+    bdaddr_t any_addr = {{0, 0, 0, 0, 0, 0}};
+    bacpy(&addr.sco_bdaddr, &any_addr);
 
     if (bind(listen_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         std::cerr << "[SCO] bind() failed: " << strerror(errno) << std::endl;

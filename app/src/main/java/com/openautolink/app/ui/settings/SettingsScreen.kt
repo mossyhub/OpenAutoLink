@@ -417,7 +417,7 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
 
         Text(
             text = "The app connects to the bridge at this address. " +
-                    "Default: 192.168.0.100:5288",
+                    "Default: 192.168.222.222:5288",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

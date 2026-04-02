@@ -57,6 +57,11 @@ private:
     std::mutex mutex_;
 };
 
+// Standalone struct for multi-touch pointer data.
+// Defined here (not nested in HeadlessInputHandler) so it's available
+// before HeadlessInputHandler is fully defined.
+struct PointerInfo { uint32_t x; uint32_t y; uint32_t id; };
+
 // Forward declarations for service handler classes.
 class HeadlessVideoHandler;
 class HeadlessAudioHandler;
@@ -191,7 +196,7 @@ public:
     // Forward OAL touch (already in AA pixel coordinates).
     void forward_oal_touch(int action, uint32_t x, uint32_t y);
     void forward_oal_multi_touch(int action, uint32_t action_index,
-                                  const std::vector<HeadlessInputHandler::PointerInfo>& pointers);
+                                  const std::vector<PointerInfo>& pointers);
 
     // Forward OAL button (key event) to the AA input channel.
     void forward_oal_button(uint32_t keycode, bool down, uint32_t metastate, bool longpress);
@@ -469,7 +474,7 @@ public:
     // Send a touch event from host to phone.
     void sendTouchEvent(uint32_t action, uint32_t x, uint32_t y);
 
-    struct PointerInfo { uint32_t x; uint32_t y; uint32_t id; };
+    using PointerInfo = openautolink::PointerInfo;
     void sendMultiTouchEvent(uint32_t action, uint32_t action_index,
                              const std::vector<PointerInfo>& pointers);
 

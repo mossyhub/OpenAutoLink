@@ -70,7 +70,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val CUSTOM_VIEWPORT_HEIGHT = intPreferencesKey("custom_viewport_height")
         val VIEWPORT_ASPECT_RATIO_LOCKED = booleanPreferencesKey("viewport_aspect_ratio_locked")
 
-        const val DEFAULT_BRIDGE_HOST = "192.168.0.100"
+        const val DEFAULT_BRIDGE_HOST = "192.168.222.222"
         const val DEFAULT_BRIDGE_PORT = 5288
         const val DEFAULT_VIDEO_CODEC = "h265"
         const val DEFAULT_VIDEO_FPS = 60

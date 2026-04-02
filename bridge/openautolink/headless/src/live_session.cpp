@@ -1271,7 +1271,7 @@ void LiveAasdkSession::forward_touch(const uint8_t* payload, size_t len) {
             return;
         }
 
-        std::vector<HeadlessInputHandler::PointerInfo> pointers;
+        std::vector<PointerInfo> pointers;
         for (uint32_t i = 0; i < pointer_count; i++) {
             uint32_t raw_x = 0, raw_y = 0, ptr_id = 0;
             std::memcpy(&raw_x, payload + 16 + i * 12, 4);
@@ -1315,7 +1315,7 @@ void LiveAasdkSession::forward_oal_touch(int action, uint32_t x, uint32_t y) {
 }
 
 void LiveAasdkSession::forward_oal_multi_touch(int action, uint32_t action_index,
-                                                const std::vector<HeadlessInputHandler::PointerInfo>& pointers) {
+                                                const std::vector<PointerInfo>& pointers) {
     if (!entity_ || !entity_->input_handler()) return;
     entity_->input_handler()->sendMultiTouchEvent(static_cast<uint32_t>(action), action_index, pointers);
 }
@@ -3394,7 +3394,7 @@ void HeadlessPhoneStatusHandler::onChannelOpenRequest(
     std::cerr << "[aasdk] PhoneStatus channel open request" << std::endl;
 
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [](auto) {});
     channel_->sendChannelOpenResponse(response, std::move(promise));

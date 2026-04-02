@@ -23,7 +23,7 @@ This installs `aarch64-linux-gnu-g++`, ARM64 Boost/OpenSSL/protobuf/libusb libra
 From PowerShell:
 
 ```powershell
-# Build in WSL + deploy to SBC (all-in-one):
+# Build in WSL + deploy binary to SBC:
 scripts\deploy-bridge.ps1
 
 # Clean rebuild + deploy:
@@ -31,6 +31,9 @@ scripts\deploy-bridge.ps1 -Clean
 
 # Deploy only (skip build, use last binary):
 scripts\deploy-bridge.ps1 -SkipBuild
+
+# Full provisioning (fresh/wiped SBC — installs packages, scripts, services, config, certs + binary):
+scripts\deploy-bridge.ps1 -Full -SkipBuild
 
 # Custom SBC address:
 scripts\deploy-bridge.ps1 -SbcHost 10.0.0.1 -SbcUser pi

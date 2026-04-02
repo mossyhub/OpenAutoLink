@@ -503,7 +503,7 @@ void OalSession::handle_touch(const std::string& json) {
 
         if (ptrs.size() > 1) {
             // Multi-touch event
-            std::vector<HeadlessInputHandler::PointerInfo> pointer_infos;
+            std::vector<PointerInfo> pointer_infos;
             for (auto& [x, y, id] : ptrs) {
                 pointer_infos.push_back({x, y, id});
             }
