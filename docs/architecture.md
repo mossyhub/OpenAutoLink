@@ -190,7 +190,7 @@ Compose screens and ViewModels.
 
 **Screens:**
 - `ProjectionScreen` — SurfaceView + touch overlay + connection HUD. The main screen
-- `SettingsScreen` — bridge connection, video codec, audio, display mode
+- `SettingsScreen` — bridge connection, video codec, audio, display mode, custom viewport editor
 - `DiagnosticsScreen` — system info, codecs, network, bridge stats
 
 **ViewModels:**
@@ -333,6 +333,7 @@ No island depends on another island directly. All communication flows through Se
 ### M8: Polish + Diagnostics
 - [x] Diagnostics screen (system info, codecs, network, bridge)
 - [x] Error recovery (reconnect, codec reset after corruption)
-- [x] Display mode (fullscreen, system bars visible)
+- [x] Display mode (fullscreen, system bars visible, custom viewport)
+- [x] Custom viewport editor — user-defined projection area with draggable edges, aspect ratio lock, presets
 - [x] Overlay buttons (settings toggle, stats toggle)
 - **Exit criteria**: Feature parity with carlink_native bridge mode

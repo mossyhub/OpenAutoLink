@@ -1,5 +1,7 @@
 # Custom Viewport — Display Mode Design
 
+> **Status: Implemented.** ViewportEditorScreen with draggable edge bars (top, right), aspect ratio lock (AspectRatio/CropFree icons), preset dropdown, manual pixel input, checkerboard preview. Persisted via DataStore. ProjectionScreen sizes SurfaceView to custom rect (bottom-left anchored). Touch coordinates map naturally from the sized SurfaceView.
+
 ## Problem
 
 AAOS head unit displays (e.g. GM Blazer EV 2914×1134) have non-standard aspect ratios. Android Auto's UI is designed for common ratios (16:9, ~21:9). When the projection fills the full display, the AA UI either stretches awkwardly or gets cropped in the wrong places.

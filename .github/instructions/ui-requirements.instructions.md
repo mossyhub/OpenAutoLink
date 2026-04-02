@@ -31,15 +31,21 @@ Changes that affect the bridge require "Apply & Reconnect" — bridge must resta
 
 ## Display Modes
 
-Three modes controlling how the projection surface fits the physical display:
+Five modes controlling how the projection surface fits the physical display:
 
-### 1. Fullscreen
-SurfaceView fills entire display, system bars hidden. Projection stretches/crops to fill.
+### 1. System UI Visible (Default)
+Status bar and nav bar always visible. Recommended for GM AAOS. Standard AAOS layout.
 
-### 2. Show System Bars (Default)
-SurfaceView occupies the area between status bar and navigation bar. Standard AAOS layout.
+### 2. Status Bar Hidden
+Hides status bar only. Nav bar stays visible.
 
-### 3. Custom Viewport
+### 3. Nav Bar Hidden
+Hides nav bar/dock only. Status bar stays visible.
+
+### 4. Fullscreen Immersive
+SurfaceView fills entire display, all system bars hidden. Swipe edge to reveal. Projection stretches/crops to fill.
+
+### 5. Custom Viewport
 User-defined projection area with draggable edges and aspect ratio snapping. See [docs/custom-viewport.md](../../docs/custom-viewport.md) for full design.
 
 **Summary:**

@@ -193,7 +193,8 @@ Enable OTA-style self-updating so new builds can be deployed without AAB/Play St
 ### M10: Polish
 - [x] Diagnostics screen
 - [x] Error recovery (reconnect, codec reset)
-- [x] Display modes (fullscreen, system bars) — pulled forward, implemented with M2
+- [x] Display modes (fullscreen, system bars, custom viewport) — pulled forward, implemented with M2; custom viewport added later
+- [x] Custom viewport editor — draggable edge bars, aspect ratio lock, presets, manual pixel input
 - [x] Overlay buttons (settings, stats) — pulled forward, draggable floating buttons
 - [x] App icon and logo — adaptive icon from brand asset
 - [x] Stats for nerds overlay — monospace panel with session/video stats
