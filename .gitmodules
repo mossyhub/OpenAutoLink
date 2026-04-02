@@ -1,7 +1,7 @@
 [submodule "external/opencardev-aasdk"]
 	path = external/opencardev-aasdk
-	url = https://github.com/opencardev/aasdk.git
-	ignore = dirty
+	url = https://github.com/mossyhub/aasdk.git
+	branch = openautolink
 [submodule "external/opencardev-openauto"]
 	path = external/opencardev-openauto
 	url = https://github.com/opencardev/openauto.git
