@@ -98,27 +98,31 @@ Active development. See the [work plan](docs/work-plan.md) for current milestone
 
 ## Acknowledgments
 
-OpenAutoLink is built from scratch, but it wouldn't exist without the open-source Android Auto community. We want to recognize the projects we learned from and built upon:
+OpenAutoLink is built from scratch, but it wouldn't exist without the open-source Android Auto community. I want to recognize the projects I learned from and built upon.
+
+### Where It Started
+
+- **[metheos/carlink_native](https://github.com/metheos/carlink_native)** / **[lvalen91/carlink_native](https://github.com/lvalen91/carlink_native)** and the **[XDA CarLink thread](https://xdaforums.com/t/carlink.4774308)** — This is where the whole journey began. The CPC200-CCPA USB adapter was a clever piece of hardware that bridged Android Auto to AAOS head units over USB. I started by trying to replace the CPC200 hardware with an SBC running the same protocol so I could use their app. The TCP approach came from discovering that the car assigns an IP to any USB-C NIC you plug in — I sat in the car with a laptop, sniffed ARP traffic to find the assigned address, and realized I could skip USB gadget protocol emulation entirely and just talk TCP. From there it was a lot of quick proof-of-concept apps pushed through my own Google Play Console account to figure out what AAOS would and wouldn't let me do. A billion tokens later, I threw out all the CPC200 protocol code and started from scratch with a purpose-built TCP bridge and app — but the CPC200 reverse-engineering and the XDA community's work is what proved the concept was even possible.
 
 ### Core Dependency
 
 - **[opencardev/aasdk](https://github.com/opencardev/aasdk)** — The Android Auto protocol library by [Michal Szwaj (f1x)](https://github.com/nickel110). OpenAutoLink maintains a [fork](https://github.com/mossyhub/aasdk) with NavigationStatus extensions. aasdk is the foundation that makes the entire bridge possible — it handles version exchange, TLS, service discovery, and all AA channel communication.
 
-### Projects We Learned From
+### Projects I Learned From
 
-- **[opencardev/openauto](https://github.com/opencardev/openauto)** — The original Android Auto headunit emulator, also by Michal Szwaj. OpenAuto demonstrated that a full AA headunit could be built on commodity hardware. We studied its session lifecycle, service handler architecture, and codec negotiation patterns extensively. Included as a reference submodule.
+- **[opencardev/openauto](https://github.com/opencardev/openauto)** — The original Android Auto headunit emulator, also by Michal Szwaj. OpenAuto demonstrated that a full AA headunit could be built on commodity hardware. I studied its session lifecycle, service handler architecture, and codec negotiation patterns extensively. Included as a reference submodule.
 
-- **[Crankshaft](https://github.com/nickel110/crankshaft-ng)** — The Raspberry Pi Android Auto head unit distro built on OpenAuto. Crankshaft proved the concept of a turnkey embedded AA experience and influenced our approach to SBC deployment and systemd service design.
+- **[Crankshaft](https://github.com/nickel110/crankshaft-ng)** — The Raspberry Pi Android Auto head unit distro built on OpenAuto. Crankshaft proved the concept of a turnkey embedded AA experience and influenced my approach to SBC deployment and systemd service design.
 
-- **[nickel110/WirelessAndroidAutoDongle](https://github.com/nickel110/WirelessAndroidAutoDongle)** — Wireless AA dongle firmware. We referenced its Bluetooth pairing flow and WiFi credential exchange over RFCOMM, which informed our `aa_bt_all.py` implementation.
+- **[nickel110/WirelessAndroidAutoDongle](https://github.com/nickel110/WirelessAndroidAutoDongle)** — Wireless AA dongle firmware. I referenced its Bluetooth pairing flow and WiFi credential exchange over RFCOMM, which informed the `aa_bt_all.py` implementation.
 
-While none of our app or bridge code is derived from these projects, the knowledge and patterns they established in the open-source AA ecosystem were invaluable.
+None of the app or bridge code is derived from these projects, but the knowledge and patterns they established in the open-source AA ecosystem were invaluable.
 
 ### On the Topic of Vibe-Coding
 
-Yes, this project is almost entirely AI-assisted. Every line of Kotlin, C++, Python, and systemd config was written with GitHub Copilot as co-pilot (pun intended). Billions of tokens have given their lives for this codebase and many more brave ones will as I keep going on this project. If that makes you mass-close your browser tabs in disgust — fair enough.
+Yes, this project is almost entirely AI-assisted. Every line of Kotlin, C++, Python, and systemd config was written with GitHub Copilot as co-pilot (pun intended). Literally billions of tokens (so far) have given their lives for this codebase and many more brave ones will as I keep going on this project. If that makes you mass-close your browser tabs in disgust — fair enough, this is all free to you anyways.
 
-But here's the thing: no amount of token-burning replaces sitting in a driveway at 11 PM with a laptop balanced on the center console, watching `logcat` scroll while tapping the screen and muttering "why is the audio crackling." The AI writes code fast. The car tells you if it actually works. Many, many hours have been spent doing exactly that — real hardware, real protocols, real debugging.
+But here's the thing: no amount of token-burning replaces sitting in a driveway at 12 AM with a laptop balanced on the center console, watching `logcat` scroll while tapping the screen and muttering "why is the audio crackling." The AI writes code fast. The car tells you if it actually works. Many, many hours have been spent doing exactly that — real hardware, real protocols, real debugging.
 
 The AI got me from zero to working prototype at a pace that would've been impossible solo. The car kept me honest.
 
