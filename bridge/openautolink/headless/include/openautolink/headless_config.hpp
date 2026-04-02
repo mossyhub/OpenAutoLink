@@ -11,12 +11,12 @@ struct HeadlessConfig {
     int video_width = 2400;
     int video_height = 960;
     int video_fps = 60;
-    int video_dpi = 160;
+    int video_dpi = 200;
     // AA resolution tier for SDR (mapped from video_width)
     // 1=800x480, 2=1280x720, 3=1920x1080, 4=2560x1440, 5=3840x2160
     int aa_resolution_tier = 3;
     // Video codec: 3=H264_BP, 5=VP9, 6=AV1, 7=H265
-    int video_codec = 3;
+    int video_codec = 7;
     bool left_hand_drive = true;
     std::string head_unit_name = "OpenAutoLink";
     std::string car_model = "Chevrolet Blazer EV";

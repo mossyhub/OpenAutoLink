@@ -59,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -927,12 +928,13 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
         )
 
         listOf(
-            "480p" to "480p (800×480)",
-            "720p" to "720p (1280×720)",
-            "1080p" to "1080p (1920×1080)",
-            "1440p" to "1440p (2560×1440)",
-            "4k" to "4K (3840×2160)",
-        ).forEach { (key, label) ->
+            Triple("480p", "480p (800×480)", false),
+            Triple("720p", "720p (1280×720)", false),
+            Triple("1080p", "1080p (1920×1080)", false),
+            Triple("1440p", "1440p (2560×1440)", true),
+            Triple("4k", "4K (3840×2160)", true),
+        ).forEach { (key, label, isUntested) ->
+            val warningColor = Color(0xFFFFB74D)
             Row(
                 modifier = Modifier
                     .fillMaxWidth(0.7f)
@@ -946,11 +948,21 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
                     onClick = { viewModel.updateAaResolution(key) }
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (uiState.aaResolution == key) FontWeight.SemiBold else FontWeight.Normal,
-                )
+                Column {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (uiState.aaResolution == key) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isUntested) warningColor else Color.Unspecified,
+                    )
+                    if (isUntested) {
+                        Text(
+                            text = "Untested — phone may ignore this resolution",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = warningColor,
+                        )
+                    }
+                }
             }
         }
 

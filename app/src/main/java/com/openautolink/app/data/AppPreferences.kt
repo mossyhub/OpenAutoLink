@@ -67,7 +67,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
         const val DEFAULT_BRIDGE_HOST = "192.168.0.100"
         const val DEFAULT_BRIDGE_PORT = 5288
-        const val DEFAULT_VIDEO_CODEC = "h264"
+        const val DEFAULT_VIDEO_CODEC = "h265"
         const val DEFAULT_VIDEO_FPS = 60
         const val DEFAULT_DISPLAY_MODE = "system_ui_visible"
         const val DEFAULT_MIC_SOURCE = "car"
@@ -80,7 +80,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_HIDE_AA_CLOCK = true
         const val DEFAULT_SEND_IMU_SENSORS = true
         const val DEFAULT_AA_RESOLUTION = "1080p"
-        const val DEFAULT_AA_DPI = 160
+        const val DEFAULT_AA_DPI = 200
         const val DEFAULT_PHONE_MODE = "wireless"
         const val DEFAULT_WIFI_BAND = "5ghz"
         const val DEFAULT_WIFI_COUNTRY = "US"
@@ -89,8 +89,8 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_HEAD_UNIT_NAME = "OpenAutoLink"
         const val DEFAULT_BT_MAC = ""
         const val DEFAULT_DRIVE_SIDE = "left"
-        const val DEFAULT_GPS_FORWARDING = false
-        const val DEFAULT_CLUSTER_NAVIGATION = false
+        const val DEFAULT_GPS_FORWARDING = true
+        const val DEFAULT_CLUSTER_NAVIGATION = true
         const val DEFAULT_AUDIO_SOURCE = "bridge"
         const val DEFAULT_CALL_QUALITY = "hd"
         const val DEFAULT_OVERLAY_SETTINGS_BUTTON = true
