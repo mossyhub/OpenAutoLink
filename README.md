@@ -96,6 +96,32 @@ Active development. See the [work plan](docs/work-plan.md) for current milestone
 
 **Not known to be universally compatible with all AAOS vehicles.** Currently tested only on a **2024 Chevrolet Blazer EV**, which enumerates a USB NIC, assigns it an IP, and allows network traffic to reach apps. Other GM vehicles on the same AAOS head unit platform likely work, but this has not been verified. Non-GM AAOS vehicles may have different USB networking behavior or restrictions that prevent this approach from working.
 
+## Acknowledgments
+
+OpenAutoLink is built from scratch, but it wouldn't exist without the open-source Android Auto community. We want to recognize the projects we learned from and built upon:
+
+### Core Dependency
+
+- **[opencardev/aasdk](https://github.com/opencardev/aasdk)** — The Android Auto protocol library by [Michal Szwaj (f1x)](https://github.com/nickel110). OpenAutoLink maintains a [fork](https://github.com/mossyhub/aasdk) with NavigationStatus extensions. aasdk is the foundation that makes the entire bridge possible — it handles version exchange, TLS, service discovery, and all AA channel communication.
+
+### Projects We Learned From
+
+- **[opencardev/openauto](https://github.com/opencardev/openauto)** — The original Android Auto headunit emulator, also by Michal Szwaj. OpenAuto demonstrated that a full AA headunit could be built on commodity hardware. We studied its session lifecycle, service handler architecture, and codec negotiation patterns extensively. Included as a reference submodule.
+
+- **[Crankshaft](https://github.com/nickel110/crankshaft-ng)** — The Raspberry Pi Android Auto head unit distro built on OpenAuto. Crankshaft proved the concept of a turnkey embedded AA experience and influenced our approach to SBC deployment and systemd service design.
+
+- **[nickel110/WirelessAndroidAutoDongle](https://github.com/nickel110/WirelessAndroidAutoDongle)** — Wireless AA dongle firmware. We referenced its Bluetooth pairing flow and WiFi credential exchange over RFCOMM, which informed our `aa_bt_all.py` implementation.
+
+While none of our app or bridge code is derived from these projects, the knowledge and patterns they established in the open-source AA ecosystem were invaluable.
+
+### On the Topic of Vibe-Coding
+
+Yes, this project is almost entirely AI-assisted. Every line of Kotlin, C++, Python, and systemd config was written with GitHub Copilot as co-pilot (pun intended). Billions of tokens have given their lives for this codebase and many more brave ones will as I keep going on this project. If that makes you mass-close your browser tabs in disgust — fair enough.
+
+But here's the thing: no amount of token-burning replaces sitting in a driveway at 11 PM with a laptop balanced on the center console, watching `logcat` scroll while tapping the screen and muttering "why is the audio crackling." The AI writes code fast. The car tells you if it actually works. Many, many hours have been spent doing exactly that — real hardware, real protocols, real debugging.
+
+The AI got me from zero to working prototype at a pace that would've been impossible solo. The car kept me honest.
+
 ## License
 
 TBD
