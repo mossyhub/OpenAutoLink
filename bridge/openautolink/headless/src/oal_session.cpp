@@ -1,8 +1,8 @@
 #include "openautolink/oal_session.hpp"
 #include "openautolink/i_car_transport.hpp"
-#include "openautolink/sco_audio.hpp"
 
 #ifdef PI_AA_ENABLE_AASDK_LIVE
+#include "openautolink/sco_audio.hpp"
 #include "openautolink/live_session.hpp"
 #endif
 
@@ -214,11 +214,11 @@ void OalSession::on_app_audio_frame(const OalAudioHeader& hdr,
     // - CALL: forward to SCO socket (phone call uplink)
     // - ASSISTANT: forward to aasdk mic channel (AA voice activation)
     // - Other: forward to aasdk mic channel (default)
+#ifdef PI_AA_ENABLE_AASDK_LIVE
     if (hdr.purpose == OalAudioPurpose::CALL && sco_audio_) {
         sco_audio_->feed_mic_audio(pcm, len);
     }
 
-#ifdef PI_AA_ENABLE_AASDK_LIVE
     if (aa_session_ && hdr.purpose != OalAudioPurpose::CALL) {
         // Forward to aasdk audio input channel (for AA voice/assistant)
         aa_session_->forward_oal_mic_audio(pcm, len);
