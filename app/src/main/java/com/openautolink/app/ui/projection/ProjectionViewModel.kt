@@ -69,6 +69,10 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
     private val _videoStats = MutableStateFlow(VideoStats())
     private val _audioStats = MutableStateFlow(AudioStats())
     private val _showStats = MutableStateFlow(false)
+    private val _carplayPin = MutableStateFlow<String?>(null)
+
+    /** CarPlay pairing PIN — non-null when the bridge is waiting for iPhone PIN entry. */
+    val carplayPin: StateFlow<String?> = _carplayPin
 
     // Pending surface — stored when surfaceCreated fires before decoder exists.
     // Attached to decoder on session start or when decoder becomes available.
@@ -127,6 +131,10 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     is com.openautolink.app.transport.ControlMessage.PhoneDisconnected -> {
                         _phoneName.value = null
+                        _carplayPin.value = null
+                    }
+                    is com.openautolink.app.transport.ControlMessage.CarPlayPin -> {
+                        _carplayPin.value = message.pin
                     }
                     else -> {}
                 }

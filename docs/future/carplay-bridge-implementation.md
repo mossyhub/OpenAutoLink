@@ -1,7 +1,7 @@
 # Wireless CarPlay on OpenAutoLink — Implementation Plan
 
-> **Status**: Active implementation — see [work-plan.md](../work-plan.md) for milestone tracking.
-> **Last updated**: April 2026 (codebase audit + architecture review)
+> **Status**: Implemented — all 5 phases scaffolded. Needs real iPhone testing.
+> **Last updated**: April 2026 (implementation complete)
 
 ## Executive Summary
 

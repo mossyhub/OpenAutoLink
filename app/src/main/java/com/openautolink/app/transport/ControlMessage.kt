@@ -18,7 +18,8 @@ sealed class ControlMessage {
         val name: String,
         val capabilities: List<String>,
         val videoPort: Int,
-        val audioPort: Int
+        val audioPort: Int,
+        val carplaySupported: Boolean = false
     ) : ControlMessage()
 
     data class PhoneConnected(
@@ -87,6 +88,8 @@ sealed class ControlMessage {
     data class VoiceSession(
         val started: Boolean
     ) : ControlMessage()
+
+    data class CarPlayPin(val pin: String) : ControlMessage()
 
     data class PhoneStatus(
         val signalStrength: Int?,

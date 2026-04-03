@@ -8,7 +8,6 @@ for f in /etc/openautolink.env /boot/firmware/openautolink.env; do
 done
 
 ARGS=(
-    --session-mode=aasdk-live
     --tcp-car-port="${OAL_CAR_TCP_PORT:-5288}"
     --tcp-port="${OAL_PHONE_TCP_PORT:-5277}"
     --video-width="${OAL_VIDEO_WIDTH:-2400}"
@@ -19,6 +18,14 @@ ARGS=(
     --aa-resolution="${OAL_AA_RESOLUTION:-1080p}"
     --head-unit-name="${OAL_HEAD_UNIT_NAME:-OpenAutoLink}"
 )
+
+# Session mode derived from phone protocol
+case "${OAL_PHONE_PROTOCOL:-android-auto}" in
+    android-auto) ARGS+=(--session-mode=aasdk-live) ;;
+    carplay)      ARGS+=(--session-mode=carplay-live) ;;
+    auto)         ARGS+=(--session-mode=auto) ;;
+    *)            ARGS+=(--session-mode=aasdk-live) ;;  # default to AA
+esac
 
 # BT MAC override (empty = auto-detect from hci0)
 if [ -n "${OAL_BT_MAC:-}" ]; then
@@ -41,7 +48,7 @@ if [ "${OAL_PHONE_MODE:-wireless}" = "usb" ]; then
     ARGS+=(--usb)
     echo "[run] Phone mode: USB (wired AA)"
 else
-    echo "[run] Phone mode: wireless AA (TCP ${OAL_PHONE_TCP_PORT:-5277})"
+    echo "[run] Phone mode: wireless (${OAL_PHONE_PROTOCOL:-android-auto})"
 fi
 
 echo "[run] Protocol: OAL (control:${OAL_CAR_TCP_PORT:-5288} audio:$((${OAL_CAR_TCP_PORT:-5288}+1)) video:$((${OAL_CAR_TCP_PORT:-5288}+2)))"

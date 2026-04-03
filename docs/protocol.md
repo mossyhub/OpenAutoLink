@@ -28,7 +28,7 @@ Bidirectional newline-delimited JSON. Each message is a single JSON object follo
 ### Bridge → App
 
 ```jsonl
-{"type":"hello","version":1,"name":"OpenAutoLink","capabilities":["h264","h265","vp9"],"video_port":5290,"audio_port":5289}
+{"type":"hello","version":1,"name":"OpenAutoLink","capabilities":["h264","h265","vp9"],"video_port":5290,"audio_port":5289,"carplay_supported":false}
 {"type":"phone_connected","phone_name":"Pixel 10","phone_type":"android"}
 {"type":"phone_connected","phone_name":"iPhone","phone_type":"iphone"}
 {"type":"phone_disconnected","reason":"user_disconnect"}

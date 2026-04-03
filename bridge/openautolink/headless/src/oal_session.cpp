@@ -246,7 +246,9 @@ void OalSession::send_hello() {
     oss << R"({"type":"hello","version":1,"name":")"
         << oal_json_escape(config_.head_unit_name)
         << R"(","capabilities":[)" << caps
-        << R"(],"video_port":5290,"audio_port":5289})";
+        << R"(],"video_port":5290,"audio_port":5289)"
+        << R"(,"carplay_supported":)" << (config_.carplay_supported ? "true" : "false")
+        << "}";
     send_control_line(oss.str());
     std::cerr << "[OAL] sent hello" << std::endl;
 }
@@ -389,6 +391,13 @@ void OalSession::send_phone_status(int signal_strength, const std::string& calls
     oss << R"({"type":"phone_status","signal_strength":)" << signal_strength
         << R"(,"calls":)" << calls_json << "}";
     send_control_line(oss.str());
+}
+
+void OalSession::send_carplay_pin(const std::string& pin) {
+    std::ostringstream oss;
+    oss << R"({"type":"carplay_pin","pin":")" << pin << R"("})";
+    send_control_line(oss.str());
+    std::cerr << "[OAL] sent carplay_pin" << std::endl;
 }
 
 // ── App → Bridge JSON dispatch ───────────────────────────────────────

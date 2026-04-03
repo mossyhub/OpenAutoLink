@@ -101,6 +101,7 @@ public:
     void send_phone_battery(int level, int time_remaining_s, bool critical);
     void send_voice_session(bool started);
     void send_phone_status(int signal_strength, const std::string& calls_json);
+    void send_carplay_pin(const std::string& pin);
 
     // ── Configuration ────────────────────────────────────────────────
 

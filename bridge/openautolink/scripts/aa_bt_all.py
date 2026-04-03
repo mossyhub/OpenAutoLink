@@ -40,10 +40,12 @@ HFP_HF_UUID = "0000111e-0000-1000-8000-00805f9b34fb"  # Hands-Free (our role: ca
 HFP_AG_UUID = "0000111f-0000-1000-8000-00805f9b34fb"  # Audio Gateway (phone's role)
 HSP_HS_UUID = "00001108-0000-1000-8000-00805f9b34fb"
 HSP_AG_UUID = "00001112-0000-1000-8000-00805f9b34fb"
+CARPLAY_UUID = "00000000-deca-fade-deca-deafdecacafe"  # Wireless iAP (CarPlay)
 AGENT_IFACE = "org.bluez.Agent1"
 PROFILE_IFACE = "org.bluez.Profile1"
 LE_AD_IFACE = "org.bluez.LEAdvertisement1"
 AA_CHANNEL = 8
+CARPLAY_CHANNEL = 1
 
 # WiFi credentials — override via environment or edit here
 WIFI_SSID = os.environ.get("OAL_WIRELESS_SSID", os.environ.get("PI_AA_WIRELESS_SSID", "")) or "OpenAutoLink"
@@ -51,6 +53,10 @@ WIFI_KEY = os.environ.get("OAL_WIRELESS_PASSWORD", os.environ.get("PI_AA_WIRELES
 WIFI_IP = "192.168.43.1"
 WIFI_PORT = int(os.environ.get("OAL_PHONE_TCP_PORT", os.environ.get("PI_AA_BACKEND_TCP_PORT", "5277")))
 WIFI_BSSID = "00:00:00:00:00:00"  # filled at runtime from wlan0 MAC
+
+# Phone protocol mode — controls which BT profiles are registered
+# Values: android-auto (default), carplay, auto (both)
+PHONE_PROTOCOL = os.environ.get("OAL_PHONE_PROTOCOL", "android-auto")
 
 # ---- Minimal protobuf encoding (no library needed) ----
 def _varint(v):
@@ -391,12 +397,89 @@ class HFPProfile(dbus.service.Object):
     def Release(self):
         print("[HFP] Released", flush=True)
 
+def handle_carplay_rfcomm(fd, device):
+    """Handle CarPlay wireless iAP credential exchange over RFCOMM.
+    
+    Similar to AA RFCOMM: exchange WiFi credentials so the iPhone
+    can join the hostapd AP. Once connected via WiFi, the iPhone
+    discovers the bridge via Bonjour (_carplay._tcp) and initiates
+    the RTSP/AirPlay CarPlay session.
+    """
+    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, fl & ~os.O_NONBLOCK)
+
+    try:
+        print(f"[CarPlay] WiFi credential exchange with {device}", flush=True)
+        # CarPlay RFCOMM WiFi exchange:
+        # The format is similar to AA but uses iAP2 framing.
+        # Send WiFi network info so iPhone can join our AP.
+        #
+        # iAP2 WiFi credential message:
+        # [2 bytes] total length (big-endian)
+        # [2 bytes] msg type: 1=wifi_info
+        # [payload: SSID + password + BSSID + security type]
+        
+        # Build WiFi info payload
+        ssid_bytes = WIFI_SSID.encode("utf-8")
+        key_bytes = WIFI_KEY.encode("utf-8")
+        bssid_bytes = WIFI_BSSID.encode("utf-8")
+        
+        # Simple TLV format for WiFi credentials
+        payload = b""
+        # SSID (type=1)
+        payload += struct.pack(">BH", 1, len(ssid_bytes)) + ssid_bytes
+        # Password (type=2)
+        payload += struct.pack(">BH", 2, len(key_bytes)) + key_bytes
+        # BSSID (type=3)
+        payload += struct.pack(">BH", 3, len(bssid_bytes)) + bssid_bytes
+        # Security type (type=4): WPA2=8
+        payload += struct.pack(">BHB", 4, 1, 8)
+        
+        # Send with iAP2-style header
+        header = struct.pack(">HH", len(payload), 1)  # type=1: wifi_info
+        os.write(fd, header + payload)
+        
+        # Wait for iPhone acknowledgment
+        try:
+            ack = os.read(fd, 256)
+            if ack:
+                print(f"[CarPlay] Got ack ({len(ack)} bytes)", flush=True)
+        except Exception:
+            pass
+        
+        print("[CarPlay] WiFi credential exchange complete", flush=True)
+    except Exception as e:
+        print(f"[CarPlay] RFCOMM error: {e}", flush=True)
+    finally:
+        os.close(fd)
+
+class CarPlayProfile(dbus.service.Object):
+    """CarPlay wireless iAP profile — receives RFCOMM connections from iPhone."""
+    @dbus.service.method(PROFILE_IFACE, in_signature="oha{sv}", out_signature="")
+    def NewConnection(self, device, fd, props):
+        fd = fd.take()
+        print(f"[CarPlay] NewConnection from {device} fd={fd}", flush=True)
+        threading.Thread(target=handle_carplay_rfcomm, args=(fd, device), daemon=True).start()
+    @dbus.service.method(PROFILE_IFACE, in_signature="o", out_signature="")
+    def RequestDisconnection(self, dev):
+        print(f"[CarPlay] disconnect {dev}", flush=True)
+    @dbus.service.method(PROFILE_IFACE, in_signature="", out_signature="")
+    def Release(self):
+        print("[CarPlay] Released", flush=True)
+
 class BLEAd(dbus.service.Object):
     @dbus.service.method("org.freedesktop.DBus.Properties", in_signature="ss", out_signature="v")
     def Get(self, i, p): return self.GetAll(i)[p]
     @dbus.service.method("org.freedesktop.DBus.Properties", in_signature="s", out_signature="a{sv}")
     def GetAll(self, i):
-        return {"Type": dbus.String("peripheral"), "ServiceUUIDs": dbus.Array([AA_UUID], signature="s"), "LocalName": dbus.String("OpenAutoLink")}
+        uuids = []
+        if PHONE_PROTOCOL in ("android-auto", "auto"):
+            uuids.append(AA_UUID)
+        if PHONE_PROTOCOL in ("carplay", "auto"):
+            uuids.append(CARPLAY_UUID)
+        if not uuids:
+            uuids.append(AA_UUID)  # fallback
+        return {"Type": dbus.String("peripheral"), "ServiceUUIDs": dbus.Array(uuids, signature="s"), "LocalName": dbus.String("OpenAutoLink")}
     @dbus.service.method(LE_AD_IFACE, in_signature="", out_signature="")
     def Release(self): pass
 
@@ -460,6 +543,36 @@ try:
     print("HFP HF profile registered", flush=True)
 except dbus.exceptions.DBusException as e:
     print(f"HFP profile: {e} (continuing)", flush=True)
+
+# CarPlay wireless iAP Profile (channel 1) — only when protocol includes carplay
+if PHONE_PROTOCOL in ("carplay", "auto"):
+    cp = CarPlayProfile(bus, "/pi_aa/carplay")
+    carplay_sdp = ('<?xml version="1.0" encoding="UTF-8" ?><record>'
+        '<attribute id="0x0001"><sequence>'
+        '<uuid value="' + CARPLAY_UUID + '" /><uuid value="0x1101" />'
+        '</sequence></attribute>'
+        '<attribute id="0x0004"><sequence>'
+        '<sequence><uuid value="0x0100" /></sequence>'
+        '<sequence><uuid value="0x0003" /><uint8 value="0x01" /></sequence>'
+        '</sequence></attribute>'
+        '<attribute id="0x0005"><sequence><uuid value="0x1002" /></sequence></attribute>'
+        '<attribute id="0x0009"><sequence><sequence>'
+        '<uuid value="0x1101" /><uint16 value="0x0102" />'
+        '</sequence></sequence></attribute>'
+        '<attribute id="0x0100"><text value="Wireless iAP" /></attribute>'
+        '<attribute id="0x0101"><text value="Wireless CarPlay" /></attribute>'
+        '</record>')
+    try:
+        pm.RegisterProfile("/pi_aa/carplay", CARPLAY_UUID, {
+            "Name": "Wireless iAP", "Role": "server",
+            "Channel": dbus.UInt16(CARPLAY_CHANNEL),
+            "AutoConnect": True,
+            "RequireAuthentication": False,
+            "RequireAuthorization": False,
+            "ServiceRecord": carplay_sdp})
+        print(f"CarPlay profile ch={CARPLAY_CHANNEL}", flush=True)
+    except dbus.exceptions.DBusException as e:
+        print(f"CarPlay profile: {e} (continuing)", flush=True)
 
 # BLE Advertisement
 ble = BLEAd(bus, "/pi_aa/ble")

@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.openautolink.app.ui.diagnostics.DiagnosticsScreen
+import com.openautolink.app.ui.carplay.CarPlayPinScreen
 import com.openautolink.app.ui.projection.ProjectionScreen
 import com.openautolink.app.ui.settings.SettingsScreen
 import com.openautolink.app.ui.settings.SettingsViewModel
@@ -19,6 +20,7 @@ object AppDestinations {
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
     const val VIEWPORT_EDITOR = "viewport_editor"
+    const val CARPLAY_PIN = "carplay_pin/{pin}"
 }
 
 @Composable
@@ -67,6 +69,10 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 },
                 onBack = { navController.popBackStack() },
             )
+        }
+        composable(AppDestinations.CARPLAY_PIN) { backStackEntry ->
+            val pin = backStackEntry.arguments?.getString("pin") ?: ""
+            CarPlayPinScreen(pin = pin)
         }
     }
 }

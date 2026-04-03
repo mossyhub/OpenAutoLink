@@ -12,6 +12,8 @@
 
 #include "openautolink/oal_mock_session.hpp"
 
+#include "openautolink/carplay_session.hpp"
+
 #ifdef PI_AA_ENABLE_AASDK_LIVE
 #include "openautolink/live_session.hpp"
 #endif
@@ -325,6 +327,103 @@ int main(int argc, char* argv[])
         return 0;
     }
 #endif
+
+    // ── CarPlay mode ─────────────────────────────────────────────
+    // Bridge speaks OAL to car app, receives CarPlay from iPhone.
+    // Same 3 TCP channels as AA mode — car app can't tell the difference.
+    if (tcp_car_port > 0 && (session_mode == openautolink::SessionMode::CarPlayLive ||
+                              session_mode == openautolink::SessionMode::Auto)) {
+        auto is_auto = (session_mode == openautolink::SessionMode::Auto);
+        std::cerr << "[main] " << (is_auto ? "Auto" : "CarPlay")
+                  << " mode: control=" << tcp_car_port
+                  << " audio=" << (tcp_car_port + 1)
+                  << " video=" << (tcp_car_port + 2) << std::endl;
+
+        auto config = build_config();
+        config.media_fd = -1;
+        config.carplay_supported = true;
+
+        openautolink::TcpCarTransport tcp_control(tcp_car_port);
+        openautolink::TcpCarTransport tcp_audio(tcp_car_port + 1);
+        openautolink::TcpCarTransport tcp_video(tcp_car_port + 2);
+
+        tcp_control.start_discovery();
+
+        openautolink::OalSession oal(tcp_control, tcp_video, tcp_audio, config);
+
+        oal.set_control_forward([&output_mutex](const std::string& json_line) {
+            std::lock_guard<std::mutex> lock(output_mutex);
+            std::cout << json_line << '\n';
+            std::cout.flush();
+        });
+
+        // CarPlay session — RTSP + Bonjour + AirPlay + HomeKit crypto
+        auto carplay = std::make_unique<openautolink::CarPlaySession>(oal, config);
+        carplay->start();
+
+#ifdef PI_AA_ENABLE_AASDK_LIVE
+        // In auto mode, also start AA listener
+        std::unique_ptr<openautolink::LiveAasdkSession> live_session;
+        std::unique_ptr<openautolink::ScoAudio> sco_audio_ptr;
+        if (is_auto) {
+            live_session = std::make_unique<openautolink::LiveAasdkSession>(
+                sink, phone_name, config);
+            live_session->set_oal_session(&oal);
+            oal.set_aa_session(live_session.get());
+
+            sco_audio_ptr = std::make_unique<openautolink::ScoAudio>(oal);
+            oal.set_sco_audio(sco_audio_ptr.get());
+            sco_audio_ptr->start();
+
+            std::cerr << "[main] auto mode: AA + CarPlay listeners active" << std::endl;
+        }
+#endif
+
+        // Video transport: accept + flush
+        std::thread video_thread([&tcp_video, &oal]() {
+            std::cerr << "[main] video TCP (CarPlay) listening" << std::endl;
+            tcp_video.run_oal_sink(
+                []() { std::cerr << "[main] video client connected (CarPlay)" << std::endl; },
+                [&oal]() -> bool { return oal.flush_one_video(); }
+            );
+        });
+        video_thread.detach();
+
+        // Audio transport: bidirectional
+        std::thread audio_thread([&tcp_audio, &oal]() {
+            std::cerr << "[main] audio TCP (CarPlay, bidirectional) listening" << std::endl;
+            tcp_audio.run_oal_audio(
+                []() { std::cerr << "[main] audio client connected (CarPlay)" << std::endl; },
+                [&oal]() -> bool { return oal.flush_one_audio(); },
+                [&oal](const openautolink::OalAudioHeader& hdr,
+                       const uint8_t* pcm, size_t len) {
+                    oal.on_app_audio_frame(hdr, pcm, len);
+                }
+            );
+        });
+        audio_thread.detach();
+
+        // Control transport: blocking accept + JSON line loop
+        std::cerr << "[main] starting " << (is_auto ? "auto" : "CarPlay")
+                  << " control loop on port " << tcp_car_port << std::endl;
+        tcp_control.run_oal_control(
+            [&oal, &carplay](const std::string& line) {
+                oal.on_app_json_line(line);
+                // Route touch/button to CarPlay session if active
+                if (carplay->is_phone_connected()) {
+                    // Touch and button routing happens inside OalSession
+                    // via the existing handle_touch/handle_button methods
+                }
+            },
+            [&oal]() {
+                oal.on_app_connected();
+            },
+            [&oal]() {
+                oal.on_app_disconnected();
+            }
+        );
+        return 0;
+    }
 
     std::unique_ptr<openautolink::IAndroidAutoSession> session;
 

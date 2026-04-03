@@ -34,9 +34,21 @@ add_executable(openautolink-headless
     src/oal_session.cpp
     src/service_catalog.cpp
     src/session.cpp
+    src/carplay_bonjour.cpp
+    src/carplay_rtsp.cpp
+    src/carplay_crypto.cpp
+    src/carplay_airplay.cpp
+    src/carplay_session.cpp
 )
 
 target_include_directories(openautolink-headless PRIVATE include)
+
+# -------------------------------------------------------------------
+# CarPlay crypto requires OpenSSL (always linked)
+# -------------------------------------------------------------------
+find_package(OpenSSL REQUIRED)
+target_link_libraries(openautolink-headless PRIVATE ${OPENSSL_LIBRARIES})
+target_include_directories(openautolink-headless PRIVATE ${OPENSSL_INCLUDE_DIR})
 
 if(PI_AA_OPENAUTO_SOURCE_DIR AND EXISTS "${PI_AA_OPENAUTO_SOURCE_DIR}/include")
     target_include_directories(openautolink-headless PRIVATE "${PI_AA_OPENAUTO_SOURCE_DIR}/include")

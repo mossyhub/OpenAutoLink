@@ -30,6 +30,9 @@ struct HeadlessConfig {
     bool hide_clock = true;          // AAOS has its own clock — hide AA's
     bool hide_phone_signal = false;
     bool hide_battery_level = false;
+
+    // CarPlay support flag — set when session mode includes CarPlay
+    bool carplay_supported = false;
 };
 
 } // namespace openautolink
