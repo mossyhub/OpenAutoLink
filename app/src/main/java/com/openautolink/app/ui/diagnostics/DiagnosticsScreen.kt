@@ -259,6 +259,15 @@ private fun BridgeTab(stats: BridgeStats) {
         }
         DiagRow("FPS", "${"%.1f".format(stats.videoStats.fps)}",
             valueColor = if (stats.videoStats.fps >= 25) Color(0xFF4CAF50) else Color(0xFFFF5722))
+        if (stats.videoStats.bitrateKbps > 0) {
+            val bitrateStr = if (stats.videoStats.bitrateKbps >= 1000) {
+                "${"%.1f".format(stats.videoStats.bitrateKbps / 1000)} Mbps"
+            } else {
+                "${stats.videoStats.bitrateKbps.toInt()} kbps"
+            }
+            DiagRow("Bitrate", bitrateStr,
+                valueColor = if (stats.videoStats.bitrateKbps >= 2000) Color(0xFF4CAF50) else Color(0xFFFF9800))
+        }
         DiagRow("Decoded", stats.videoStats.framesDecoded.toString())
         DiagRow("Dropped", stats.videoStats.framesDropped.toString(),
             valueColor = if (stats.videoStats.framesDropped > 0) Color(0xFFFF9800) else Color.White)

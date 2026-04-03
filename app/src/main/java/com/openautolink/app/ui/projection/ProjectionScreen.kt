@@ -220,6 +220,19 @@ private fun VideoStatsOverlay(
                         else -> Color.Red
                     })
                 StatLine("Frames", "Rx:${stats.framesReceived}  Dec:${stats.framesDecoded}")
+                if (stats.bitrateKbps > 0) {
+                    val bitrateStr = if (stats.bitrateKbps >= 1000) {
+                        "${"%.1f".format(stats.bitrateKbps / 1000)} Mbps"
+                    } else {
+                        "${stats.bitrateKbps.toInt()} kbps"
+                    }
+                    StatLine("Bitrate", bitrateStr,
+                        valueColor = when {
+                            stats.bitrateKbps >= 4000 -> Color.Green
+                            stats.bitrateKbps >= 2000 -> Color(0xFFFFFF00)
+                            else -> Color.Red
+                        })
+                }
                 if (stats.framesDropped > 0) {
                     StatLine("Dropped", stats.framesDropped.toString(),
                         valueColor = Color(0xFFFFAB00))

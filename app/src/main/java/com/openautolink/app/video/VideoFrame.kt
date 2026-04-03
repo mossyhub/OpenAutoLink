@@ -51,6 +51,7 @@ data class VideoStats(
     val width: Int = 0,
     val height: Int = 0,
     val codecResets: Int = 0,
+    val bitrateKbps: Float = 0f,
 )
 
 enum class DecoderState {

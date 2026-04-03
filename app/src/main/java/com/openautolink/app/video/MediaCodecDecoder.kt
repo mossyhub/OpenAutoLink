@@ -67,6 +67,16 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
     private var pendingWidth: Int? = null
     private var pendingHeight: Int? = null
 
+    // Bitrate tracking — rolling window
+    private var bitrateWindowStartMs = 0L
+    private var bitrateWindowBytes = 0L
+    private var currentBitrateKbps = 0f
+    private val BITRATE_WINDOW_MS = 1000L
+
+    // Late frame tracking — PTS monotonicity
+    @Volatile private var lastQueuedPtsMs = -1L
+    private var consecutiveDrops = 0
+
     override fun attach(surface: Surface, width: Int, height: Int) {
         this.surface = surface
         this.surfaceWidth = width
@@ -93,7 +103,18 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
             pendingWidth = frame.width
             pendingHeight = frame.height
         }
+
+        // Track bitrate from frame sizes
+        trackBitrate(frame.data.size)
+
         when {
+            frame.isCodecConfig && frame.isKeyframe -> {
+                // Combined SPS/PPS + IDR frame — configure codec, then queue the keyframe.
+                // The bridge may send these combined; if we only handle as codec config,
+                // we lose the IDR and drop P-frames until the next standalone IDR.
+                handleCodecConfig(frame)
+                handleKeyframe(frame)
+            }
             frame.isCodecConfig -> handleCodecConfig(frame)
             frame.isEndOfStream -> handleEndOfStream()
             frame.isKeyframe -> handleKeyframe(frame)
@@ -170,6 +191,25 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         _decoderState.value = DecoderState.IDLE
     }
 
+    private fun trackBitrate(frameBytes: Int) {
+        val now = System.currentTimeMillis()
+        if (bitrateWindowStartMs == 0L) {
+            bitrateWindowStartMs = now
+            bitrateWindowBytes = 0
+        }
+        bitrateWindowBytes += frameBytes
+        val elapsed = now - bitrateWindowStartMs
+        if (elapsed >= BITRATE_WINDOW_MS) {
+            currentBitrateKbps = (bitrateWindowBytes * 8f) / elapsed // bits/ms = kbps
+            if (currentBitrateKbps < 2000f && receivedIdr) {
+                // Below 2 Mbps at 1080p60 is very low — flag it
+                Log.w(TAG, "Low encoder bitrate: ${currentBitrateKbps.toInt()} kbps")
+            }
+            bitrateWindowStartMs = now
+            bitrateWindowBytes = 0
+        }
+    }
+
     private fun configureCodec(configData: ByteArray) {
         releaseCodec()
         _decoderState.value = DecoderState.CONFIGURING
@@ -218,15 +258,38 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
 
     /**
      * Queue a frame into the MediaCodec input.
-     * Called from the transport IO thread. Non-blocking — drops frame if no input buffer available.
+     * Called from the transport IO thread.
+     * - Keyframes always wait up to INPUT_TIMEOUT_US for a buffer (critical for decode)
+     * - P-frames use shorter timeout when decoder is behind (consecutive drops)
+     * - Stale P-frames (PTS not advancing) are dropped immediately
      */
     private fun queueFrame(frame: VideoFrame) {
         val mc = codec ?: return
 
+        // Drop stale P-frames (PTS went backwards — reordered or duplicate)
+        if (!frame.isKeyframe && lastQueuedPtsMs >= 0 && frame.ptsMs > 0 && frame.ptsMs < lastQueuedPtsMs) {
+            framesDropped.incrementAndGet()
+            return
+        }
+
+        // Adaptive timeout: keyframes always wait, P-frames use shorter timeout when behind
+        val timeout = if (frame.isKeyframe) {
+            INPUT_TIMEOUT_US
+        } else if (consecutiveDrops >= 3) {
+            // Decoder is behind — use non-blocking check for P-frames
+            0L
+        } else {
+            INPUT_TIMEOUT_US
+        }
+
         try {
-            val inputIndex = mc.dequeueInputBuffer(INPUT_TIMEOUT_US)
+            val inputIndex = mc.dequeueInputBuffer(timeout)
             if (inputIndex < 0) {
                 framesDropped.incrementAndGet()
+                consecutiveDrops++
+                if (consecutiveDrops == 5) {
+                    Log.w(TAG, "Decoder behind: $consecutiveDrops consecutive frame drops")
+                }
                 return
             }
 
@@ -243,6 +306,8 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
 
             val flags = if (frame.isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
             mc.queueInputBuffer(inputIndex, 0, frame.data.size, frame.ptsMs * 1000, flags)
+            lastQueuedPtsMs = frame.ptsMs
+            consecutiveDrops = 0
         } catch (e: MediaCodec.CodecException) {
             Log.e(TAG, "Codec error queuing frame", e)
             DiagnosticLog.e("video", "Codec error queuing frame: ${e.message}, recoverable=${e.isRecoverable}")
@@ -322,6 +387,8 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         if (codec != null) codecResetCount++
         codec = null
         receivedIdr = false
+        lastQueuedPtsMs = -1
+        consecutiveDrops = 0
     }
 
     private fun updateFps(decoded: Long) {
@@ -361,6 +428,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
             width = pendingWidth ?: current.width,
             height = pendingHeight ?: current.height,
             codecResets = codecResetCount,
+            bitrateKbps = currentBitrateKbps,
         )
     }
 }

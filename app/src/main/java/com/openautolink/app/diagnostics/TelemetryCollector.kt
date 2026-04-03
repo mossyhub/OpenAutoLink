@@ -60,6 +60,7 @@ class TelemetryCollector(
                     codec = it.codec,
                     width = it.width,
                     height = it.height,
+                    bitrateKbps = it.bitrateKbps,
                 )
             },
             audio = audioStats?.let {

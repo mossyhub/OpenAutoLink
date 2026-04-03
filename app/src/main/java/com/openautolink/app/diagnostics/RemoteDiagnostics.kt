@@ -51,6 +51,7 @@ data class VideoTelemetry(
     val codec: String,
     val width: Int,
     val height: Int,
+    val bitrateKbps: Float = 0f,
 )
 
 data class AudioTelemetry(

@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +43,10 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
     private val _controlMessages = MutableSharedFlow<ControlMessage>(extraBufferCapacity = 64)
     override val controlMessages: Flow<ControlMessage> = _controlMessages.asSharedFlow()
 
-    private val _videoFrames = MutableSharedFlow<VideoFrame>(extraBufferCapacity = 2)
+    private val _videoFrames = MutableSharedFlow<VideoFrame>(
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val videoFrames: Flow<VideoFrame> = _videoFrames.asSharedFlow()
 
     private val _audioFrames = MutableSharedFlow<AudioFrame>(extraBufferCapacity = 64)
@@ -101,9 +105,9 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
                 DiagnosticLog.i("transport", "Video channel connected to $host:$port")
                 _connectionState.value = ConnectionState.STREAMING
 
-                // Collect video frames and re-emit
+                // Collect video frames and re-emit (tryEmit is non-suspending with DROP_OLDEST)
                 videoChannel.receiveFrames().collect { frame ->
-                    _videoFrames.emit(frame)
+                    _videoFrames.tryEmit(frame)
                 }
             } catch (e: CancellationException) {
                 throw e
