@@ -50,7 +50,10 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
     )
     override val videoFrames: Flow<VideoFrame> = _videoFrames.asSharedFlow()
 
-    private val _audioFrames = MutableSharedFlow<AudioFrame>(extraBufferCapacity = 64)
+    private val _audioFrames = MutableSharedFlow<AudioFrame>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val audioFrames: Flow<AudioFrame> = _audioFrames.asSharedFlow()
 
     private var connectionJob: Job? = null
@@ -144,9 +147,9 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
                 Log.i(TAG, "Audio channel connected to $host:$port")
                 DiagnosticLog.i("transport", "Audio channel connected to $host:$port")
 
-                // Collect audio frames and re-emit
+                // Collect audio frames and re-emit (non-blocking, drop oldest if behind)
                 audioChannel.receiveFrames().collect { frame ->
-                    _audioFrames.emit(frame)
+                    _audioFrames.tryEmit(frame)
                 }
             } catch (e: CancellationException) {
                 throw e

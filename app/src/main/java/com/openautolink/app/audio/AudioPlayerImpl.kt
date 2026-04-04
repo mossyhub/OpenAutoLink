@@ -96,6 +96,10 @@ class AudioPlayerImpl(private val audioManager: AudioManager) : AudioPlayer {
         _stats.value = AudioStats()
     }
 
+    private var audioFrameCount = 0L
+    private var audioBytesReceived = 0L
+    private var lastAudioLogTime = 0L
+
     override fun onAudioFrame(frame: AudioFrame) {
         if (!frame.isPlayback) return
 
@@ -112,6 +116,19 @@ class AudioPlayerImpl(private val audioManager: AudioManager) : AudioPlayer {
         if (!slot.isActive) {
             Log.i(TAG, "Auto-starting ${frame.purpose} from audio frame: ${frame.sampleRate}Hz ${frame.channels}ch")
             startPurpose(frame.purpose, frame.sampleRate, frame.channels)
+        }
+
+        audioFrameCount++
+        audioBytesReceived += frame.data.size
+        val now = System.currentTimeMillis()
+        if (now - lastAudioLogTime >= 2000) {
+            val ringBuf = slot.ringBufferAvailable
+            val ringCap = slot.ringBufferCapacity
+            val fillPct = if (ringCap > 0) (ringBuf * 100 / ringCap) else 0
+            Log.i(TAG, "audio: frames=$audioFrameCount bytes=$audioBytesReceived " +
+                    "thisFrame=${frame.data.size}B ring=$ringBuf/$ringCap (${fillPct}%) " +
+                    "written=${slot.framesWritten.get()} underruns=${slot.underrunCount.get()}")
+            lastAudioLogTime = now
         }
 
         slot.feedPcm(frame.data)

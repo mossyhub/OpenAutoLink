@@ -179,6 +179,8 @@ class AudioPurposeSlot(
     }
 
     val isActive: Boolean get() = active.get()
+    val ringBufferAvailable: Int get() = ringBuffer?.available ?: 0
+    val ringBufferCapacity: Int get() = ringBuffer?.capacity ?: 0
 
     private fun drainLoop() {
         val track = audioTrack ?: return

@@ -65,6 +65,15 @@ class SessionManager(
         Thread(r, "VideoDecodeInput").apply { isDaemon = true }
     }.asCoroutineDispatcher()
 
+    // Dedicated dispatcher for audio — ring buffer writes must not be blocked
+    // by main thread UI work (Compose recomposition, surface callbacks, etc.)
+    private val audioDispatcher = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "AudioFrameInput").apply {
+            isDaemon = true
+            priority = Thread.MAX_PRIORITY
+        }
+    }.asCoroutineDispatcher()
+
     private val _sessionState = MutableStateFlow(SessionState.IDLE)
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
@@ -592,8 +601,9 @@ class SessionManager(
         scope.launch {
             connectionManager.connectAudio(host, audioPort)
         }
-        // Collect audio frames and feed to audio player
-        audioCollectJob = scope.launch {
+        // Collect audio frames on dedicated thread — ring buffer writes
+        // must never be delayed by main thread UI work.
+        audioCollectJob = scope.launch(audioDispatcher) {
             connectionManager.audioFrames.collect { frame ->
                 _audioPlayer?.onAudioFrame(frame)
             }

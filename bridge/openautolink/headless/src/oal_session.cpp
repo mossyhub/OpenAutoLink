@@ -218,7 +218,20 @@ bool OalSession::flush_one_audio() {
         audio_writes_.pop_front();
     }
     bool ok = audio_transport_.submit_write(pkt.data(), pkt.size());
-    if (ok) audio_frames_written_++;
+    if (ok) {
+        audio_frames_written_++;
+        if (audio_frames_written_ <= 5 || audio_frames_written_ % 500 == 0) {
+            size_t pending;
+            {
+                std::lock_guard<std::mutex> lock(audio_mutex_);
+                pending = audio_writes_.size();
+            }
+            std::cerr << "[OAL] audio: written=" << audio_frames_written_
+                      << " queued=" << audio_frames_queued_
+                      << " pending=" << pending
+                      << " size=" << pkt.size() << std::endl;
+        }
+    }
     return ok;
 }
 
