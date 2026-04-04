@@ -2,6 +2,7 @@ package com.openautolink.app.session
 
 import android.content.Context
 import android.media.AudioManager
+import android.net.Network
 import android.util.Log
 import com.openautolink.app.audio.AudioFrame
 import com.openautolink.app.audio.AudioPlayer
@@ -106,6 +107,10 @@ class SessionManager(
     // Vehicle data forwarder — sends VHAL properties to bridge → phone
     private var _vehicleDataForwarder: VehicleDataForwarder? = null
 
+    /** Latest vehicle sensor data snapshot — for diagnostics UI. */
+    val vehicleData: StateFlow<ControlMessage.VehicleData>?
+        get() = _vehicleDataForwarder?.latestVehicleData
+
     // IMU forwarder — sends accelerometer/gyro/compass to bridge → phone
     private var _imuForwarder: ImuForwarder? = null
 
@@ -159,7 +164,8 @@ class SessionManager(
     private var targetHost: String? = null
 
     fun start(host: String, port: Int = 5288, codecPreference: String = "h264", micSourcePreference: String = "car",
-               diagnosticsEnabled: Boolean = false, diagnosticsMinLevel: String = "INFO") {
+               diagnosticsEnabled: Boolean = false, diagnosticsMinLevel: String = "INFO",
+               network: Network? = null) {
         targetHost = host
         micSource = micSourcePreference
         observeJob?.cancel()
@@ -313,7 +319,7 @@ class SessionManager(
             }
 
             // Start connection
-            connectionManager.connect(host, port)
+            connectionManager.connect(host, port, network = network)
         }
     }
 

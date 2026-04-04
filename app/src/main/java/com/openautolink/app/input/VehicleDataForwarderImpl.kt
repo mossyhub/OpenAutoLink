@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.openautolink.app.diagnostics.DiagnosticLog
 import com.openautolink.app.transport.ControlMessage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -52,6 +55,9 @@ class VehicleDataForwarderImpl(
     // Latest values — updated by property callbacks, sent as batch
     private val currentValues = ConcurrentHashMap<Int, Any>()
     private var lastSendTime = 0L
+
+    private val _latestVehicleData = MutableStateFlow(ControlMessage.VehicleData())
+    override val latestVehicleData: StateFlow<ControlMessage.VehicleData> = _latestVehicleData.asStateFlow()
 
     override fun start() {
         if (isActive) return
@@ -201,6 +207,7 @@ class VehicleDataForwarderImpl(
         lastSendTime = now
 
         val data = buildVehicleData()
+        _latestVehicleData.value = data
         sendMessage(data)
     }
 

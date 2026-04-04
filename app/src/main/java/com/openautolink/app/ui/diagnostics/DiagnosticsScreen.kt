@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Abc
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Terminal
@@ -63,6 +64,7 @@ private enum class DiagnosticsTab(
     SYSTEM("System", Icons.Default.Info),
     NETWORK("Network", Icons.Default.NetworkCheck),
     BRIDGE("Bridge", Icons.Default.Cloud),
+    CAR("Car", Icons.Default.DirectionsCar),
     LOGS("Logs", Icons.Default.Terminal),
 }
 
@@ -133,6 +135,7 @@ fun DiagnosticsScreen(
                     DiagnosticsTab.SYSTEM -> SystemTab(uiState.system)
                     DiagnosticsTab.NETWORK -> NetworkTab(uiState.network)
                     DiagnosticsTab.BRIDGE -> BridgeTab(uiState.bridge)
+                    DiagnosticsTab.CAR -> CarTab(uiState.car)
                     DiagnosticsTab.LOGS -> LogsTab(uiState.logs, uiState.logFilter, viewModel)
                 }
             }
@@ -289,6 +292,80 @@ private fun BridgeTab(stats: BridgeStats) {
             DiagRow("Status", "No active audio")
         }
     }
+}
+
+// --- Car Tab ---
+
+@Composable
+private fun CarTab(car: CarInfo) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (!car.isActive) {
+            SectionHeader("Vehicle Sensors")
+            DiagRow("Status", "Unavailable", valueColor = Color(0xFF808080))
+            DiagRow("", "VHAL not connected — requires AAOS vehicle")
+        } else {
+            SectionHeader("Powertrain")
+            DiagRow("Speed", car.speedKmh?.let { "${"%.1f".format(it)} km/h" } ?: "—")
+            DiagRow("Gear", car.gear ?: "—",
+                valueColor = when (car.gear) {
+                    "P" -> Color(0xFF4CAF50)
+                    "R" -> Color(0xFFFF9800)
+                    "D", "1", "2", "3", "4" -> Color(0xFF2196F3)
+                    else -> Color.White
+                })
+            DiagRow("Parking Brake", car.parkingBrake?.let { if (it) "ON" else "OFF" } ?: "—",
+                valueColor = if (car.parkingBrake == true) Color(0xFFFF9800) else Color(0xFF4CAF50))
+            car.rpmE3?.let {
+                DiagRow("RPM", "${"%.0f".format(it / 1000f)}")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            SectionHeader("Energy")
+            car.batteryPct?.let { DiagRow("EV Battery", "$it%",
+                valueColor = when {
+                    it > 50 -> Color(0xFF4CAF50)
+                    it > 20 -> Color(0xFFFFC107)
+                    else -> Color(0xFFFF5722)
+                }) }
+            car.fuelLevelPct?.let { DiagRow("Fuel Level", "$it%") }
+            car.rangeKm?.let { DiagRow("Range", "${"%.1f".format(it)} km") }
+            car.lowFuel?.let { DiagRow("Low Fuel", if (it) "YES" else "No",
+                valueColor = if (it) Color(0xFFFF5722) else Color(0xFF4CAF50)) }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            SectionHeader("Environment")
+            DiagRow("Night Mode", car.nightMode?.let { if (it) "ON" else "OFF" } ?: "—",
+                valueColor = if (car.nightMode == true) Color(0xFF64B5F6) else Color(0xFFFFC107))
+            car.ambientTempC?.let { DiagRow("Outside Temp", "${"%.1f".format(it)} °C") }
+
+            if (car.turnSignal != null || car.headlight != null || car.hazardLights != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader("Lights")
+                car.turnSignal?.let { DiagRow("Turn Signal", it.replaceFirstChar { c -> c.uppercase() }) }
+                car.headlight?.let { DiagRow("Headlights", headlightToString(it)) }
+                car.hazardLights?.let { DiagRow("Hazard Lights", if (it) "ON" else "OFF",
+                    valueColor = if (it) Color(0xFFFF9800) else Color.White) }
+            }
+
+            if (car.steeringAngleDeg != null || car.odometerKm != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader("Other")
+                car.steeringAngleDeg?.let { DiagRow("Steering Angle", "${"%.1f".format(it)}°") }
+                car.odometerKm?.let { DiagRow("Odometer", "${"%.1f".format(it)} km") }
+            }
+        }
+    }
+}
+
+private fun headlightToString(state: Int): String = when (state) {
+    0 -> "Off"
+    1 -> "On"
+    2 -> "Daytime Running"
+    else -> "Unknown ($state)"
 }
 
 // --- Logs Tab ---

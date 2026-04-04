@@ -75,6 +75,25 @@ data class LogEntry(
 
 enum class LogSeverity { DEBUG, INFO, WARN, ERROR }
 
+data class CarInfo(
+    val isActive: Boolean = false,
+    val speedKmh: Float? = null,
+    val gear: String? = null,
+    val parkingBrake: Boolean? = null,
+    val nightMode: Boolean? = null,
+    val batteryPct: Int? = null,
+    val fuelLevelPct: Int? = null,
+    val rangeKm: Float? = null,
+    val ambientTempC: Float? = null,
+    val rpmE3: Int? = null,
+    val turnSignal: String? = null,
+    val headlight: Int? = null,
+    val hazardLights: Boolean? = null,
+    val steeringAngleDeg: Float? = null,
+    val odometerKm: Float? = null,
+    val lowFuel: Boolean? = null,
+)
+
 data class DiagnosticsUiState(
     val system: SystemInfo = SystemInfo(
         androidVersion = "", sdkLevel = 0, device = "", manufacturer = "", model = "", soc = "",
@@ -91,6 +110,7 @@ data class DiagnosticsUiState(
         videoFramesSent = 0, audioFramesSent = 0, uptimeSeconds = 0,
         videoStats = VideoStats(), audioStats = AudioStats(),
     ),
+    val car: CarInfo = CarInfo(),
     val logs: List<LogEntry> = emptyList(),
     val logFilter: LogSeverity = LogSeverity.DEBUG,
 )
@@ -107,22 +127,40 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
     private val _system = MutableStateFlow(gatherSystemInfo(application))
     private val _network = MutableStateFlow(DiagnosticsUiState().network)
     private val _bridge = MutableStateFlow(DiagnosticsUiState().bridge)
-    private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
+    private val _car = MutableStateFlow(CarInfo())
     private val _logFilter = MutableStateFlow(LogSeverity.DEBUG)
 
     val uiState: StateFlow<DiagnosticsUiState> = combine(
         _system,
         _network,
         _bridge,
-        _logs,
-        _logFilter,
-    ) { system, network, bridge, logs, filter ->
+        _car,
+        combine(
+            com.openautolink.app.diagnostics.DiagnosticLog.localLogs,
+            _logFilter,
+        ) { logs, filter -> logs to filter },
+    ) { system, network, bridge, car, (localEntries, filter) ->
+        // Map LocalLogEntry → LogEntry for UI
+        val logs = localEntries.map { entry ->
+            LogEntry(
+                timestamp = entry.timestamp,
+                severity = when (entry.level) {
+                    com.openautolink.app.diagnostics.DiagnosticLevel.DEBUG -> LogSeverity.DEBUG
+                    com.openautolink.app.diagnostics.DiagnosticLevel.INFO -> LogSeverity.INFO
+                    com.openautolink.app.diagnostics.DiagnosticLevel.WARN -> LogSeverity.WARN
+                    com.openautolink.app.diagnostics.DiagnosticLevel.ERROR -> LogSeverity.ERROR
+                },
+                tag = entry.tag,
+                message = entry.message,
+            )
+        }
         val filtered = if (filter == LogSeverity.DEBUG) logs
         else logs.filter { it.severity >= filter }
         DiagnosticsUiState(
             system = system,
             network = network,
             bridge = bridge,
+            car = car,
             logs = filtered,
             logFilter = filter,
         )
@@ -133,6 +171,9 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
     )
 
     init {
+        // Start local log capture while diagnostics is open
+        com.openautolink.app.diagnostics.DiagnosticLog.startLocalCapture()
+
         // Observe session state for network tab
         viewModelScope.launch {
             combine(
@@ -190,16 +231,16 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
                         )
                     }
                     is ControlMessage.Error -> {
-                        addLog(LogSeverity.ERROR, "Bridge", "Error ${msg.code}: ${msg.message}")
+                        com.openautolink.app.diagnostics.DiagnosticLog.e("Bridge", "Error ${msg.code}: ${msg.message}")
                     }
                     is ControlMessage.Hello -> {
-                        addLog(LogSeverity.INFO, "Bridge", "Hello from ${msg.name} v${msg.version}")
+                        com.openautolink.app.diagnostics.DiagnosticLog.i("Bridge", "Hello from ${msg.name} v${msg.version}")
                     }
                     is ControlMessage.PhoneConnected -> {
-                        addLog(LogSeverity.INFO, "Session", "Phone connected: ${msg.phoneName}")
+                        com.openautolink.app.diagnostics.DiagnosticLog.i("Session", "Phone connected: ${msg.phoneName}")
                     }
                     is ControlMessage.PhoneDisconnected -> {
-                        addLog(LogSeverity.INFO, "Session", "Phone disconnected: ${msg.reason}")
+                        com.openautolink.app.diagnostics.DiagnosticLog.i("Session", "Phone disconnected: ${msg.reason}")
                     }
                     else -> {}
                 }
@@ -220,7 +261,37 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        addLog(LogSeverity.INFO, "Diagnostics", "Diagnostics screen opened")
+        // Observe vehicle data for car tab
+        viewModelScope.launch {
+            sessionManager.sessionState.collect { state ->
+                sessionManager.vehicleData?.let { flow ->
+                    launch {
+                        flow.collect { vd ->
+                            _car.value = CarInfo(
+                                isActive = true,
+                                speedKmh = vd.speedKmh,
+                                gear = vd.gear,
+                                parkingBrake = vd.parkingBrake,
+                                nightMode = vd.nightMode,
+                                batteryPct = vd.batteryPct,
+                                fuelLevelPct = vd.fuelLevelPct,
+                                rangeKm = vd.rangeKm,
+                                ambientTempC = vd.ambientTempC,
+                                rpmE3 = vd.rpmE3,
+                                turnSignal = vd.turnSignal,
+                                headlight = vd.headlight,
+                                hazardLights = vd.hazardLights,
+                                steeringAngleDeg = vd.steeringAngleDeg,
+                                odometerKm = vd.odometerKm,
+                                lowFuel = vd.lowFuel,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        com.openautolink.app.diagnostics.DiagnosticLog.i("Diagnostics", "Diagnostics screen opened")
     }
 
     fun setLogFilter(severity: LogSeverity) {
@@ -228,17 +299,12 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun clearLogs() {
-        _logs.value = emptyList()
+        com.openautolink.app.diagnostics.DiagnosticLog.clearLocal()
     }
 
-    private fun addLog(severity: LogSeverity, tag: String, message: String) {
-        val entry = LogEntry(
-            timestamp = System.currentTimeMillis(),
-            severity = severity,
-            tag = tag,
-            message = message,
-        )
-        _logs.value = (_logs.value + entry).takeLast(500)
+    override fun onCleared() {
+        super.onCleared()
+        com.openautolink.app.diagnostics.DiagnosticLog.stopLocalCapture()
     }
 
     companion object {
