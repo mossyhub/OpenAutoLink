@@ -535,7 +535,6 @@ def do_connect():
                         print(f"Generic Connect to {path}", flush=True)
                     except Exception:
                         pass  # Already connected via profile, this is fine
-                    break
     except Exception as e:
         print(f"Phone connect: {e}", flush=True)
 
