@@ -1,6 +1,6 @@
 # ProGuard rules for OpenAutoLink
 # Keep kotlinx.serialization
-# Covers all @Serializable classes including UpdateManifest, ControlMessage, etc.
+# Covers all @Serializable classes including ControlMessage, etc.
 # @SerialName values are baked into generated serializer code — no reflection needed.
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.AnnotationsKt

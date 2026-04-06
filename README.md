@@ -15,7 +15,7 @@
 - Vehicle data (speed, gear, fuel/EV range, GPS, etc.) sent to Android Auto
 - Navigation turn-by-turn displayed on the instrument cluster *(experimental — GM may kill third-party cluster services)*
 - Multi-phone support: pair multiple phones, set a default, switch between them with one tap
-- One-command SBC install, auto-reconnect on car startup, app updates via Play Store
+- One-command SBC install, auto-reconnect on car startup
 - Fully open-source — app, bridge, protocol, and deployment scripts
 
 > **Fair warning:** This is a free, hobby project that is very much under active development. It might work great, it might not work at all. Stated features may or may not actually work. My goal is to eventually make it stable and production-quality, but it's not there yet — and honestly, it may never be. I'm building this because it's fun and because I want Android Auto back in my car. If that sounds like your kind of adventure, give it a try.
@@ -101,7 +101,7 @@ The SBC, adapter, and cable are small enough to live entirely inside the center 
 
 ## Quick Start
 
-> **Play Store goal**: The long-term goal is to get the app certified and published on the Google Play Store so users can simply install it. Whether this will be possible (AAOS certification requirements, Google approval, etc.) is unknown at this point. Until then, you must self-publish as described below.
+> **No public Play Store listing.** Each user must publish the app through their own Google Play Console account (see below). The long-term goal is to get the app certified and published publicly, but whether that's possible (AAOS certification requirements, Google approval, etc.) is unknown.
 
 ### Bridge (SBC)
 
@@ -113,7 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/mossyhub/openautolink/main/bridge/s
 
 ### App (AAOS Head Unit)
 
-Because this is an AAOS app (not a standard phone app), getting it onto your car requires publishing through the Google Play Console with an AAOS-specific release track. GM's AAOS head units have no known way to sideload APKs — ADB is locked down and there's no accessible install mechanism outside the Play Store. So the only path is publishing through a testing track on your own Play Console account. This is more involved than a typical Android app:
+Because this is an AAOS app (not a standard phone app), getting it onto your car requires publishing through your own Google Play Console account with an AAOS-specific release track. GM's AAOS head units have no known way to sideload APKs — ADB is locked down and there's no accessible install mechanism outside the Play Store. This is more involved than a typical Android app:
 
 1. **Create a [Google Play Console](https://play.google.com/console/) developer account** ($25 one-time fee)
 
@@ -125,7 +125,7 @@ Because this is an AAOS app (not a standard phone app), getting it onto your car
    ```powershell
    .\scripts\create-upload-keystore.ps1
    ```
-   This creates a keystore at `secrets/upload-key.jks`. Keep this file safe — you need it for every update.
+   This creates a keystore at `secrets/upload-key.jks`. Keep this file safe — you need it for every release.
 
 5. **Build and sign the release AAB**:
    ```powershell
@@ -139,7 +139,7 @@ Because this is an AAOS app (not a standard phone app), getting it onto your car
 
 8. **Accept the test invite** — After publishing, each tester (including yourself) must open the opt-in link from the Play Console testers page and accept the invitation. Without this step, the app will not appear on the car
 
-9. **Install** — Once the invite is accepted, the app will auto-install on your car's head unit if it has a WiFi or cellular data connection. You can also find it in the Play Store on the head unit
+9. **Install** — Once the invite is accepted, the app should appear on the Play Store on your car's head unit (may take a few hours to propagate). You can also trigger it by searching for your app name in the Play Store on the head unit
 
 ### Run Tests
 ```powershell

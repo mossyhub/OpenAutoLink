@@ -358,7 +358,6 @@ The mock bridge (`scripts/mock_bridge.py`) lets you test the app's full video/au
 | **Media metadata** | Track title/artist/album cycling every 15s with album art |
 | **Navigation state** | Maneuver cycling every 10s with colored nav images |
 | **Cluster display** | Nav maneuvers forwarded to instrument cluster |
-| **Self-update UI** | Update check, download progress (requires GitHub Pages to be live) |
 
 ### What You Can't Test (Requires Real SBC + Phone)
 

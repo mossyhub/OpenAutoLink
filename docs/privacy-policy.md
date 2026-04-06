@@ -19,10 +19,7 @@ The app captures audio from the car's built-in microphone to enable hands-free v
 The app reads GPS location and NMEA satellite data from the car's built-in GNSS receiver. This data is forwarded to your phone via the bridge device to improve navigation accuracy (e.g., in tunnels or urban canyons where the phone's GPS signal is weak). **Location data is never stored or transmitted outside your local network.**
 
 ### Network (`INTERNET`, `ACCESS_NETWORK_STATE`)
-The app connects to the bridge device over your car's local Ethernet or Wi-Fi network using TCP. These permissions are required for the three TCP connections that carry video, audio, and control data between the app and the bridge. **No internet connections are made to external servers**, except optionally checking for app updates from GitHub (if self-update is enabled by the user).
-
-### Install Packages (`REQUEST_INSTALL_PACKAGES`)
-Used only for the optional self-update feature. When enabled, the app can download and install updated versions of itself from GitHub Releases. This feature is off by default and must be manually enabled in Settings.
+The app connects to the bridge device over your car's local Ethernet or Wi-Fi network using TCP. These permissions are required for the three TCP connections that carry video, audio, and control data between the app and the bridge. **No internet connections are made to external servers.**
 
 ### Vehicle Data (`CAR_SPEED`, `CAR_ENERGY`, `CAR_POWERTRAIN`, `CAR_EXTERIOR_ENVIRONMENT`, `CAR_INFO`)
 The app reads vehicle sensor data (speed, gear, battery level, temperature, etc.) from the car's Vehicle HAL to forward to your phone's Android Auto session. This enables the phone to display accurate vehicle information. **Vehicle data is sent only to the bridge device on your local network and is never stored or transmitted externally.**
@@ -43,15 +40,12 @@ The app stores only user preferences locally on the device using Android DataSto
 - Bridge connection settings (IP address, port)
 - Video/audio configuration (codec, resolution, FPS)
 - Display preferences
-- Self-update settings
 
 No personal data, location history, audio recordings, or vehicle data is stored.
 
 ## Third-Party Services
 
 OpenAutoLink does not integrate with any third-party analytics, advertising, crash reporting, or tracking services.
-
-The optional self-update feature checks `github.com` for new releases. No personal data is sent in this request.
 
 ## Data Security
 

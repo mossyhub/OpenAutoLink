@@ -87,8 +87,7 @@ Tabs listed vertically. Approximate y-positions in `system_ui_visible` mode:
 | Display | ~447-492 | Display modes, drive side |
 | Video | ~523 | Codec, FPS, resolution |
 | Audio | ~561 | Audio source, mic |
-| Updates | ~637 | Self-update settings |
-| Diagnostics | ~713 | Log forwarding |
+| Diagnostics | ~637 | Log forwarding |
 
 **Tab y-positions shift by ±40px depending on display mode**. Use dynamic lookup:
 

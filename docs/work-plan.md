@@ -146,21 +146,6 @@ See [docs/architecture.md](architecture.md) for full component island breakdown 
 - [x] Config sync: app → bridge → echo *(unblocked by B1)*
 - [x] Bridge discovery (mDNS + manual IP)
 
-### M6b: Self-Update via GitHub Pages
-
-Enable OTA-style self-updating so new builds can be deployed without AAB/Play Store round-trips. Critical for fast iteration on M8/M9 (no ADB access on the car).
-
-- [x] `REQUEST_INSTALL_PACKAGES` permission + `FileProvider` for APK sharing
-- [x] `update/` island: `UpdateManifest`, `UpdateChecker`, `AppInstaller`
-- [x] GitHub Pages manifest check (`update.json` with versionCode, APK URL, changelog)
-- [x] Download APK to app-internal cache, trigger `PackageInstaller` session
-- [x] DataStore preference: self-update enabled (default: off)
-- [x] DataStore preference: update manifest URL
-- [x] Settings UPDATES tab: toggle, URL field, Check Now button, download progress, changelog display
-- [x] Graceful failure if AAOS blocks `REQUEST_INSTALL_PACKAGES` (show user-friendly error)
-- [x] ProGuard keep rules for serialization of `UpdateManifest` — existing wildcard rules already cover all `@Serializable` classes
-- [ ] Verify on car: can AAOS install APKs from non-system sources?
-
 ### M7: Vehicle Integration
 - [x] GNSS forwarding (LocationManager → NMEA → bridge)
 - [x] VHAL properties (37 properties via Car API reflection)
@@ -242,7 +227,6 @@ This unblocks all car-specific validation items listed in the Car Testing Unknow
   - `audio`: AudioTrack creation, underruns, purpose routing, focus changes
   - `cluster`: bind/unbind events, GM kill detection, rebind attempts
   - `vhal`: property availability per-property, subscription errors
-  - `update`: self-update permission check result, install session outcome
   - `input`: key event interception success/failure (voice button, media keys)
   - `transport`: connection timing, reconnect events, channel failures
   - `system`: Android version, SoC, display metrics (sent once on connect)
@@ -260,13 +244,6 @@ This unblocks all car-specific validation items listed in the Car Testing Unknow
 ## 🚗 Car Testing Unknowns (GM AAOS)
 
 These items can only be validated on the actual GM head unit. No emulator can answer them. Remote diagnostics (M11) is the primary tool for investigating each one — the app logs relevant events, and we observe via SSH on the bridge.
-
-### Self-Update (M6b)
-| Unknown | How to test | What to log |
-|---------|------------|-------------|
-| Can AAOS install APKs from non-system sources? | Trigger self-update on car, observe PackageInstaller result | `tag=update`: permission check, session create, install result, error code if rejected |
-| Does GM restrict `REQUEST_INSTALL_PACKAGES`? | Check at runtime, log the permission state | `tag=update`: `checkSelfPermission` result, any GM-specific denial |
-| Fallback plan if blocked | Sideload via USB OTG with file manager, or pre-signed system image | Log the specific error code so we can research GM's restriction |
 
 ### Cluster Service (M8)
 | Unknown | How to test | What to log |
@@ -311,7 +288,7 @@ These items can only be validated on the actual GM head unit. No emulator can an
 
 ### Testing Workflow
 1. Build APK with remote diagnostics enabled by default for car testing builds
-2. Install on car (sideload or self-update if it works)
+2. Install on car (sideload via ADB)
 3. SSH to bridge: `journalctl -u openautolink.service -f | grep '\[CAR\]'`
 4. Use the car normally — diagnostics stream in real time
 5. After session: `journalctl -u openautolink.service --since "1 hour ago" | grep '\[CAR\]' > car-session.log`
@@ -322,9 +299,9 @@ These items can only be validated on the actual GM head unit. No emulator can an
 ## 🛠️ Dev Tooling & CI/CD
 
 ### CI/CD (GitHub Actions)
-- [x] **Release APK workflow** (`.github/workflows/release-apk.yml`) — triggers on GitHub Release, builds signed APK, attaches to release, updates `update.json` on gh-pages
+- [x] **Release APK workflow** (`.github/workflows/release-apk.yml`) — triggers on GitHub Release, builds signed APK, attaches to release
 - [x] **Release Bridge workflow** (`.github/workflows/release-bridge.yml`) — triggers on GitHub Release, cross-compiles ARM64 binary via QEMU Docker, attaches to release
-- [x] **GitHub Pages** — serves `update.json` for app self-update at `https://mossyhub.github.io/openautolink/update.json`
+- [x] **GitHub Pages** — project documentation hosting
 - [x] **Branch protection** — PRs to main require 1 approving review (admin exempt)
 
 ### SBC Deployment
