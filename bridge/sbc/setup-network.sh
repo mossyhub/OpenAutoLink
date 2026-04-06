@@ -100,11 +100,18 @@ setup_ssh_dhcp() {
     # SSH NIC mode:
     #   dhcp-client (default) — get IP from whatever is on the other end
     #     (e.g., laptop sharing WiFi via ICS, which runs its own DHCP server)
+    #   static — set a fixed IP, no DHCP client or server
+    #     (use with laptop ICS when you want a known IP on the bridge)
     #   dhcp-server — run our own DHCP server for direct laptop connections
     #     (use when laptop has no DHCP server, just a plain ethernet cable)
     local ssh_mode="${OAL_SSH_MODE:-dhcp-client}"
 
-    if [ "$ssh_mode" = "dhcp-server" ]; then
+    if [ "$ssh_mode" = "static" ]; then
+        echo "[net] SSH network: $iface → $SSH_IP (static mode)"
+        ip addr flush dev "$iface" 2>/dev/null || true
+        ip addr add "$SSH_IP/24" dev "$iface" 2>/dev/null || true
+        echo "[net] SSH ready: connect to $SSH_IP"
+    elif [ "$ssh_mode" = "dhcp-server" ]; then
         echo "[net] SSH network: $iface → $SSH_IP (DHCP server mode)"
         ip addr flush dev "$iface" 2>/dev/null || true
         ip addr add "$SSH_IP/24" dev "$iface" 2>/dev/null || true
