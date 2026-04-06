@@ -59,6 +59,12 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    lint {
+        // CarAppActivity is from androidx.car.app and does extend Activity,
+        // but lint can't resolve it through the library's class hierarchy.
+        disable += "Instantiatable"
+    }
 }
 
 dependencies {
