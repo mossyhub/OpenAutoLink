@@ -193,6 +193,7 @@ class SessionManager(
     private var videoCollectJob: Job? = null
     private var audioCollectJob: Job? = null
     private var decoderWatchJob: Job? = null
+    private var keyframeWatchJob: Job? = null
     private var callStateJob: Job? = null
     private var targetHost: String? = null
 
@@ -345,6 +346,12 @@ class SessionManager(
                 watchDecoderState()
             }
 
+            // Watch for IDR starvation — periodically re-request keyframes
+            keyframeWatchJob?.cancel()
+            keyframeWatchJob = launch {
+                watchKeyframeNeeds()
+            }
+
             // Watch call state to route mic purpose (assistant vs call)
             callStateJob?.cancel()
             callStateJob = launch {
@@ -365,6 +372,8 @@ class SessionManager(
         audioCollectJob = null
         decoderWatchJob?.cancel()
         decoderWatchJob = null
+        keyframeWatchJob?.cancel()
+        keyframeWatchJob = null
         callStateJob?.cancel()
         callStateJob = null
         scope.launch {
@@ -404,13 +413,34 @@ class SessionManager(
     }
 
     suspend fun sendAppHello(displayWidth: Int, displayHeight: Int, displayDpi: Int) {
+        // Use passed values, or compute from actual display metrics if zeros
+        val ctx = context
+        val actualWidth: Int
+        val actualHeight: Int
+        val actualDpi: Int
+        if (displayWidth > 0 && displayHeight > 0 && displayDpi > 0) {
+            actualWidth = displayWidth
+            actualHeight = displayHeight
+            actualDpi = displayDpi
+        } else if (ctx != null) {
+            val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+            val bounds = wm.maximumWindowMetrics.bounds
+            actualWidth = bounds.width()
+            actualHeight = bounds.height()
+            actualDpi = ctx.resources.displayMetrics.densityDpi
+        } else {
+            actualWidth = 0
+            actualHeight = 0
+            actualDpi = 0
+        }
+        Log.i(TAG, "sendAppHello: display=${actualWidth}x${actualHeight} dpi=$actualDpi")
         connectionManager.sendControlMessage(
             ControlMessage.AppHello(
                 version = 1,
                 name = "OpenAutoLink App",
-                displayWidth = displayWidth,
-                displayHeight = displayHeight,
-                displayDpi = displayDpi
+                displayWidth = actualWidth,
+                displayHeight = actualHeight,
+                displayDpi = actualDpi
             )
         )
     }
@@ -482,6 +512,37 @@ class SessionManager(
             decoder.resume() // releases codec, clears IDR flag, reconfigures if SPS/PPS available
             requestKeyframe()
             Log.i(TAG, "Decoder recovery: resumed codec, requested keyframe")
+        }
+    }
+
+    /**
+     * Watches the decoder's needsKeyframe flow and periodically re-requests keyframes
+     * until the decoder receives an IDR. This handles the case where the bridge's
+     * keyframe replay fails silently — without this, the decoder just drops P-frames
+     * forever until the phone's GOP cycle happens to send a natural IDR (~60s).
+     */
+    private suspend fun watchKeyframeNeeds() {
+        while (_videoDecoder == null) {
+            delay(500)
+        }
+        val decoder = _videoDecoder ?: return
+        decoder.needsKeyframe.collect { needed ->
+            if (needed) {
+                // Re-request keyframes every 2 seconds until IDR arrives
+                var attempt = 0
+                while (decoder.needsKeyframe.value) {
+                    attempt++
+                    requestKeyframe()
+                    if (attempt == 1) {
+                        Log.i(TAG, "Keyframe re-request #$attempt (IDR starvation recovery)")
+                    } else {
+                        Log.w(TAG, "Keyframe re-request #$attempt (still waiting for IDR)")
+                        _remoteDiagnostics?.log(DiagnosticLevel.WARN, "video",
+                            "Keyframe re-request #$attempt (still waiting for IDR)")
+                    }
+                    delay(2000)
+                }
+            }
         }
     }
 

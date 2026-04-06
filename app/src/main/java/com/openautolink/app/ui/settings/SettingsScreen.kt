@@ -97,22 +97,22 @@ private val displayModes = listOf(
     DisplayModeOption(
         "system_ui_visible",
         "System UI Visible",
-        "Status bar and nav bar always visible. Recommended for GM."
+        "Video is inset to avoid status bar and nav bar. Recommended for GM."
     ),
     DisplayModeOption(
         "status_bar_hidden",
         "Status Bar Hidden",
-        "Hides status bar only. Nav bar stays visible."
+        "Hides status bar, video extends into that area. Nav bar stays."
     ),
     DisplayModeOption(
         "nav_bar_hidden",
         "Nav Bar Hidden",
-        "Hides nav bar/dock only. Status bar stays visible."
+        "Hides nav bar/dock, video extends into that area. Status bar stays."
     ),
     DisplayModeOption(
         "fullscreen_immersive",
         "Fullscreen Immersive",
-        "Hides all system bars. Swipe edge to reveal."
+        "Hides all system bars. Video fills entire screen. Swipe edge to reveal bars."
     ),
     DisplayModeOption(
         "custom_viewport",
@@ -804,7 +804,9 @@ private fun DisplayTab(
 
         Text(
             text = "Controls how the app interacts with AAOS system bars. " +
-                    "App restart required after changing.",
+                    "Changes apply immediately. On some AAOS head units, the system may " +
+                    "prevent apps from hiding bars. To change the video encoding resolution, " +
+                    "use AA Resolution on the Video tab.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)

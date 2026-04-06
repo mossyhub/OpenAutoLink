@@ -47,6 +47,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
     private var surfaceHeight: Int = 0
 
     private var codecConfigData: ByteArray? = null
+    private var cachedIdrFrame: VideoFrame? = null  // IDR that arrived before surface was attached
     @Volatile private var receivedIdr = false
     private val mimeType: String = CodecSelector.codecToMime(codecPreference)
 
@@ -64,9 +65,16 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
     @Volatile private var firstFrameRendered = false
     @Volatile private var decodeStartTimeMs = 0L
 
+    private val _needsKeyframeFlow = MutableStateFlow(false)
+    override val needsKeyframe: StateFlow<Boolean> = _needsKeyframeFlow.asStateFlow()
     @Volatile private var _needsKeyframe = false
     private var pendingWidth: Int? = null
     private var pendingHeight: Int? = null
+
+    // Drop-only stats tracking — updates stats even when only dropping frames
+    private var lastDropStatsTime = 0L
+    private var lastDropStatsCount = 0L
+    private val DROP_STATS_INTERVAL_MS = 1000L
 
     // Bitrate tracking — rolling window
     private var bitrateWindowStartMs = 0L
@@ -92,8 +100,17 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
                 configureCodec(config)
                 // Codec configured from cached SPS/PPS, but the IDR that arrived with it
                 // was likely lost (surface wasn't attached when it arrived during replay).
-                // Reset the flag so the caller can request a fresh IDR.
-                _needsKeyframe = false
+                // Check if we have a cached IDR to replay before requesting a fresh one.
+                val cachedIdr = cachedIdrFrame
+                if (cachedIdr != null && codec != null) {
+                    Log.i(TAG, "Replaying cached IDR (${cachedIdr.data.size} bytes) after surface attach")
+                    DiagnosticLog.i("video", "Replaying cached IDR (${cachedIdr.data.size} bytes) after surface attach")
+                    cachedIdrFrame = null
+                    handleKeyframe(cachedIdr)
+                } else {
+                    _needsKeyframe = false
+                    _needsKeyframeFlow.value = true  // Signal caller to request IDR
+                }
             }
         }
     }
@@ -138,6 +155,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
     override fun requestKeyframe(): Boolean {
         if (_needsKeyframe) return false
         _needsKeyframe = true
+        _needsKeyframeFlow.value = true
         return true
     }
 
@@ -152,6 +170,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         _decoderState.value = DecoderState.IDLE
         receivedIdr = false
         _needsKeyframe = true
+        _needsKeyframeFlow.value = true
         codecConfigData?.let { config ->
             if (surface != null) configureCodec(config)
         }
@@ -159,6 +178,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
 
     override fun release() {
         releaseCodec()
+        cachedIdrFrame = null
         _decoderState.value = DecoderState.IDLE
     }
 
@@ -181,6 +201,7 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         codecConfigData = frame.data.copyOf()
         receivedIdr = false
         _needsKeyframe = true  // Request IDR after codec reconfigure
+        _needsKeyframeFlow.value = true
 
         if (surface != null) {
             configureCodec(frame.data)
@@ -196,6 +217,14 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
                     Log.i(TAG, "IDR contains inline SPS/PPS — extracting codec config")
                     handleCodecConfig(frame)
                     // Fall through to queue as keyframe below
+                } else if (surface == null && codecConfigData != null) {
+                    // IDR arrived but surface not attached yet — cache it for replay
+                    // when surface becomes available. This happens during Save & Connect
+                    // from Settings where SurfaceView doesn't exist.
+                    Log.i(TAG, "IDR received but no surface — caching for later replay (${frame.data.size} bytes)")
+                    DiagnosticLog.i("video", "IDR cached (no surface): ${frame.data.size} bytes")
+                    cachedIdrFrame = frame
+                    return
                 } else {
                     Log.w(TAG, "IDR received but codec not configured (no inline SPS), dropping")
                     framesDropped.incrementAndGet()
@@ -208,6 +237,10 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
                 val h = if (frame.height > 0) frame.height else pendingHeight ?: surfaceHeight
                 if (surface != null && w > 0 && h > 0) {
                     configureCodecDirect(w, h)
+                } else if (surface == null) {
+                    Log.i(TAG, "Keyframe received but no surface — caching for later replay")
+                    cachedIdrFrame = frame
+                    return
                 } else {
                     Log.w(TAG, "Keyframe but no surface or dimensions, dropping")
                     framesDropped.incrementAndGet()
@@ -218,16 +251,20 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         Log.i(TAG, "IDR keyframe received: ${frame.data.size} bytes")
         receivedIdr = true
         _needsKeyframe = false
+        _needsKeyframeFlow.value = false
+        cachedIdrFrame = null  // Clear cache — we have a live IDR now
         queueFrame(frame)
     }
 
     private fun handleRegularFrame(frame: VideoFrame) {
         if (!receivedIdr) {
             framesDropped.incrementAndGet()
+            updateDropStats()
             return
         }
         if (codec == null) {
             framesDropped.incrementAndGet()
+            updateDropStats()
             return
         }
         queueFrame(frame)
@@ -483,6 +520,25 @@ class MediaCodecDecoder(private val codecPreference: String = "h264") : VideoDec
         receivedIdr = false
         lastQueuedPtsMs = -1
         consecutiveDrops = 0
+    }
+
+    /**
+     * Update stats periodically when only frames are being dropped (no decodes).
+     * Without this, telemetry shows stale dropped count during IDR starvation.
+     */
+    private fun updateDropStats() {
+        val now = System.currentTimeMillis()
+        if (lastDropStatsTime == 0L) {
+            lastDropStatsTime = now
+            lastDropStatsCount = framesDropped.get()
+            return
+        }
+        val elapsed = now - lastDropStatsTime
+        if (elapsed >= DROP_STATS_INTERVAL_MS) {
+            lastDropStatsTime = now
+            lastDropStatsCount = framesDropped.get()
+            updateStats(null)
+        }
     }
 
     private fun updateFps(decoded: Long) {

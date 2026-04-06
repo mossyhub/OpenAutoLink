@@ -53,6 +53,22 @@ class OalMediaSessionManager(private val context: Context) {
                     override fun onPause() { mediaControlCallback?.onPause() }
                     override fun onSkipToNext() { mediaControlCallback?.onSkipToNext() }
                     override fun onSkipToPrevious() { mediaControlCallback?.onSkipToPrevious() }
+
+                    override fun onMediaButtonEvent(mediaButtonEvent: android.content.Intent): Boolean {
+                        val ke = mediaButtonEvent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
+                        Log.i(TAG, "onMediaButtonEvent: keycode=${ke?.keyCode} (${ke?.let { android.view.KeyEvent.keyCodeToString(it.keyCode) }}) action=${ke?.action}")
+                        com.openautolink.app.diagnostics.DiagnosticLog.i(
+                            "input",
+                            "MediaSession.onMediaButtonEvent: keycode=${ke?.keyCode} (${ke?.let { android.view.KeyEvent.keyCodeToString(it.keyCode) }}) action=${ke?.action}"
+                        )
+                        return super.onMediaButtonEvent(mediaButtonEvent)
+                    }
+
+                    override fun onCommand(command: String, extras: android.os.Bundle?, cb: android.os.ResultReceiver?) {
+                        Log.i(TAG, "onCommand: $command")
+                        com.openautolink.app.diagnostics.DiagnosticLog.i("input", "MediaSession.onCommand: $command")
+                        super.onCommand(command, extras, cb)
+                    }
                 })
 
                 setPlaybackState(buildPlaybackState(PlaybackStateCompat.STATE_NONE, 0))

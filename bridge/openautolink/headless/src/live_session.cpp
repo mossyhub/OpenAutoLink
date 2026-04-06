@@ -949,6 +949,12 @@ void LiveAasdkSession::on_host_command(int command_id) {
 void LiveAasdkSession::replay_cached_keyframe() {
     if (entity_ && entity_->video_handler()) {
         entity_->video_handler()->replayCachedKeyframe();
+    } else {
+        std::cerr << "[aasdk] replay_cached_keyframe skipped: entity="
+                  << (entity_ ? "ok" : "null")
+                  << " video_handler="
+                  << (entity_ && entity_->video_handler() ? "ok" : "null")
+                  << std::endl;
     }
 }
 
@@ -1971,7 +1977,10 @@ void HeadlessVideoHandler::sendUiConfigUpdate(
 }
 
 void HeadlessVideoHandler::replayCachedKeyframe() {
-    if (!has_cached_keyframe_) return;
+    if (!has_cached_keyframe_) {
+        std::cerr << "[aasdk] replay skipped: no cached keyframe" << std::endl;
+        return;
+    }
     uint32_t w = static_cast<uint32_t>(width_);
     uint32_t h = static_cast<uint32_t>(height_);
 
@@ -1990,6 +1999,8 @@ void HeadlessVideoHandler::replayCachedKeyframe() {
                 OalVideoFlags::KEYFRAME,
                 cached_idr_.data(), cached_idr_.size());
         }
+    } else {
+        std::cerr << "[aasdk] replay skipped: oal_session_ null" << std::endl;
     }
 }
 
@@ -3320,7 +3331,16 @@ void HeadlessNavStatusHandler::onNavigationState(
     has_modern_nav_ = true;
 
     if (navState.steps_size() == 0) {
-        std::cerr << "[aasdk] modern nav state: no steps" << std::endl;
+        std::cerr << "[aasdk] modern nav state: no steps — clearing navigation" << std::endl;
+        last_maneuver_.clear();
+        last_road_.clear();
+        last_nav_image_base64_.clear();
+        last_distance_m_ = 0;
+        last_eta_s_ = 0;
+        has_modern_nav_ = false;
+        if (oal_session_) {
+            oal_session_->send_nav_state_clear();
+        }
         channel_->receive(shared_from_this());
         return;
     }

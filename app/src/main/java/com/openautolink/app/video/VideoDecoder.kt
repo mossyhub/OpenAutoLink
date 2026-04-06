@@ -10,6 +10,9 @@ interface VideoDecoder {
     val decoderState: StateFlow<DecoderState>
     val stats: StateFlow<VideoStats>
 
+    /** Emits true when the decoder needs a keyframe (IDR) to start/resume decoding. */
+    val needsKeyframe: StateFlow<Boolean>
+
     /** Bind decoder output to a Surface. Must be called before onFrame. */
     fun attach(surface: Surface, width: Int, height: Int)
 
