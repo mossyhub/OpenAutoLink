@@ -163,11 +163,11 @@ Because this is an AAOS app (not a standard phone app), getting it onto your car
 | [Embedded Knowledge](docs/embedded-knowledge.md) | Hardware lessons from real-car testing |
 | [Networking](docs/networking.md) | Three-network architecture (phone, car, SSH) |
 | [Local Testing](docs/testing.md) | Emulator + SBC setup, in-car testing workflow |
-| [Work Plan](docs/work-plan.md) | Milestones and task tracking |
+| [Work Plan](docs/work-plan.md) | Remaining items, car testing unknowns, future features |
 | [Bridge Build Guide](bridge/sbc/BUILD.md) | SBC build and deployment |
 ## Status
 
-Active development. All core features are implemented and working on real hardware (2024 Blazer EV): video, audio, touch, vehicle data, cluster navigation, media metadata, microphone, steering wheel controls, and auto-reconnect. See the [work plan](docs/work-plan.md) for remaining items and car testing unknowns.
+Active development. All core features are implemented and working on real hardware (2024 Blazer EV): video, audio, touch, vehicle data, cluster navigation, media metadata, microphone, steering wheel controls, and auto-reconnect.
 
 ## Known Issues
 

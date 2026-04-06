@@ -37,7 +37,7 @@ Two components:
 
 ## Cross-Component Rule: Always Reference the Other Side
 
-When modifying **app** code that talks to the bridge, **read the bridge source code first** (`bridge/openautolink/headless/`). When modifying **bridge** code, read the app code first. Don't trust protocol docs alone — they may describe the target design while the code implements the current (possibly legacy) format. It is acceptable to modify either side to improve the protocol, but check `docs/work-plan.md` for planned migration paths before making ad-hoc changes.
+When modifying **app** code that talks to the bridge, **read the bridge source code first** (`bridge/openautolink/headless/`). When modifying **bridge** code, read the app code first. Don't trust protocol docs alone — verify what the code actually sends/receives. It is acceptable to modify either side to improve the protocol.
 
 ## Architecture
 

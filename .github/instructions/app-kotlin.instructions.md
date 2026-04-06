@@ -6,9 +6,9 @@ applyTo: "app/**/*.kt"
 
 ## Bridge Cross-Reference Rule (CRITICAL)
 When implementing or modifying any app code that communicates with the bridge (transport, video, audio, input, session):
-1. **Always read the corresponding bridge source code** in `bridge/openautolink/headless/` before writing app code. Verify what the bridge actually sends/receives — don't rely solely on protocol docs, which may describe the target design rather than the current implementation.
-2. **Check for protocol mismatches.** The bridge may still use CPC200 framing while docs describe OAL. The app must match what the bridge actually outputs, OR the bridge must be updated first.
-3. **It is OK to modify the bridge C++ code** if it improves the protocol, simplifies the app, or fixes bugs. The bridge was written for the old CPC200 app and has room for rewrites. However, check `docs/work-plan.md` "Bridge Protocol Migration" section first — there may be a planned migration path that should be followed rather than ad-hoc changes.
+1. **Always read the corresponding bridge source code** in `bridge/openautolink/headless/` before writing app code. Verify what the bridge actually sends/receives — don't rely solely on protocol docs.
+2. **Check for protocol mismatches.** The app must match what the bridge actually outputs.
+3. **It is OK to modify the bridge C++ code** if it improves the protocol, simplifies the app, or fixes bugs.
 4. **Key bridge files to reference:**
    - `bridge/openautolink/headless/include/openautolink/oal_protocol.hpp` — OAL wire format
    - `bridge/openautolink/headless/include/openautolink/tcp_car_transport.hpp` — TCP transport
