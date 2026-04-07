@@ -126,4 +126,31 @@ class SteeringWheelControllerTest {
         assertEquals(1, sentMessages.size)
         assertTrue(sentMessages[0].longpress)
     }
+
+    @Test
+    fun `GM F7 maps to media next`() {
+        val downEvent = mockKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F7)
+        assertTrue(controller.onKeyEvent(downEvent))
+
+        assertEquals(1, sentMessages.size)
+        assertEquals(KeyEvent.KEYCODE_MEDIA_NEXT, sentMessages[0].keycode)
+    }
+
+    @Test
+    fun `GM F6 maps to media previous`() {
+        val downEvent = mockKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F6)
+        assertTrue(controller.onKeyEvent(downEvent))
+
+        assertEquals(1, sentMessages.size)
+        assertEquals(KeyEvent.KEYCODE_MEDIA_PREVIOUS, sentMessages[0].keycode)
+    }
+
+    @Test
+    fun `GM F8 maps to play pause`() {
+        val downEvent = mockKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F8)
+        assertTrue(controller.onKeyEvent(downEvent))
+
+        assertEquals(1, sentMessages.size)
+        assertEquals(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, sentMessages[0].keycode)
+    }
 }

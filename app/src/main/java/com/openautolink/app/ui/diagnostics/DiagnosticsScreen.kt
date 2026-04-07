@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -163,6 +164,22 @@ private fun SystemTab(info: SystemInfo) {
         SectionHeader("Display")
         DiagRow("Resolution", "${info.displayWidth} × ${info.displayHeight}")
         DiagRow("Density", "${info.displayDpi} dpi")
+
+        // Show live inset values for debugging display mode behavior
+        val diagView = LocalView.current
+        val diagRootInsets = diagView.rootWindowInsets
+        val diagSysBars = diagRootInsets?.getInsetsIgnoringVisibility(
+            android.view.WindowInsets.Type.systemBars()
+        )
+        val diagCutout = diagRootInsets?.getInsetsIgnoringVisibility(
+            android.view.WindowInsets.Type.displayCutout()
+        )
+        if (diagSysBars != null) {
+            DiagRow("System Bars", "T:${diagSysBars.top} B:${diagSysBars.bottom} L:${diagSysBars.left} R:${diagSysBars.right}")
+        }
+        if (diagCutout != null && (diagCutout.top != 0 || diagCutout.bottom != 0 || diagCutout.left != 0 || diagCutout.right != 0)) {
+            DiagRow("Display Cutout", "T:${diagCutout.top} B:${diagCutout.bottom} L:${diagCutout.left} R:${diagCutout.right}")
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
         SectionHeader("H.264 Decoders")

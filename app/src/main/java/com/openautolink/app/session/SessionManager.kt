@@ -418,29 +418,44 @@ class SessionManager(
         val actualWidth: Int
         val actualHeight: Int
         val actualDpi: Int
+        var cutTop = 0; var cutBottom = 0; var cutLeft = 0; var cutRight = 0
         if (displayWidth > 0 && displayHeight > 0 && displayDpi > 0) {
             actualWidth = displayWidth
             actualHeight = displayHeight
             actualDpi = displayDpi
         } else if (ctx != null) {
             val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-            val bounds = wm.maximumWindowMetrics.bounds
+            val metrics = wm.maximumWindowMetrics
+            val bounds = metrics.bounds
             actualWidth = bounds.width()
             actualHeight = bounds.height()
             actualDpi = ctx.resources.displayMetrics.densityDpi
+            // Read display cutout insets (physically curved/missing screen areas)
+            val cutoutInsets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                android.view.WindowInsets.Type.displayCutout()
+            )
+            cutTop = cutoutInsets.top
+            cutBottom = cutoutInsets.bottom
+            cutLeft = cutoutInsets.left
+            cutRight = cutoutInsets.right
         } else {
             actualWidth = 0
             actualHeight = 0
             actualDpi = 0
         }
-        Log.i(TAG, "sendAppHello: display=${actualWidth}x${actualHeight} dpi=$actualDpi")
+        Log.i(TAG, "sendAppHello: display=${actualWidth}x${actualHeight} dpi=$actualDpi" +
+            " cutout=T:$cutTop B:$cutBottom L:$cutLeft R:$cutRight")
         connectionManager.sendControlMessage(
             ControlMessage.AppHello(
                 version = 1,
                 name = "OpenAutoLink App",
                 displayWidth = actualWidth,
                 displayHeight = actualHeight,
-                displayDpi = actualDpi
+                displayDpi = actualDpi,
+                cutoutTop = cutTop,
+                cutoutBottom = cutBottom,
+                cutoutLeft = cutLeft,
+                cutoutRight = cutRight,
             )
         )
     }

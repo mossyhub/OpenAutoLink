@@ -118,7 +118,11 @@ sealed class ControlMessage {
         val name: String,
         val displayWidth: Int,
         val displayHeight: Int,
-        val displayDpi: Int
+        val displayDpi: Int,
+        val cutoutTop: Int = 0,
+        val cutoutBottom: Int = 0,
+        val cutoutLeft: Int = 0,
+        val cutoutRight: Int = 0,
     ) : ControlMessage()
 
     data class Touch(

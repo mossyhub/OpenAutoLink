@@ -183,6 +183,13 @@ object ControlMessageSerializer {
                 put("display_width", message.displayWidth)
                 put("display_height", message.displayHeight)
                 put("display_dpi", message.displayDpi)
+                if (message.cutoutTop != 0 || message.cutoutBottom != 0 ||
+                    message.cutoutLeft != 0 || message.cutoutRight != 0) {
+                    put("cutout_top", message.cutoutTop)
+                    put("cutout_bottom", message.cutoutBottom)
+                    put("cutout_left", message.cutoutLeft)
+                    put("cutout_right", message.cutoutRight)
+                }
             }
 
             is ControlMessage.Touch -> buildJsonObject {

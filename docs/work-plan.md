@@ -37,8 +37,8 @@ These can only be validated on the real GM head unit. Remote diagnostics (M11) s
 ### Steering Wheel Controls
 | Unknown | Status |
 |---------|--------|
-| `KEYCODE_VOICE_ASSIST` interception — does GM let the app see it, or does the system consume it? | **Not tested** — code is fully implemented, needs car validation |
-| Media button reliability (all steering wheel buttons) | **Not tested** |
+| `KEYCODE_VOICE_ASSIST` interception — does GM let the app see it, or does the system consume it? | **CONFIRMED: System consumes it** — tested 2024-04-06. GM intercepts `KEYCODE_VOICE_ASSIST` at the system input policy level. App receives zero key events. All 3 probes failed (dispatchKeyEvent, MediaSession.onMediaButtonEvent, voice Intent filters). Only visible effect is audio focus loss when GM's built-in assistant launches. AccessibilityService is the remaining approach. |
+| Media button reliability (all steering wheel buttons) | **PARTIAL** — GM sends `KEYCODE_F7` (137) for track buttons instead of standard `KEYCODE_MEDIA_NEXT`/`PREVIOUS`. F-key mapping added. Need to confirm F6/F8/F9 assignments for prev/play-pause. |
 
 ### Video/Audio on Real Hardware
 | Unknown | Status |
@@ -300,7 +300,9 @@ See [docs/architecture.md](architecture.md) for full component island breakdown 
 - [x] Media button mapping: skip forward, skip back, play/pause via `KeyEvent` interception
 - [x] Volume controls via `AudioManager` or `KeyEvent`
 - [x] Voice button interception: intercept the AAOS voice/assistant `KeyEvent` (currently launches Google Assistant) and forward as AA voice trigger to activate Gemini on the phone
-- [ ] Investigate `KEYCODE_VOICE_ASSIST` / `KEYCODE_SEARCH` interception feasibility on GM AAOS (may require accessibility service or input method)
+- [x] GM F-key mapping: GM sends KEYCODE_F7 (137) instead of standard KEYCODE_MEDIA_NEXT — added GM_FKEY_TO_AA mapping table
+- [ ] Investigate `KEYCODE_VOICE_ASSIST` / `KEYCODE_SEARCH` interception feasibility on GM AAOS — **CONFIRMED blocked** at system level. AccessibilityService is the next approach
+- [ ] Confirm F6/F8/F9 mappings for track-prev and play/pause on GM steering wheel
 
 ### M10: Polish
 - [x] Diagnostics screen
@@ -384,12 +386,12 @@ These items can only be validated on the actual GM head unit. No emulator can an
 | Nav cancel clears cluster | Cancel nav on phone, verify cluster clears | `tag=cluster`: `navigationEnded()` called | **FIXED** — was missing `nav_state_clear` message. Bridge now sends it on `status!=active` |
 
 ### Steering Wheel Controls (M9)
-| Unknown | How to test | What to log |
-|---------|------------|-------------|
-| `KEYCODE_VOICE_ASSIST` interception feasibility | Register `KeyEvent` handler, attempt intercept | `tag=input`: keycode received, intercepted=true/false, forwarded to AA |
-| Does GM route voice button to system assistant? | Press voice button, log what the app sees | `tag=input`: whether our app receives the event at all, or if system consumes it |
-| Accessibility service approach viable? | If `KeyEvent` interception fails, try `AccessibilityService` | `tag=input`: accessibility service bind result, events received |
-| Media button reliability | Press all steering wheel buttons, log each | `tag=input`: per-keycode: received, forwarded, acknowledged by bridge |
+| Unknown | How to test | What to log | Status |
+|---------|------------|-------------|--------|
+| `KEYCODE_VOICE_ASSIST` interception feasibility | Register `KeyEvent` handler, attempt intercept | `tag=input`: keycode received, intercepted=true/false, forwarded to AA | **BLOCKED** — system consumes before app sees it |
+| Does GM route voice button to system assistant? | Press voice button, log what the app sees | `tag=input`: whether our app receives the event at all, or if system consumes it | **CONFIRMED** — app sees nothing, only audio focus loss |
+| Accessibility service approach viable? | If `KeyEvent` interception fails, try `AccessibilityService` | `tag=input`: accessibility service bind result, events received | **Next step** |
+| Media button reliability | Press all steering wheel buttons, log each | `tag=input`: per-keycode: received, forwarded, acknowledged by bridge | **PARTIAL** — F7=track-next confirmed, need F6/F8/F9 |
 
 ### Video/Audio on Real Hardware
 | Unknown | How to test | What to log |

@@ -374,7 +374,7 @@ fun SafeAreaEditorScreen(
             "system_ui_visible" -> Modifier.windowInsetsPadding(WindowInsets.systemBars)
             "status_bar_hidden" -> Modifier.windowInsetsPadding(WindowInsets.navigationBars)
             "nav_bar_hidden" -> Modifier.windowInsetsPadding(WindowInsets.statusBars)
-            else -> Modifier // fullscreen_immersive, custom_viewport — no insets
+            else -> Modifier // fullscreen_immersive — no insets
         }
         Row(
             modifier = Modifier

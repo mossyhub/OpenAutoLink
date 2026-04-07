@@ -13,17 +13,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -48,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openautolink.app.R
@@ -73,39 +68,74 @@ fun ProjectionScreen(
         }
     }
 
+    // Compute explicit padding from system bar AND display cutout dimensions.
+    // Use getInsetsIgnoringVisibility() because AAOS CarSystemUI may not update
+    // inset values when bars are requested to hide via WindowInsetsController.
+    // Display cutout insets represent physically curved/missing screen areas.
+    val view = LocalView.current
+    val rootInsets = view.rootWindowInsets
+    val sysBarInsets = rootInsets?.getInsetsIgnoringVisibility(
+        android.view.WindowInsets.Type.systemBars()
+    )
+    val cutoutInsets = rootInsets?.getInsetsIgnoringVisibility(
+        android.view.WindowInsets.Type.displayCutout()
+    )
+    val barTop = sysBarInsets?.top ?: 0
+    val barBottom = sysBarInsets?.bottom ?: 0
+    val barLeft = sysBarInsets?.left ?: 0
+    val barRight = sysBarInsets?.right ?: 0
+    val cutTop = cutoutInsets?.top ?: 0
+    val cutBottom = cutoutInsets?.bottom ?: 0
+    val cutLeft = cutoutInsets?.left ?: 0
+    val cutRight = cutoutInsets?.right ?: 0
+
+    val density = LocalDensity.current
+    val displayModePadding = with(density) {
+        when (uiState.displayMode) {
+            // System bars visible — bars cover cutouts, pad for bars only
+            "system_ui_visible" -> androidx.compose.foundation.layout.PaddingValues(
+                start = maxOf(barLeft, cutLeft).toDp(),
+                end = maxOf(barRight, cutRight).toDp(),
+                top = maxOf(barTop, cutTop).toDp(),
+                bottom = maxOf(barBottom, cutBottom).toDp()
+            )
+            // Status bar hidden — video extends into status bar area but must
+            // still avoid display cutout at top and nav bar areas
+            "status_bar_hidden" -> androidx.compose.foundation.layout.PaddingValues(
+                start = maxOf(barLeft, cutLeft).toDp(),
+                end = maxOf(barRight, cutRight).toDp(),
+                top = cutTop.toDp(),
+                bottom = maxOf(barBottom, cutBottom).toDp()
+            )
+            // Nav bar hidden — video extends into nav bar area but must
+            // still avoid display cutout on sides and status bar
+            "nav_bar_hidden" -> androidx.compose.foundation.layout.PaddingValues(
+                start = cutLeft.toDp(),
+                end = cutRight.toDp(),
+                top = maxOf(barTop, cutTop).toDp(),
+                bottom = cutBottom.toDp()
+            )
+            // Fullscreen — only avoid physically-missing display cutout areas
+            "fullscreen_immersive" -> androidx.compose.foundation.layout.PaddingValues(
+                start = cutLeft.toDp(),
+                end = cutRight.toDp(),
+                top = cutTop.toDp(),
+                bottom = cutBottom.toDp()
+            )
+            else -> androidx.compose.foundation.layout.PaddingValues()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .then(
-                // Pad the projection surface to avoid video being hidden behind
-                // visible system bars. Matches app_v1 behavior per display mode.
-                when (uiState.displayMode) {
-                    "system_ui_visible" -> Modifier.windowInsetsPadding(WindowInsets.systemBars)
-                    "status_bar_hidden" -> Modifier.windowInsetsPadding(WindowInsets.navigationBars)
-                    "nav_bar_hidden" -> Modifier.windowInsetsPadding(WindowInsets.statusBars)
-                    else -> Modifier // fullscreen/custom — fill edge-to-edge
-                }
-            )
+            .padding(displayModePadding)
             .testTag("projectionScreen")
     ) {
-        // Compute SurfaceView modifier based on display mode
-        val isCustomViewport = uiState.displayMode == "custom_viewport"
-                && uiState.customViewportWidth > 0
-                && uiState.customViewportHeight > 0
-        val density = LocalDensity.current
-        val surfaceModifier = if (isCustomViewport) {
-            val widthDp: Dp = with(density) { uiState.customViewportWidth.toDp() }
-            val heightDp: Dp = with(density) { uiState.customViewportHeight.toDp() }
-            Modifier
-                .align(Alignment.BottomStart)
-                .size(widthDp, heightDp)
-                .testTag("projectionSurface")
-        } else {
-            Modifier
-                .fillMaxSize()
-                .testTag("projectionSurface")
-        }
+        val surfaceModifier = Modifier
+            .fillMaxSize()
+            .testTag("projectionSurface")
 
         // SurfaceView for video rendering — intercepts touch for forwarding to bridge
         @SuppressLint("ClickableViewAccessibility")

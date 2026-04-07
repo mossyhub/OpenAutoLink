@@ -31,6 +31,8 @@ data class SettingsUiState(
     // Bridge config — AA stream
     val aaResolution: String = AppPreferences.DEFAULT_AA_RESOLUTION,
     val aaDpi: Int = AppPreferences.DEFAULT_AA_DPI,
+    val aaWidthMargin: Int = AppPreferences.DEFAULT_AA_WIDTH_MARGIN,
+    val aaHeightMargin: Int = AppPreferences.DEFAULT_AA_HEIGHT_MARGIN,
     val phoneMode: String = AppPreferences.DEFAULT_PHONE_MODE,
     val wifiBand: String = AppPreferences.DEFAULT_WIFI_BAND,
     val wifiCountry: String = AppPreferences.DEFAULT_WIFI_COUNTRY,
@@ -52,10 +54,6 @@ data class SettingsUiState(
     val syncAaTheme: Boolean = AppPreferences.DEFAULT_SYNC_AA_THEME,
     val hideAaClock: Boolean = AppPreferences.DEFAULT_HIDE_AA_CLOCK,
     val sendImuSensors: Boolean = AppPreferences.DEFAULT_SEND_IMU_SENSORS,
-    // Custom viewport
-    val customViewportWidth: Int = AppPreferences.DEFAULT_CUSTOM_VIEWPORT_WIDTH,
-    val customViewportHeight: Int = AppPreferences.DEFAULT_CUSTOM_VIEWPORT_HEIGHT,
-    val viewportAspectRatioLocked: Boolean = AppPreferences.DEFAULT_VIEWPORT_ASPECT_RATIO_LOCKED,
     // AA safe area insets
     val safeAreaTop: Int = AppPreferences.DEFAULT_SAFE_AREA_TOP,
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
@@ -96,6 +94,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.remoteDiagnosticsMinLevel,
         preferences.aaResolution,
         preferences.aaDpi,
+        preferences.aaWidthMargin,
+        preferences.aaHeightMargin,
         preferences.phoneMode,
         preferences.wifiBand,
         preferences.wifiCountry,
@@ -115,9 +115,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.syncAaTheme,
         preferences.hideAaClock,
         preferences.sendImuSensors,
-        preferences.customViewportWidth,
-        preferences.customViewportHeight,
-        preferences.viewportAspectRatioLocked,
         preferences.safeAreaTop,
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
@@ -139,36 +136,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             remoteDiagnosticsMinLevel = values[8] as String,
             aaResolution = values[9] as String,
             aaDpi = values[10] as Int,
-            phoneMode = values[11] as String,
-            wifiBand = values[12] as String,
-            wifiCountry = values[13] as String,
-            wifiSsid = values[14] as String,
-            wifiPassword = values[15] as String,
-            headUnitName = values[16] as String,
-            btMac = values[17] as String,
-            driveSide = values[18] as String,
-            gpsForwarding = values[19] as Boolean,
-            clusterNavigation = values[20] as Boolean,
-            audioSource = values[21] as String,
-            callQuality = values[22] as String,
-            overlaySettingsButton = values[23] as Boolean,
-            overlayStatsButton = values[24] as Boolean,
-            overlayPhoneSwitchButton = values[25] as Boolean,
-            defaultPhoneMac = values[26] as String,
-            syncAaTheme = values[27] as Boolean,
-            hideAaClock = values[28] as Boolean,
-            sendImuSensors = values[29] as Boolean,
-            customViewportWidth = values[30] as Int,
-            customViewportHeight = values[31] as Int,
-            viewportAspectRatioLocked = values[32] as Boolean,
-            safeAreaTop = values[33] as Int,
-            safeAreaBottom = values[34] as Int,
-            safeAreaLeft = values[35] as Int,
-            safeAreaRight = values[36] as Int,
-            contentInsetTop = values[37] as Int,
-            contentInsetBottom = values[38] as Int,
-            contentInsetLeft = values[39] as Int,
-            contentInsetRight = values[40] as Int,
+            aaWidthMargin = values[11] as Int,
+            aaHeightMargin = values[12] as Int,
+            phoneMode = values[13] as String,
+            wifiBand = values[14] as String,
+            wifiCountry = values[15] as String,
+            wifiSsid = values[16] as String,
+            wifiPassword = values[17] as String,
+            headUnitName = values[18] as String,
+            btMac = values[19] as String,
+            driveSide = values[20] as String,
+            gpsForwarding = values[21] as Boolean,
+            clusterNavigation = values[22] as Boolean,
+            audioSource = values[23] as String,
+            callQuality = values[24] as String,
+            overlaySettingsButton = values[25] as Boolean,
+            overlayStatsButton = values[26] as Boolean,
+            overlayPhoneSwitchButton = values[27] as Boolean,
+            defaultPhoneMac = values[28] as String,
+            syncAaTheme = values[29] as Boolean,
+            hideAaClock = values[30] as Boolean,
+            sendImuSensors = values[31] as Boolean,
+            safeAreaTop = values[32] as Int,
+            safeAreaBottom = values[33] as Int,
+            safeAreaLeft = values[34] as Int,
+            safeAreaRight = values[35] as Int,
+            contentInsetTop = values[36] as Int,
+            contentInsetBottom = values[37] as Int,
+            contentInsetLeft = values[38] as Int,
+            contentInsetRight = values[39] as Int,
         )
     }.stateIn(
         viewModelScope,
@@ -225,6 +221,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             preferences.setAaDpi(dpi)
             sendBridgeConfig("aa_dpi" to dpi.toString())
+        }
+    }
+
+    fun updateAaWidthMargin(margin: Int) {
+        viewModelScope.launch {
+            preferences.setAaWidthMargin(margin)
+            sendBridgeConfig("aa_width_margin" to margin.toString())
+        }
+    }
+
+    fun updateAaHeightMargin(margin: Int) {
+        viewModelScope.launch {
+            preferences.setAaHeightMargin(margin)
+            sendBridgeConfig("aa_height_margin" to margin.toString())
         }
     }
 
@@ -352,25 +362,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateSendImuSensors(enabled: Boolean) {
         viewModelScope.launch { preferences.setSendImuSensors(enabled) }
-    }
-
-    fun updateCustomViewportWidth(width: Int) {
-        viewModelScope.launch { preferences.setCustomViewportWidth(width) }
-    }
-
-    fun updateCustomViewportHeight(height: Int) {
-        viewModelScope.launch { preferences.setCustomViewportHeight(height) }
-    }
-
-    fun updateViewportAspectRatioLocked(locked: Boolean) {
-        viewModelScope.launch { preferences.setViewportAspectRatioLocked(locked) }
-    }
-
-    fun updateCustomViewport(width: Int, height: Int) {
-        viewModelScope.launch {
-            preferences.setCustomViewportWidth(width)
-            preferences.setCustomViewportHeight(height)
-        }
     }
 
     fun startDiscovery() {

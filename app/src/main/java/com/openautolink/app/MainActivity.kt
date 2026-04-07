@@ -170,22 +170,6 @@ class MainActivity : ComponentActivity() {
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
             }
-            "custom_viewport" -> {
-                // Custom viewport uses fullscreen immersive — the app handles viewport sizing
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                @Suppress("DEPRECATION")
-                decorView.systemUiVisibility = (
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                )
-            }
         }
     }
 

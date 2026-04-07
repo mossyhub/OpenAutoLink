@@ -14,6 +14,9 @@ import com.openautolink.app.transport.ControlMessage
  *
  * Android keycodes match AA protobuf KeyCode values, so media keys forward directly.
  * Voice button (KEYCODE_VOICE_ASSIST=231) maps to AA's KEYCODE_SEARCH=84.
+ *
+ * GM AAOS quirk: steering wheel track buttons send KEYCODE_F7 (137) instead of
+ * standard KEYCODE_MEDIA_NEXT/PREVIOUS. We map F-keys to AA media keycodes.
  */
 class SteeringWheelController(
     private val sendMessage: (ControlMessage.Button) -> Unit,
@@ -36,6 +39,17 @@ class SteeringWheelController(
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, // 90
             KeyEvent.KEYCODE_MEDIA_PLAY,         // 126
             KeyEvent.KEYCODE_MEDIA_PAUSE,        // 127
+        )
+
+        // GM AAOS steering wheel F-key mappings.
+        // GM sends F-keys instead of standard media keycodes.
+        // F7 (137) confirmed as track-next on 2024 Blazer EV.
+        // F6/F8 suspected for track-prev/play-pause — logged for discovery.
+        private val GM_FKEY_TO_AA = mapOf(
+            KeyEvent.KEYCODE_F6 to KeyEvent.KEYCODE_MEDIA_PREVIOUS,     // 131 → track prev (suspected)
+            KeyEvent.KEYCODE_F7 to KeyEvent.KEYCODE_MEDIA_NEXT,         // 137 → track next (confirmed)
+            KeyEvent.KEYCODE_F8 to KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,   // 139 → play/pause (suspected)
+            KeyEvent.KEYCODE_F9 to KeyEvent.KEYCODE_MEDIA_PREVIOUS,     // 140 → alt mapping (suspected)
         )
 
         private val VOICE_KEYCODES = setOf(
@@ -62,6 +76,13 @@ class SteeringWheelController(
             keycode in MEDIA_KEYCODES -> {
                 // Media keys: forward directly (Android keycodes == AA keycodes)
                 sendButtonToAA(keycode, isDown, event)
+                true
+            }
+            keycode in GM_FKEY_TO_AA -> {
+                // GM F-key steering wheel buttons → map to standard AA media keycodes
+                val aaKeycode = GM_FKEY_TO_AA[keycode]!!
+                DiagnosticLog.i("input", "GM F-key mapped: keycode=$keycode → AA keycode=$aaKeycode (${KeyEvent.keyCodeToString(aaKeycode)})")
+                sendButtonToAA(aaKeycode, isDown, event)
                 true
             }
             keycode in VOICE_KEYCODES -> {

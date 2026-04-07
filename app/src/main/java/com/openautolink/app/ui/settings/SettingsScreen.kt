@@ -114,11 +114,6 @@ private val displayModes = listOf(
         "Fullscreen Immersive",
         "Hides all system bars. Video fills entire screen. Swipe edge to reveal bars."
     ),
-    DisplayModeOption(
-        "custom_viewport",
-        "Custom Viewport",
-        "User-defined projection area with adjustable edges and aspect ratio snapping."
-    ),
 )
 
 @Composable
@@ -128,7 +123,6 @@ fun SettingsScreen(
     onSaveAndConnect: () -> Unit = {},
     onBack: () -> Unit = {},
     onNavigateToDiagnostics: () -> Unit = {},
-    onNavigateToViewportEditor: () -> Unit = {},
     onNavigateToSafeAreaEditor: () -> Unit = {},
     onNavigateToContentInsetEditor: () -> Unit = {},
 ) {
@@ -212,7 +206,6 @@ fun SettingsScreen(
                         SettingsTab.BRIDGE -> BridgeTab(viewModel, uiState)
                         SettingsTab.DISPLAY -> DisplayTab(
                             viewModel, uiState,
-                            onNavigateToViewportEditor,
                             onNavigateToSafeAreaEditor,
                             onNavigateToContentInsetEditor,
                         )
@@ -789,7 +782,6 @@ private fun PhonesTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
 private fun DisplayTab(
     viewModel: SettingsViewModel,
     uiState: SettingsUiState,
-    onNavigateToViewportEditor: () -> Unit,
     onNavigateToSafeAreaEditor: () -> Unit,
     onNavigateToContentInsetEditor: () -> Unit,
 ) {
@@ -835,34 +827,6 @@ private fun DisplayTab(
                     Text(
                         text = mode.description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // Show "Edit Viewport" button when custom_viewport is selected
-        if (uiState.displayMode == "custom_viewport") {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .padding(start = 48.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilledTonalButton(
-                    onClick = onNavigateToViewportEditor,
-                    modifier = Modifier.testTag("editViewportButton"),
-                ) {
-                    Text("Edit Viewport")
-                }
-
-                if (uiState.customViewportWidth > 0 && uiState.customViewportHeight > 0) {
-                    Text(
-                        text = "${uiState.customViewportWidth} × ${uiState.customViewportHeight}",
-                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -1448,6 +1412,78 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
                     fontWeight = if (uiState.aaDpi == dpi) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // --- AA Video Margins ---
+        SectionHeader("AA Video Margins")
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Override how AA layouts its UI within the video frame. " +
+                    "0 = auto-computed from your display aspect ratio. " +
+                    "Use these to adjust if AA buttons appear behind letterbox bars or display curves.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        // Width Margin
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Width Margin",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(140.dp),
+            )
+            OutlinedTextField(
+                value = if (uiState.aaWidthMargin == 0) "" else uiState.aaWidthMargin.toString(),
+                onValueChange = { value ->
+                    val margin = value.filter { it.isDigit() }.toIntOrNull() ?: 0
+                    viewModel.updateAaWidthMargin(margin.coerceIn(0, 1000))
+                },
+                placeholder = { Text("0 (auto)") },
+                singleLine = true,
+                modifier = Modifier.width(120.dp).testTag("aaWidthMargin"),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("px", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        // Height Margin
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Height Margin",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(140.dp),
+            )
+            OutlinedTextField(
+                value = if (uiState.aaHeightMargin == 0) "" else uiState.aaHeightMargin.toString(),
+                onValueChange = { value ->
+                    val margin = value.filter { it.isDigit() }.toIntOrNull() ?: 0
+                    viewModel.updateAaHeightMargin(margin.coerceIn(0, 1000))
+                },
+                placeholder = { Text("0 (auto)") },
+                singleLine = true,
+                modifier = Modifier.width(120.dp).testTag("aaHeightMargin"),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("px", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         Spacer(modifier = Modifier.height(16.dp))

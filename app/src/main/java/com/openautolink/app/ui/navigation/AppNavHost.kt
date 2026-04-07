@@ -15,13 +15,11 @@ import com.openautolink.app.ui.projection.ProjectionViewModel
 import com.openautolink.app.ui.settings.SettingsScreen
 import com.openautolink.app.ui.settings.SettingsViewModel
 import com.openautolink.app.ui.settings.SafeAreaEditorScreen
-import com.openautolink.app.ui.settings.ViewportEditorScreen
 
 object AppDestinations {
     const val PROJECTION = "projection"
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
-    const val VIEWPORT_EDITOR = "viewport_editor"
     const val SAFE_AREA_EDITOR = "safe_area_editor"
     const val CONTENT_INSET_EDITOR = "content_inset_editor"
 }
@@ -61,9 +59,6 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 onNavigateToDiagnostics = {
                     navController.navigate(AppDestinations.DIAGNOSTICS)
                 },
-                onNavigateToViewportEditor = {
-                    navController.navigate(AppDestinations.VIEWPORT_EDITOR)
-                },
                 onNavigateToSafeAreaEditor = {
                     navController.navigate(AppDestinations.SAFE_AREA_EDITOR)
                 },
@@ -75,20 +70,6 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
         composable(AppDestinations.DIAGNOSTICS) {
             DiagnosticsScreen(
                 onBack = { navController.popBackStack() }
-            )
-        }
-        composable(AppDestinations.VIEWPORT_EDITOR) {
-            val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-            ViewportEditorScreen(
-                initialWidth = uiState.customViewportWidth,
-                initialHeight = uiState.customViewportHeight,
-                aspectRatioLocked = uiState.viewportAspectRatioLocked,
-                onDone = { width, height, ratioLocked ->
-                    settingsViewModel.updateCustomViewport(width, height)
-                    settingsViewModel.updateViewportAspectRatioLocked(ratioLocked)
-                    navController.popBackStack()
-                },
-                onBack = { navController.popBackStack() },
             )
         }
         composable(AppDestinations.SAFE_AREA_EDITOR) {
