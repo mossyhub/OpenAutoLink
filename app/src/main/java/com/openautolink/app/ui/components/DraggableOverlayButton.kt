@@ -19,6 +19,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -41,6 +43,7 @@ fun DraggableOverlayButton(
     positionKey: String? = null,
     tint: Color = MaterialTheme.colorScheme.onSurface,
     containerColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+    onGlobalPosition: ((LayoutCoordinates) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -71,6 +74,10 @@ fun DraggableOverlayButton(
         },
         modifier = modifier
             .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
+            .then(
+                if (onGlobalPosition != null) Modifier.onGloballyPositioned(onGlobalPosition)
+                else Modifier
+            )
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { wasDragged = false },

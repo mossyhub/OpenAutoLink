@@ -19,6 +19,10 @@ object ClusterNavigationState {
     private val _state = MutableStateFlow<ManeuverState?>(null)
     val state: StateFlow<ManeuverState?> = _state.asStateFlow()
 
+    /** Distance unit preference: "auto", "metric", or "imperial". */
+    @Volatile
+    var distanceUnits: String = "auto"
+
     /** True when navigation is actively routing. */
     val isActive: Boolean get() = _state.value != null
 

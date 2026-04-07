@@ -55,7 +55,10 @@ data class SettingsUiState(
     // UI customization
     val syncAaTheme: Boolean = AppPreferences.DEFAULT_SYNC_AA_THEME,
     val hideAaClock: Boolean = AppPreferences.DEFAULT_HIDE_AA_CLOCK,
+    val hidePhoneSignal: Boolean = AppPreferences.DEFAULT_HIDE_PHONE_SIGNAL,
+    val hideBatteryLevel: Boolean = AppPreferences.DEFAULT_HIDE_BATTERY_LEVEL,
     val sendImuSensors: Boolean = AppPreferences.DEFAULT_SEND_IMU_SENSORS,
+    val distanceUnits: String = AppPreferences.DEFAULT_DISTANCE_UNITS,
     // AA safe area insets
     val safeAreaTop: Int = AppPreferences.DEFAULT_SAFE_AREA_TOP,
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
@@ -118,7 +121,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.defaultPhoneMac,
         preferences.syncAaTheme,
         preferences.hideAaClock,
+        preferences.hidePhoneSignal,
+        preferences.hideBatteryLevel,
         preferences.sendImuSensors,
+        preferences.distanceUnits,
         preferences.safeAreaTop,
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
@@ -162,15 +168,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             defaultPhoneMac = values[30] as String,
             syncAaTheme = values[31] as Boolean,
             hideAaClock = values[32] as Boolean,
-            sendImuSensors = values[33] as Boolean,
-            safeAreaTop = values[34] as Int,
-            safeAreaBottom = values[35] as Int,
-            safeAreaLeft = values[36] as Int,
-            safeAreaRight = values[37] as Int,
-            contentInsetTop = values[38] as Int,
-            contentInsetBottom = values[39] as Int,
-            contentInsetLeft = values[40] as Int,
-            contentInsetRight = values[41] as Int,
+            hidePhoneSignal = values[33] as Boolean,
+            hideBatteryLevel = values[34] as Boolean,
+            sendImuSensors = values[35] as Boolean,
+            distanceUnits = values[36] as String,
+            safeAreaTop = values[37] as Int,
+            safeAreaBottom = values[38] as Int,
+            safeAreaLeft = values[39] as Int,
+            safeAreaRight = values[40] as Int,
+            contentInsetTop = values[41] as Int,
+            contentInsetBottom = values[42] as Int,
+            contentInsetLeft = values[43] as Int,
+            contentInsetRight = values[42] as Int,
         )
     }.stateIn(
         viewModelScope,
@@ -332,8 +341,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { preferences.setHideAaClock(enabled) }
     }
 
+    fun updateHidePhoneSignal(enabled: Boolean) {
+        viewModelScope.launch { preferences.setHidePhoneSignal(enabled) }
+    }
+
+    fun updateHideBatteryLevel(enabled: Boolean) {
+        viewModelScope.launch { preferences.setHideBatteryLevel(enabled) }
+    }
+
     fun updateSendImuSensors(enabled: Boolean) {
         viewModelScope.launch { preferences.setSendImuSensors(enabled) }
+    }
+
+    fun updateDistanceUnits(units: String) {
+        viewModelScope.launch {
+            preferences.setDistanceUnits(units)
+            com.openautolink.app.cluster.ClusterNavigationState.distanceUnits = units
+        }
     }
 
     fun startDiscovery() {

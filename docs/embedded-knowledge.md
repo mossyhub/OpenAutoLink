@@ -41,6 +41,69 @@ Hard-won knowledge from the original CPC200 adapter app. These findings were val
 - USB port enumerates USB Ethernet adapters → car is DHCP server on that subnet
 - Car assigns IPs in 192.168.222.x range on USB Ethernet
 
+### VHAL Property Access (Verified on 2024 Blazer EV, April 2026)
+
+Tested via app_v1 diagnostics probe. **Do NOT implement features relying on blocked properties.**
+
+#### Available (GM exposes + permission grantable)
+| Property | Value Example | Permission |
+|---|---|---|
+| `INFO_MAKE` | "Chevrolet" | CAR_INFO (Normal) |
+| `INFO_MODEL` | "C234" | CAR_INFO (Normal) |
+| `INFO_MODEL_YEAR` | 2024 | CAR_INFO (Normal) |
+| `INFO_FUEL_TYPE` | [10] (ELECTRIC) | CAR_INFO (Normal) |
+| `INFO_EV_BATTERY_CAPACITY` | 83010.0 Wh | CAR_INFO (Normal) |
+| `INFO_EV_CONNECTOR_TYPE` | [1, 5] (J1772, COMBO_1) | CAR_INFO (Normal) |
+| `INFO_EXTERIOR_DIMENSIONS` | [2100, 4883, 1981, ...] | CAR_INFO (Normal) |
+| `GEAR_SELECTION` | GEAR_PARK | POWERTRAIN (Normal) |
+| `CURRENT_GEAR` | GEAR_PARK | POWERTRAIN (Normal) |
+| `IGNITION_STATE` | 4 | POWERTRAIN (Normal) |
+| `PARKING_BRAKE_ON` | No | POWERTRAIN (Normal) |
+| `PERF_VEHICLE_SPEED` | 0.0 m/s | CAR_SPEED (Dangerous) |
+| `PERF_VEHICLE_SPEED_DISPLAY` | 0.0 m/s | CAR_SPEED (Dangerous) |
+| `EV_BATTERY_LEVEL` | 41550.0 Wh | ENERGY (Dangerous) |
+| `EV_BATTERY_INSTANTANEOUS_CHARGE_RATE` | 0.0 W | ENERGY (Dangerous) |
+| `EV_CHARGE_PORT_OPEN` | No | ENERGY_PORTS (Normal) |
+| `EV_CHARGE_PORT_CONNECTED` | No | ENERGY_PORTS (Normal) |
+| `RANGE_REMAINING` | 214984.4 m | ENERGY (Dangerous) |
+| `ENV_OUTSIDE_TEMPERATURE` | 13.0 °C | EXTERIOR_ENVIRONMENT (Normal) |
+| `NIGHT_MODE` | No | EXTERIOR_ENVIRONMENT (Normal) |
+
+#### Not Exposed by GM's HAL (property doesn't exist)
+| Property | Notes |
+|---|---|
+| `PARKING_BRAKE_AUTO_APPLY` | GM doesn't implement this on Blazer EV |
+| `PERF_ODOMETER` | Not exposed — GM blocks mileage from third-party apps |
+
+#### Permission Not Granted (property exists but is blocked)
+| Property | Permission Required | Grantable? |
+|---|---|---|
+| `PERF_STEERING_ANGLE` | `READ_CAR_STEERING_3P` (Dangerous) | **Maybe** — could request at runtime, untested |
+| `TIRE_PRESSURE` | `CAR_TIRES_3P` (Dangerous) | **Maybe** — could request at runtime, untested |
+| `HEADLIGHTS_STATE` | `READ_CAR_EXTERIOR_LIGHTS` (Signature\|Privileged) | **No** — permanently blocked |
+| `HIGH_BEAM_LIGHTS_STATE` | `READ_CAR_EXTERIOR_LIGHTS` (Signature\|Privileged) | **No** — permanently blocked |
+| `TURN_SIGNAL_STATE` | `READ_CAR_EXTERIOR_LIGHTS` (Signature\|Privileged) | **No** — permanently blocked |
+| `DOOR_LOCK` | `CONTROL_CAR_DOORS` (Signature\|Privileged) | **No** — permanently blocked |
+| `HVAC_TEMPERATURE_SET` | `CONTROL_CAR_CLIMATE` (Signature\|Privileged) | **No** — permanently blocked |
+| `HVAC_FAN_SPEED` | `CONTROL_CAR_CLIMATE` (Signature\|Privileged) | **No** — permanently blocked |
+
+#### Not Probed Yet (accessible permissions, unknown if GM exposes)
+| Property | Permission | Notes |
+|---|---|---|
+| `DISTANCE_DISPLAY_UNITS` | READ_DISPLAY_UNITS (Normal) | **Could auto-detect metric/imperial!** |
+| `EV_CHARGE_STATE` | ENERGY (Dangerous, already granted) | Charging state |
+| `EV_CHARGE_TIME_REMAINING` | ENERGY (Dangerous) | Remaining charge time |
+| `EV_CURRENT_BATTERY_CAPACITY` | ENERGY (Dangerous) | Real-time usable Wh (aging-adjusted) |
+| `EV_BATTERY_AVERAGE_TEMPERATURE` | ENERGY (Dangerous) | Battery temp |
+| `EV_CHARGE_PERCENT_LIMIT` | ENERGY (Dangerous) | User's charge limit % |
+| `EV_CHARGE_CURRENT_DRAW_LIMIT` | ENERGY (Dangerous) | AC charge draw limit |
+| `EV_BRAKE_REGENERATION_LEVEL` | POWERTRAIN (Normal) | Regen braking level |
+| `EV_STOPPING_MODE` | POWERTRAIN (Normal) | One-pedal drive mode |
+| `WHEEL_TICK` | CAR_SPEED (Dangerous) | Wheel rotation ticks |
+| `CRUISE_CONTROL_*` | READ_ADAS_STATES (Signature\|Privileged) | **Blocked** — all ADAS is privileged |
+
+> **Rule**: Properties requiring `Signature|Privileged` permissions are permanently inaccessible to sideloaded APKs on GM AAOS. Only GM's own pre-installed system apps get these. Do not implement features depending on them.
+
 ---
 
 ## Video Pipeline Lessons

@@ -203,6 +203,7 @@ object ControlMessageSerializer {
                 put("type", "touch")
                 put("action", message.action)
                 if (message.pointers != null) {
+                    message.actionIndex?.let { put("action_index", it) }
                     putJsonArray("pointers") {
                         for (p in message.pointers) {
                             add(buildJsonObject {
@@ -252,6 +253,21 @@ object ControlMessageSerializer {
                 // P5: GPS satellites
                 message.satInUse?.let { put("sat_in_use", it) }
                 message.satInView?.let { put("sat_in_view", it) }
+                message.satellites?.let { sats ->
+                    if (sats.isNotEmpty()) {
+                        putJsonArray("satellites") {
+                            for (s in sats) {
+                                add(buildJsonObject {
+                                    put("prn", s.prn)
+                                    put("snr_e3", s.snrE3)
+                                    put("used", s.usedInFix)
+                                    put("az_e3", s.azimuthE3)
+                                    put("el_e3", s.elevationE3)
+                                })
+                            }
+                        }
+                    }
+                }
                 // P6: RPM
                 message.rpmE3?.let { put("rpm_e3", it) }
             }

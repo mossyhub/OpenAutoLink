@@ -42,7 +42,10 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val REMOTE_DIAGNOSTICS_MIN_LEVEL = stringPreferencesKey("remote_diagnostics_min_level")
         val SYNC_AA_THEME = booleanPreferencesKey("sync_aa_theme")
         val HIDE_AA_CLOCK = booleanPreferencesKey("hide_aa_clock")
+        val HIDE_PHONE_SIGNAL = booleanPreferencesKey("hide_phone_signal")
+        val HIDE_BATTERY_LEVEL = booleanPreferencesKey("hide_battery_level")
         val SEND_IMU_SENSORS = booleanPreferencesKey("send_imu_sensors")
+        val DISTANCE_UNITS = stringPreferencesKey("distance_units") // "auto", "metric", or "imperial"
 
         // Bridge config — AA stream settings (sent to bridge via config_update)
         val AA_RESOLUTION = stringPreferencesKey("aa_resolution")
@@ -98,7 +101,10 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_REMOTE_DIAGNOSTICS_MIN_LEVEL = "INFO"
         const val DEFAULT_SYNC_AA_THEME = true
         const val DEFAULT_HIDE_AA_CLOCK = true
+        const val DEFAULT_HIDE_PHONE_SIGNAL = false
+        const val DEFAULT_HIDE_BATTERY_LEVEL = false
         const val DEFAULT_SEND_IMU_SENSORS = true
+        const val DEFAULT_DISTANCE_UNITS = "auto" // "auto" = locale-based, "metric", "imperial"
         const val DEFAULT_AA_RESOLUTION = "1080p"
         const val DEFAULT_AA_DPI = 160
         const val DEFAULT_AA_WIDTH_MARGIN = 0 // 0 = auto from display AR
@@ -178,8 +184,20 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         prefs[HIDE_AA_CLOCK] ?: DEFAULT_HIDE_AA_CLOCK
     }
 
+    val hidePhoneSignal: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[HIDE_PHONE_SIGNAL] ?: DEFAULT_HIDE_PHONE_SIGNAL
+    }
+
+    val hideBatteryLevel: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[HIDE_BATTERY_LEVEL] ?: DEFAULT_HIDE_BATTERY_LEVEL
+    }
+
     val sendImuSensors: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[SEND_IMU_SENSORS] ?: DEFAULT_SEND_IMU_SENSORS
+    }
+
+    val distanceUnits: Flow<String> = dataStore.data.map { prefs ->
+        prefs[DISTANCE_UNITS] ?: DEFAULT_DISTANCE_UNITS
     }
 
     val aaResolution: Flow<String> = dataStore.data.map { prefs ->
@@ -358,8 +376,20 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         dataStore.edit { it[HIDE_AA_CLOCK] = enabled }
     }
 
+    suspend fun setHidePhoneSignal(enabled: Boolean) {
+        dataStore.edit { it[HIDE_PHONE_SIGNAL] = enabled }
+    }
+
+    suspend fun setHideBatteryLevel(enabled: Boolean) {
+        dataStore.edit { it[HIDE_BATTERY_LEVEL] = enabled }
+    }
+
     suspend fun setSendImuSensors(enabled: Boolean) {
         dataStore.edit { it[SEND_IMU_SENSORS] = enabled }
+    }
+
+    suspend fun setDistanceUnits(units: String) {
+        dataStore.edit { it[DISTANCE_UNITS] = units }
     }
 
     suspend fun setAaResolution(resolution: String) {
@@ -516,6 +546,13 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         prefs[WIFI_COUNTRY]?.let { config["wifi_country"] = it }
         prefs[WIFI_SSID]?.let { if (it.isNotBlank()) config["wifi_ssid"] = it }
         prefs[WIFI_PASSWORD]?.let { if (it.isNotBlank()) config["wifi_password"] = it }
+        // AA UI flags
+        val hideClock = prefs[HIDE_AA_CLOCK] ?: DEFAULT_HIDE_AA_CLOCK
+        config["hide_clock"] = hideClock.toString()
+        val hidePhoneSignal = prefs[HIDE_PHONE_SIGNAL] ?: DEFAULT_HIDE_PHONE_SIGNAL
+        config["hide_phone_signal"] = hidePhoneSignal.toString()
+        val hideBatteryLevel = prefs[HIDE_BATTERY_LEVEL] ?: DEFAULT_HIDE_BATTERY_LEVEL
+        config["hide_battery_level"] = hideBatteryLevel.toString()
         // AA insets
         val safeTop = prefs[SAFE_AREA_TOP] ?: DEFAULT_SAFE_AREA_TOP
         val safeBottom = prefs[SAFE_AREA_BOTTOM] ?: DEFAULT_SAFE_AREA_BOTTOM

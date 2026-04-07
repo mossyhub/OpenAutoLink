@@ -48,6 +48,7 @@ class ImuForwarder(
     private var compassRoll: Int? = null
     private var satInUse: Int? = null
     private var satInView: Int? = null
+    private var satellites: List<ControlMessage.SatelliteInfo>? = null
 
     // For compass computation from magnetic + accel
     private val gravity = FloatArray(3)
@@ -88,10 +89,19 @@ class ImuForwarder(
                 override fun onSatelliteStatusChanged(status: GnssStatus) {
                     satInView = status.satelliteCount
                     var inUse = 0
+                    val sats = mutableListOf<ControlMessage.SatelliteInfo>()
                     for (i in 0 until status.satelliteCount) {
                         if (status.usedInFix(i)) inUse++
+                        sats.add(ControlMessage.SatelliteInfo(
+                            prn = status.getSvid(i),
+                            snrE3 = (status.getCn0DbHz(i) * 1000).toInt(),
+                            usedInFix = status.usedInFix(i),
+                            azimuthE3 = (status.getAzimuthDegrees(i) * 1000).toInt(),
+                            elevationE3 = (status.getElevationDegrees(i) * 1000).toInt()
+                        ))
                     }
                     satInUse = inUse
+                    satellites = sats
                 }
             }
             locationManager?.registerGnssStatusCallback(gnssCallback!!, null)
@@ -180,7 +190,8 @@ class ImuForwarder(
                 compassPitchE6 = compassPitch,
                 compassRollE6 = compassRoll,
                 satInUse = satInUse,
-                satInView = satInView
+                satInView = satInView,
+                satellites = satellites
             )
         )
     }

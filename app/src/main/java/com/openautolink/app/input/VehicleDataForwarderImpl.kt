@@ -57,6 +57,9 @@ class VehicleDataForwarderImpl(
     private val _latestVehicleData = MutableStateFlow(ControlMessage.VehicleData())
     override val latestVehicleData: StateFlow<ControlMessage.VehicleData> = _latestVehicleData.asStateFlow()
 
+    private val _propertyStatus = mutableMapOf<String, String>()
+    override val propertyStatus: Map<String, String> get() = _propertyStatus.toMap()
+
     override fun start() {
         if (isActive) return
         // Run on background thread — Car API calls can block (connect, waitForConnected)
@@ -193,6 +196,16 @@ class VehicleDataForwarderImpl(
             PropDef("EV_CHARGE_PORT_OPEN", "android.car.permission.CAR_ENERGY_PORTS"),
             PropDef("EV_CHARGE_PORT_CONNECTED", "android.car.permission.CAR_ENERGY_PORTS"),
             PropDef("IGNITION_STATE", "android.car.permission.CAR_POWERTRAIN"),
+            // Extended EV / vehicle properties — may or may not be exposed by HAL
+            PropDef("DISTANCE_DISPLAY_UNITS", "android.car.permission.READ_CAR_DISPLAY_UNITS"),
+            PropDef("EV_CHARGE_STATE", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_CHARGE_TIME_REMAINING", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_CURRENT_BATTERY_CAPACITY", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_BATTERY_AVERAGE_TEMPERATURE", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_CHARGE_PERCENT_LIMIT", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_CHARGE_CURRENT_DRAW_LIMIT", "android.car.permission.CAR_ENERGY"),
+            PropDef("EV_BRAKE_REGENERATION_LEVEL", "android.car.permission.CAR_POWERTRAIN"),
+            PropDef("EV_STOPPING_MODE", "android.car.permission.CAR_POWERTRAIN"),
         )
 
         var subscribed = 0
@@ -201,12 +214,14 @@ class VehicleDataForwarderImpl(
             val propId = resolveIntConstant("android.car.VehiclePropertyIds", prop.fieldName)
             if (propId == null) {
                 DiagnosticLog.d("vhal", "${prop.fieldName}: not in this SDK")
+                _propertyStatus[prop.fieldName] = "not_in_sdk"
                 continue
             }
 
             // Check permission before subscribing
             if (prop.permission != null && context.checkSelfPermission(prop.permission) != PackageManager.PERMISSION_GRANTED) {
                 DiagnosticLog.i("vhal", "${prop.fieldName}: permission not granted (${prop.permission})")
+                _propertyStatus[prop.fieldName] = "permission_denied:${prop.permission}"
                 continue
             }
 
@@ -220,6 +235,7 @@ class VehicleDataForwarderImpl(
             }
             if (config == null) {
                 DiagnosticLog.i("vhal", "${prop.fieldName}: not exposed by this vehicle/HAL")
+                _propertyStatus[prop.fieldName] = "not_exposed"
                 continue
             }
 
@@ -239,8 +255,10 @@ class VehicleDataForwarderImpl(
             val ok = subscribe(pm, callbackInterface, callbackProxy!!, propId, prop.rateField)
             if (ok) {
                 subscribed++
+                _propertyStatus[prop.fieldName] = "subscribed"
                 DiagnosticLog.d("vhal", "${prop.fieldName}: subscribed")
             } else {
+                _propertyStatus[prop.fieldName] = "rejected"
                 DiagnosticLog.w("vhal", "${prop.fieldName}: subscription rejected")
             }
         }
@@ -383,6 +401,16 @@ class VehicleDataForwarderImpl(
         val portOpenId = propId("EV_CHARGE_PORT_OPEN")
         val portConnId = propId("EV_CHARGE_PORT_CONNECTED")
         val ignitionId = propId("IGNITION_STATE")
+        // Extended properties
+        val distUnitsId = propId("DISTANCE_DISPLAY_UNITS")
+        val chargeStateId = propId("EV_CHARGE_STATE")
+        val chargeTimeId = propId("EV_CHARGE_TIME_REMAINING")
+        val curCapId = propId("EV_CURRENT_BATTERY_CAPACITY")
+        val battTempId = propId("EV_BATTERY_AVERAGE_TEMPERATURE")
+        val chargeLimitId = propId("EV_CHARGE_PERCENT_LIMIT")
+        val chargeDrawId = propId("EV_CHARGE_CURRENT_DRAW_LIMIT")
+        val regenId = propId("EV_BRAKE_REGENERATION_LEVEL")
+        val stopModeId = propId("EV_STOPPING_MODE")
 
         val speed = speedId?.let { (currentValues[it] as? Float)?.let { v -> v * 3.6f } } // m/s → km/h
         val gearInt = gearId?.let { currentValues[it] as? Int }
@@ -406,6 +434,17 @@ class VehicleDataForwarderImpl(
         val chargePortOpen = portOpenId?.let { currentValues[it] as? Boolean }
         val chargePortConnected = portConnId?.let { currentValues[it] as? Boolean }
         val ignitionState = ignitionId?.let { currentValues[it] as? Int }
+
+        // Extended EV properties
+        val distanceDisplayUnits = distUnitsId?.let { currentValues[it] as? Int }
+        val evChargeState = chargeStateId?.let { currentValues[it] as? Int }
+        val evChargeTimeRemaining = chargeTimeId?.let { currentValues[it] as? Int }
+        val evCurrentBatteryCapacity = curCapId?.let { currentValues[it] as? Float }
+        val evBatteryTemp = battTempId?.let { currentValues[it] as? Float }
+        val evChargePercentLimit = chargeLimitId?.let { currentValues[it] as? Float }
+        val evChargeDrawLimit = chargeDrawId?.let { currentValues[it] as? Float }
+        val evRegenLevel = regenId?.let { currentValues[it] as? Int }
+        val evStoppingMode = stopModeId?.let { currentValues[it] as? Int }
 
         // Derive driving status: in a drive gear (not P/N/Unknown)
         val driving = gearInt != null && gearInt !in listOf(0, 1, 4)
@@ -433,7 +472,16 @@ class VehicleDataForwarderImpl(
             evChargeRateW = chargeRate,
             evBatteryLevelWh = batteryLevelWh,
             evBatteryCapacityWh = batteryCapacityWh,
-            driving = driving
+            driving = driving,
+            evChargeState = evChargeState,
+            evChargeTimeRemainingSec = evChargeTimeRemaining,
+            evCurrentBatteryCapacityWh = evCurrentBatteryCapacity,
+            evBatteryTempC = evBatteryTemp,
+            evChargePercentLimit = evChargePercentLimit,
+            evChargeCurrentDrawLimitA = evChargeDrawLimit,
+            evRegenBrakingLevel = evRegenLevel,
+            evStoppingMode = evStoppingMode,
+            distanceDisplayUnits = distanceDisplayUnits
         )
     }
 

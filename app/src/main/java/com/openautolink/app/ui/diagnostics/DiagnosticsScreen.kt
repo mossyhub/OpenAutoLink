@@ -352,8 +352,28 @@ private fun CarTab(car: CarInfo) {
                 val capStr = car.evBatteryCapacityWh?.let { c -> " / ${"%.0f".format(c)}" } ?: ""
                 DiagRow("Battery Energy", "${"%.0f".format(it)}$capStr Wh")
             }
+            car.evCurrentBatteryCapacityWh?.let {
+                DiagRow("Usable Capacity", "${"%.0f".format(it)} Wh")
+            }
+            car.evBatteryTempC?.let {
+                DiagRow("Battery Temp", "${"%.1f".format(it)} °C")
+            }
             car.evChargeRateW?.let { DiagRow("Charge Rate", "${"%.0f".format(it)} W",
                 valueColor = if (it > 0) Color(0xFF4CAF50) else Color.White) }
+            car.evChargeState?.let { DiagRow("Charge State", evChargeStateToString(it),
+                valueColor = when (it) {
+                    2 -> Color(0xFF4CAF50) // CHARGING
+                    4 -> Color(0xFF64B5F6) // FULLY_CHARGED
+                    else -> Color.White
+                }) }
+            car.evChargeTimeRemainingSec?.let {
+                val mins = it / 60
+                val hrs = mins / 60
+                val display = if (hrs > 0) "${hrs}h ${mins % 60}m" else "${mins}m"
+                DiagRow("Charge Time Left", display)
+            }
+            car.evChargePercentLimit?.let { DiagRow("Charge Limit", "${"%.0f".format(it)}%") }
+            car.evChargeCurrentDrawLimitA?.let { DiagRow("AC Draw Limit", "${"%.0f".format(it)} A") }
             car.chargePortOpen?.let { DiagRow("Charge Port", if (it) "Open" else "Closed",
                 valueColor = if (it) Color(0xFF64B5F6) else Color.White) }
             car.chargePortConnected?.let { DiagRow("Charger", if (it) "Connected" else "—",
@@ -364,11 +384,17 @@ private fun CarTab(car: CarInfo) {
                 valueColor = if (it) Color(0xFFFF5722) else Color(0xFF4CAF50)) }
 
             Spacer(modifier = Modifier.height(16.dp))
+            SectionHeader("EV Driving")
+            car.evRegenBrakingLevel?.let { DiagRow("Regen Braking", "Level $it") }
+            car.evStoppingMode?.let { DiagRow("Stopping Mode", evStoppingModeToString(it)) }
+
+            Spacer(modifier = Modifier.height(16.dp))
             SectionHeader("Environment")
             DiagRow("Night Mode", car.nightMode?.let { if (it) "ON" else "OFF" } ?: "—",
                 valueColor = if (car.nightMode == true) Color(0xFF64B5F6) else Color(0xFFFFC107))
             car.ambientTempC?.let { DiagRow("Outside Temp", "${"%.1f".format(it)} °C") }
             car.ignitionState?.let { DiagRow("Ignition", ignitionStateToString(it)) }
+            car.distanceDisplayUnits?.let { DiagRow("Distance Units", distanceUnitsToString(it)) }
 
             if (car.turnSignal != null || car.headlight != null || car.hazardLights != null) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -384,6 +410,28 @@ private fun CarTab(car: CarInfo) {
                 SectionHeader("Other")
                 car.steeringAngleDeg?.let { DiagRow("Steering Angle", "${"%.1f".format(it)}°") }
                 car.odometerKm?.let { DiagRow("Odometer", "${"%.1f".format(it)} km") }
+            }
+
+            // Property access status section — shows what worked and what didn't
+            if (car.propertyStatus.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SectionHeader("VHAL Property Status")
+                car.propertyStatus.entries.sortedBy { it.key }.forEach { (prop, status) ->
+                    val (label, color) = when {
+                        status == "subscribed" -> "✓ Subscribed" to Color(0xFF4CAF50)
+                        status == "not_exposed" -> "✗ Not exposed by HAL" to Color(0xFF808080)
+                        status == "not_in_sdk" -> "✗ Not in SDK" to Color(0xFF808080)
+                        status == "rejected" -> "✗ Rejected" to Color(0xFFFF9800)
+                        status.startsWith("permission_denied") -> {
+                            val perm = status.substringAfter(":")
+                                .substringAfterLast(".")
+                            "✗ No permission ($perm)" to Color(0xFFFF5722)
+                        }
+                        else -> status to Color.White
+                    }
+                    DiagRow(prop.replace("_", " ").lowercase()
+                        .replaceFirstChar { it.uppercase() }, label, valueColor = color)
+                }
             }
         }
     }
@@ -404,6 +452,30 @@ private fun ignitionStateToString(state: Int): String = when (state) {
     4 -> "On"
     5 -> "Start"
     else -> "Unknown ($state)"
+}
+
+private fun evChargeStateToString(state: Int): String = when (state) {
+    0 -> "Unknown"
+    1 -> "Not Charging"
+    2 -> "Charging"
+    3 -> "Error"
+    4 -> "Fully Charged"
+    else -> "Unknown ($state)"
+}
+
+private fun evStoppingModeToString(mode: Int): String = when (mode) {
+    0 -> "Unknown"
+    1 -> "Creep"
+    2 -> "Roll"
+    3 -> "Hold (One Pedal)"
+    else -> "Unknown ($mode)"
+}
+
+private fun distanceUnitsToString(units: Int): String = when (units) {
+    0x21 -> "Meters"
+    0x23 -> "Kilometers"
+    0x24 -> "Miles"
+    else -> "Unknown (0x${units.toString(16)})"
 }
 
 // --- Logs Tab ---

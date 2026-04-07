@@ -31,14 +31,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -122,11 +131,17 @@ fun ProjectionScreen(
         }
     }
 
+    // Track phone switch button position for popup anchoring
+    var phoneSwitchBtnRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var phoneSwitchBtnSize by remember { mutableStateOf(IntSize.Zero) }
+    var boxRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .padding(displayModePadding)
+            .onGloballyPositioned { boxRootPos = it.positionInParent() }
             .testTag("projectionScreen")
     ) {
         val surfaceModifier = Modifier
@@ -234,20 +249,45 @@ fun ProjectionScreen(
                         MaterialTheme.colorScheme.onSurface
                     },
                     modifier = Modifier.testTag("phoneSwitchButton"),
+                    onGlobalPosition = { coords ->
+                        phoneSwitchBtnRootPos = coords.positionInParent()
+                        // Walk up to get root-relative position
+                        var c: LayoutCoordinates? = coords
+                        var pos = androidx.compose.ui.geometry.Offset.Zero
+                        while (c != null && c.isAttached) {
+                            pos += c.positionInParent()
+                            c = c.parentLayoutCoordinates
+                        }
+                        phoneSwitchBtnRootPos = pos
+                        phoneSwitchBtnSize = coords.size
+                    },
                 )
             }
         }
 
-        // Phone switcher popup — bottom-right, above floating buttons
+        // Phone switcher popup — anchored above the phone switch button
         if (showPhoneSwitcher) {
+            val popupWidthDp = 280.dp
+            val popupGapDp = 8.dp
+            // Button position relative to the Box: subtract Box's root position
+            val btnInBoxX = phoneSwitchBtnRootPos.x - boxRootPos.x
+            val btnInBoxY = phoneSwitchBtnRootPos.y - boxRootPos.y
             PhoneSwitcherPopup(
                 phones = pairedPhones,
                 currentPhone = uiState.phoneName,
                 onSwitchPhone = { mac -> viewModel.switchPhone(mac) },
                 onDismiss = { viewModel.togglePhoneSwitcher() },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 180.dp)
+                modifier = Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) {
+                        // Right-align popup with button's right edge
+                        val x = (btnInBoxX + phoneSwitchBtnSize.width - placeable.width).toInt()
+                        // Position popup's bottom edge at button's top edge minus gap
+                        val gapPx = popupGapDp.toPx()
+                        val y = (btnInBoxY - placeable.height - gapPx).toInt()
+                        placeable.place(x.coerceAtLeast(0), y.coerceAtLeast(0))
+                    }
+                }
             )
         }
 

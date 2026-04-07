@@ -651,12 +651,14 @@ void OalSession::handle_touch(const std::string& json) {
         }
 
         if (ptrs.size() > 1) {
-            // Multi-touch event
+            // Multi-touch event — extract action_index for pointer_down/up identification
+            int action_index = 0;
+            oal_json_extract_int(json, "action_index", action_index);
             std::vector<PointerInfo> pointer_infos;
             for (auto& [x, y, id] : ptrs) {
                 pointer_infos.push_back({x, y, id});
             }
-            aa_session_->forward_oal_multi_touch(action, 0, pointer_infos);
+            aa_session_->forward_oal_multi_touch(action, static_cast<uint32_t>(action_index), pointer_infos);
         } else if (!ptrs.empty()) {
             auto& [x, y, id] = ptrs[0];
             aa_session_->forward_oal_touch(action, x, y);
@@ -814,6 +816,37 @@ void OalSession::handle_config_update(const std::string& json) {
         infra_changed = true;
     }
 
+    // AA UI flags
+    std::string hide_clock_str = oal_json_extract_string(json, "hide_clock");
+    if (!hide_clock_str.empty()) {
+        bool hide = (hide_clock_str == "true");
+        if (hide != config_.hide_clock) {
+            config_.hide_clock = hide;
+            config_changed = true;
+            std::cerr << "[OAL] hide_clock updated: " << (hide ? "true" : "false") << std::endl;
+        }
+    }
+
+    std::string hide_phone_signal_str = oal_json_extract_string(json, "hide_phone_signal");
+    if (!hide_phone_signal_str.empty()) {
+        bool hide = (hide_phone_signal_str == "true");
+        if (hide != config_.hide_phone_signal) {
+            config_.hide_phone_signal = hide;
+            config_changed = true;
+            std::cerr << "[OAL] hide_phone_signal updated: " << (hide ? "true" : "false") << std::endl;
+        }
+    }
+
+    std::string hide_battery_str = oal_json_extract_string(json, "hide_battery_level");
+    if (!hide_battery_str.empty()) {
+        bool hide = (hide_battery_str == "true");
+        if (hide != config_.hide_battery_level) {
+            config_.hide_battery_level = hide;
+            config_changed = true;
+            std::cerr << "[OAL] hide_battery_level updated: " << (hide ? "true" : "false") << std::endl;
+        }
+    }
+
     // AA safe area insets — format: "top,bottom,left,right"
     auto parse_insets = [](const std::string& str, HeadlessConfig::UiInsets& out) -> bool {
         unsigned long parsed[4] = {};
@@ -922,6 +955,12 @@ void OalSession::handle_config_update(const std::string& json) {
             env_update += "sed -i 's/^OAL_AA_INIT_STABLE_INSETS=.*/OAL_AA_INIT_STABLE_INSETS=" + sanitize(stable_insets) + "/' /etc/openautolink.env 2>/dev/null\n";
         if (!content_insets.empty())
             env_update += "sed -i 's/^OAL_AA_INIT_CONTENT_INSETS=.*/OAL_AA_INIT_CONTENT_INSETS=" + sanitize(content_insets) + "/' /etc/openautolink.env 2>/dev/null\n";
+        if (!hide_clock_str.empty())
+            env_update += "sed -i 's/^OAL_AA_HIDE_CLOCK=.*/OAL_AA_HIDE_CLOCK=" + sanitize(hide_clock_str) + "/' /etc/openautolink.env 2>/dev/null\n";
+        if (!hide_phone_signal_str.empty())
+            env_update += "sed -i 's/^OAL_AA_HIDE_PHONE_SIGNAL=.*/OAL_AA_HIDE_PHONE_SIGNAL=" + sanitize(hide_phone_signal_str) + "/' /etc/openautolink.env 2>/dev/null\n";
+        if (!hide_battery_str.empty())
+            env_update += "sed -i 's/^OAL_AA_HIDE_BATTERY=.*/OAL_AA_HIDE_BATTERY=" + sanitize(hide_battery_str) + "/' /etc/openautolink.env 2>/dev/null\n";
         if (!env_update.empty())
             system(env_update.c_str());
 

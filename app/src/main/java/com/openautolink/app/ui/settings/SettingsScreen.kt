@@ -1211,6 +1211,92 @@ private fun DisplayTab(
                 modifier = Modifier.testTag("hideAaClockToggle"),
             )
         }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Hide Phone Signal",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Hide the phone signal strength indicator from AA status bar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = uiState.hidePhoneSignal,
+                onCheckedChange = { viewModel.updateHidePhoneSignal(it) },
+                modifier = Modifier.testTag("hidePhoneSignalToggle"),
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Hide Battery Level",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Hide the phone battery indicator from AA status bar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = uiState.hideBatteryLevel,
+                onCheckedChange = { viewModel.updateHideBatteryLevel(it) },
+                modifier = Modifier.testTag("hideBatteryLevelToggle"),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SectionHeader("Distance Units")
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Units for navigation distances shown in the cluster display.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        val distanceUnitOptions = listOf(
+            "auto" to "Auto (based on locale)",
+            "metric" to "Metric (km, m)",
+            "imperial" to "Imperial (mi, ft)",
+        )
+        distanceUnitOptions.forEach { (key, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .clickable { viewModel.updateDistanceUnits(key) }
+                    .padding(vertical = 6.dp)
+                    .testTag("distanceUnits_$key"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = uiState.distanceUnits == key,
+                    onClick = { viewModel.updateDistanceUnits(key) }
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
     }
 }
 

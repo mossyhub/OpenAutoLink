@@ -134,7 +134,8 @@ sealed class ControlMessage {
         val x: Float?,
         val y: Float?,
         val pointerId: Int?,
-        val pointers: List<Pointer>?
+        val pointers: List<Pointer>?,
+        val actionIndex: Int? = null
     ) : ControlMessage()
 
     data class Pointer(val id: Int, val x: Float, val y: Float)
@@ -165,6 +166,16 @@ sealed class ControlMessage {
         val evBatteryLevelWh: Float? = null,
         val evBatteryCapacityWh: Float? = null,
         val driving: Boolean? = null,
+        // EV extended (probed but may not be exposed by all HALs)
+        val evChargeState: Int? = null,
+        val evChargeTimeRemainingSec: Int? = null,
+        val evCurrentBatteryCapacityWh: Float? = null,
+        val evBatteryTempC: Float? = null,
+        val evChargePercentLimit: Float? = null,
+        val evChargeCurrentDrawLimitA: Float? = null,
+        val evRegenBrakingLevel: Int? = null,
+        val evStoppingMode: Int? = null,
+        val distanceDisplayUnits: Int? = null,
         // P5: IMU sensors
         val accelXe3: Int? = null,
         val accelYe3: Int? = null,
@@ -178,9 +189,18 @@ sealed class ControlMessage {
         // P5: GPS satellites
         val satInUse: Int? = null,
         val satInView: Int? = null,
+        val satellites: List<SatelliteInfo>? = null,
         // P6: RPM
         val rpmE3: Int? = null
     ) : ControlMessage()
+
+    data class SatelliteInfo(
+        val prn: Int,
+        val snrE3: Int,
+        val usedInFix: Boolean,
+        val azimuthE3: Int,
+        val elevationE3: Int
+    )
 
     data class Button(
         val keycode: Int,

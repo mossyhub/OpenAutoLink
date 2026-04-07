@@ -165,7 +165,7 @@ class OalClusterSession : Session() {
             }
         }
 
-        val distance = toDistance(maneuver.distanceMeters ?: 0)
+        val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
         val stepEstimate = TravelEstimate.Builder(distance, eta).build()
         tripBuilder.addStep(stepBuilder.build(), stepEstimate)
         tripBuilder.setLoading(false)
@@ -212,7 +212,7 @@ class OalClusterScreen(carContext: CarContext) : Screen(carContext) {
                 }
             }
 
-            val distance = toDistance(maneuver.distanceMeters ?: 0)
+            val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
             val routingInfo = RoutingInfo.Builder()
                 .setCurrentStep(stepBuilder.build(), distance)
                 .build()
@@ -330,14 +330,33 @@ internal fun buildLanes(lanes: List<LaneInfo>): List<Lane> {
     }
 }
 
-internal fun toDistance(meters: Int): androidx.car.app.model.Distance {
-    return if (meters >= 1000) {
-        androidx.car.app.model.Distance.create(
-            meters / 1000.0, androidx.car.app.model.Distance.UNIT_KILOMETERS
-        )
+internal fun toDistance(meters: Int, distanceUnits: String = "auto"): androidx.car.app.model.Distance {
+    val useImperial = when (distanceUnits) {
+        "imperial" -> true
+        "metric" -> false
+        else -> java.util.Locale.getDefault().country in setOf("US", "LR", "MM")
+    }
+    return if (useImperial) {
+        val miles = meters / 1609.344
+        if (miles >= 0.2) {
+            androidx.car.app.model.Distance.create(
+                miles, androidx.car.app.model.Distance.UNIT_MILES
+            )
+        } else {
+            val feet = (meters / 0.3048).toInt()
+            androidx.car.app.model.Distance.create(
+                feet.toDouble(), androidx.car.app.model.Distance.UNIT_FEET
+            )
+        }
     } else {
-        androidx.car.app.model.Distance.create(
-            meters.toDouble(), androidx.car.app.model.Distance.UNIT_METERS
-        )
+        if (meters >= 1000) {
+            androidx.car.app.model.Distance.create(
+                meters / 1000.0, androidx.car.app.model.Distance.UNIT_KILOMETERS
+            )
+        } else {
+            androidx.car.app.model.Distance.create(
+                meters.toDouble(), androidx.car.app.model.Distance.UNIT_METERS
+            )
+        }
     }
 }

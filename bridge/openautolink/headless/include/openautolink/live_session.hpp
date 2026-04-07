@@ -460,7 +460,8 @@ public:
     void sendAccelerometer(int x_e3, int y_e3, int z_e3);
     void sendGyroscope(int rx_e3, int ry_e3, int rz_e3);
     void sendCompass(int bearing_e6, int pitch_e6, int roll_e6);
-    void sendGpsSatellites(int in_use, int in_view);
+    void sendGpsSatellites(int in_use, int in_view,
+                           const std::vector<std::tuple<int,int,bool,int,int>>& satellites = {});
 
     // P6: RPM
     void sendRpm(int rpm_e3);

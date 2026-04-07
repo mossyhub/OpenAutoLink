@@ -20,4 +20,11 @@ interface VehicleDataForwarder {
 
     /** Latest vehicle data snapshot — updated on each throttled send. */
     val latestVehicleData: StateFlow<ControlMessage.VehicleData>
+
+    /**
+     * Status of each probed VHAL property.
+     * Key = property field name (e.g. "PERF_VEHICLE_SPEED")
+     * Value = status string: "subscribed", "not_in_sdk", "permission_denied:<perm>", "not_exposed", "rejected"
+     */
+    val propertyStatus: Map<String, String>
 }

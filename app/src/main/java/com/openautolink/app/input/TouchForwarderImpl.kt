@@ -84,7 +84,8 @@ class TouchForwarderImpl(
                     x = null,
                     y = null,
                     pointerId = null,
-                    pointers = pointers
+                    pointers = pointers,
+                    actionIndex = event.actionIndex
                 )
             )
         }

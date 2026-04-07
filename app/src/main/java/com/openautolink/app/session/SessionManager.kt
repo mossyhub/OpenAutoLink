@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -501,6 +502,8 @@ class SessionManager(
                 _remoteDiagnostics?.log(DiagnosticLevel.INFO, "config",
                     "Synced bridge config on connect: ${config.keys}")
             }
+            // Sync distance unit preference to cluster sessions
+            ClusterNavigationState.distanceUnits = prefs.distanceUnits.first()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to sync bridge settings: ${e.message}")
         }

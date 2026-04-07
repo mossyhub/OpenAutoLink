@@ -585,11 +585,23 @@ void HeadlessAutoEntity::onServiceDiscoveryRequest(
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GYROSCOPE_DATA);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_COMPASS);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GPS_SATELLITE_DATA);
-      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM); }
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM);
+      // Declare EV fuel type and connector for Google Maps EV range display
+      ss->add_supported_fuel_types(aap_protobuf::service::sensorsource::message::FUEL_TYPE_ELECTRIC);
+      ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_COMBO_1);
+      // Location characterization bitmask — tells AA about available sensor fusion
+      // Bits: RAW_GPS_ONLY=256, ACCELEROMETER=4, GYROSCOPE=2, COMPASS=8, CAR_SPEED=64
+      ss->set_location_characterization(256 | 4 | 2 | 8 | 64); }
     // Input — touch dimensions match the AA resolution tier
     { auto* svc = response.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::INPUT_SOURCE));
       auto* is = svc->mutable_input_source_service();
+      // Declare supported keycodes — must match what SteeringWheelController forwards
+      // AA keycodes: 84=SEARCH/voice, 85=PLAY_PAUSE, 86=STOP, 87=NEXT, 88=PREV,
+      //              89=REWIND, 90=FAST_FORWARD, 126=PLAY, 127=PAUSE
+      for (int kc : {84, 85, 86, 87, 88, 89, 90, 126, 127}) {
+          is->add_keycodes_supported(kc);
+      }
       auto* ts = is->add_touchscreen();
       // Map tier to pixel dimensions for touch coordinate space
       int touch_w = 1920, touch_h = 1080;
@@ -600,7 +612,8 @@ void HeadlessAutoEntity::onServiceDiscoveryRequest(
           case 4: touch_w = 2560; touch_h = 1440; break;
           case 5: touch_w = 3840; touch_h = 2160; break;
       }
-      ts->set_width(touch_w); ts->set_height(touch_h); }
+      ts->set_width(touch_w); ts->set_height(touch_h);
+      ts->set_type(aap_protobuf::service::inputsource::message::CAPACITIVE); }
     // Bluetooth — get BT MAC (from config override or auto-detect)
     { auto* svc = response.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::BLUETOOTH));
@@ -1295,10 +1308,34 @@ void LiveAasdkSession::on_vehicle_data(const ParsedInputMessage& message) {
         auto roll = extract_int("compass_roll_e6").value_or(0);
         sh->sendCompass(*bearing, pitch, roll);
     }
-    // P5: GPS satellites: sat_in_use, sat_in_view
+    // P5: GPS satellites: sat_in_use, sat_in_view, satellites[]
     if (auto in_use = extract_int("sat_in_use")) {
         auto in_view = extract_int("sat_in_view").value_or(*in_use);
-        sh->sendGpsSatellites(*in_use, in_view);
+        // Parse per-satellite detail array if present
+        std::vector<std::tuple<int,int,bool,int,int>> sats;
+        auto sat_pos = json.find("\"satellites\"");
+        if (sat_pos != std::string::npos) {
+            auto arr_start = json.find('[', sat_pos);
+            auto arr_end = json.find(']', arr_start);
+            if (arr_start != std::string::npos && arr_end != std::string::npos) {
+                std::string arr = json.substr(arr_start, arr_end - arr_start + 1);
+                size_t pos = 0;
+                while ((pos = arr.find('{', pos)) != std::string::npos) {
+                    auto obj_end = arr.find('}', pos);
+                    if (obj_end == std::string::npos) break;
+                    std::string obj = arr.substr(pos, obj_end - pos + 1);
+                    int prn = 0, snr = 0, az = 0, el = 0;
+                    oal_json_extract_int(obj, "prn", prn);
+                    oal_json_extract_int(obj, "snr_e3", snr);
+                    bool used = oal_json_extract_string(obj, "used") == "true";
+                    oal_json_extract_int(obj, "az_e3", az);
+                    oal_json_extract_int(obj, "el_e3", el);
+                    sats.emplace_back(prn, snr, used, az, el);
+                    pos = obj_end + 1;
+                }
+            }
+        }
+        sh->sendGpsSatellites(*in_use, in_view, sats);
     }
     // P6: RPM: rpm_e3 (RPM × 1000)
     if (auto rpm = extract_int("rpm_e3")) {
@@ -2529,10 +2566,13 @@ void HeadlessAudioInputHandler::onMediaSourceOpenRequest(
         }
     }
 
+    // Start silence pump immediately on open — don't wait for response ACK.
+    // The phone expects audio frames as soon as it processes the request;
+    // delaying until the response ACK causes a gap that can make the phone
+    // timeout and cancel the voice session.
+    stopSilencePump();
     if (open_) {
-        stopSilencePump();
-    } else {
-        stopSilencePump();
+        startSilencePump();
     }
 
     aap_protobuf::service::media::source::message::MicrophoneResponse response;
@@ -2541,13 +2581,7 @@ void HeadlessAudioInputHandler::onMediaSourceOpenRequest(
 
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then(
-        [this, self = shared_from_this()]() {
-            if (open_) {
-                // Start pumping silence/audio AFTER response is sent —
-                // inline on strand via repeated dispatch, not a separate thread.
-                startSilencePump();
-            }
-        },
+        []() {},
         [this, self = shared_from_this()](auto e) { this->onChannelError(e); });
     channel_->sendMicrophoneOpenResponse(response, std::move(promise));
     channel_->receive(shared_from_this());
@@ -2761,11 +2795,20 @@ void HeadlessSensorHandler::sendCompass(int bearing_e6, int pitch_e6, int roll_e
     channel_->sendSensorEventIndication(indication, std::move(promise));
 }
 
-void HeadlessSensorHandler::sendGpsSatellites(int in_use, int in_view) {
+void HeadlessSensorHandler::sendGpsSatellites(int in_use, int in_view,
+                                              const std::vector<std::tuple<int,int,bool,int,int>>& satellites) {
     aap_protobuf::service::sensorsource::message::SensorBatch indication;
     auto* sd = indication.add_gps_satellite_data();
     sd->set_number_in_use(in_use);
     sd->set_number_in_view(in_view);
+    for (const auto& [prn, snr_e3, used, az_e3, el_e3] : satellites) {
+        auto* sat = sd->add_satellites();
+        sat->set_prn(prn);
+        sat->set_snr_e3(snr_e3);
+        sat->set_used_in_fix(used);
+        sat->set_azimuth_e3(az_e3);
+        sat->set_elevation_e3(el_e3);
+    }
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [](auto) {});
     channel_->sendSensorEventIndication(indication, std::move(promise));

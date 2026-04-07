@@ -101,6 +101,18 @@ data class CarInfo(
     val evChargeRateW: Float? = null,
     val evBatteryLevelWh: Float? = null,
     val evBatteryCapacityWh: Float? = null,
+    // Extended EV properties
+    val evChargeState: Int? = null,
+    val evChargeTimeRemainingSec: Int? = null,
+    val evCurrentBatteryCapacityWh: Float? = null,
+    val evBatteryTempC: Float? = null,
+    val evChargePercentLimit: Float? = null,
+    val evChargeCurrentDrawLimitA: Float? = null,
+    val evRegenBrakingLevel: Int? = null,
+    val evStoppingMode: Int? = null,
+    val distanceDisplayUnits: Int? = null,
+    // Property access status — key = field name, value = "subscribed"|"not_exposed"|etc
+    val propertyStatus: Map<String, String> = emptyMap(),
 )
 
 data class DiagnosticsUiState(
@@ -307,6 +319,16 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
                     evChargeRateW = vd.evChargeRateW,
                     evBatteryLevelWh = vd.evBatteryLevelWh,
                     evBatteryCapacityWh = vd.evBatteryCapacityWh,
+                    evChargeState = vd.evChargeState,
+                    evChargeTimeRemainingSec = vd.evChargeTimeRemainingSec,
+                    evCurrentBatteryCapacityWh = vd.evCurrentBatteryCapacityWh,
+                    evBatteryTempC = vd.evBatteryTempC,
+                    evChargePercentLimit = vd.evChargePercentLimit,
+                    evChargeCurrentDrawLimitA = vd.evChargeCurrentDrawLimitA,
+                    evRegenBrakingLevel = vd.evRegenBrakingLevel,
+                    evStoppingMode = vd.evStoppingMode,
+                    distanceDisplayUnits = vd.distanceDisplayUnits,
+                    propertyStatus = forwarder.propertyStatus,
                 )
             }
         }

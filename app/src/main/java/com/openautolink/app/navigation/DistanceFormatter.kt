@@ -17,12 +17,18 @@ object DistanceFormatter {
      *
      * @param meters Distance in meters, or null
      * @param locale Locale for unit selection (defaults to system locale)
+     * @param unitPref Unit preference: "auto" (locale-based), "metric", or "imperial"
      * @return Formatted distance string, or empty string if null
      */
-    fun format(meters: Int?, locale: Locale = Locale.getDefault()): String {
+    fun format(meters: Int?, locale: Locale = Locale.getDefault(), unitPref: String = "auto"): String {
         if (meters == null) return ""
 
-        return if (isImperial(locale)) {
+        val useImperial = when (unitPref) {
+            "imperial" -> true
+            "metric" -> false
+            else -> isImperial(locale)
+        }
+        return if (useImperial) {
             formatImperial(meters)
         } else {
             formatMetric(meters)

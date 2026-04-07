@@ -228,7 +228,7 @@ class ClusterMainSession : Session() {
             }
         }
 
-        val distance = toDistance(maneuver.distanceMeters ?: 0)
+        val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
         val stepEstimate = TravelEstimate.Builder(distance, eta).build()
         tripBuilder.addStep(stepBuilder.build(), stepEstimate)
         tripBuilder.setLoading(false)
