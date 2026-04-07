@@ -66,7 +66,6 @@ The bridge is lightweight — it relays an already-encoded video/audio stream, s
 **Tested SBCs:**
 - **Raspberry Pi 5 / CM5** — primary development board. Compact, reliable, good WiFi
 - **Khadas VIM4** — also works, overkill for this use case
-- **ROCK 3A** — works (wired phone mode if no WiFi module)
 
 **Budget-friendly SBCs that should work:**
 
@@ -182,6 +181,12 @@ Because this is an AAOS app (not a standard phone app), getting it onto your car
 Active development. All core features are implemented and working on real hardware (2024 Blazer EV): video, audio, touch, vehicle data, cluster navigation, media metadata, microphone, steering wheel controls, and auto-reconnect.
 
 ## Known Issues
+
+- **Steering wheel buttons not working:** Track forward/back via steering wheel controls are not yet wired up but should be fixed soon. The voice button on the steering wheel may never work due to how GM's AAOS intercepts it. As a workaround, use the microphone button in the Android Auto UI on screen.
+
+- **AA projection doesn't scale to display modes:** The Android Auto UI does not properly resize when switching between display modes (e.g., full screen, split screen). This is a known layout issue and should be fixed soon.
+
+- **Occasional audio jitter/cutout:** Audio may briefly cut out or jitter during playback. This is intermittent and under investigation.
 
 - **"Unsupported device" popup on GM EVs:** When the USB Ethernet adapter is plugged into the car's USB-C port, GM's AAOS briefly shows an "Unsupported device" notification. This is cosmetic — the head unit doesn't recognize the adapter as a known accessory (phone, USB drive, etc.), but it still enumerates it as a network interface and assigns it an IP. The popup dismisses itself after a few seconds and has no effect on functionality.
 
