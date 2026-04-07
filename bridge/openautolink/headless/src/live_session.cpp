@@ -1318,7 +1318,7 @@ void LiveAasdkSession::on_vehicle_data(const ParsedInputMessage& message) {
             auto arr_start = json.find('[', sat_pos);
             auto arr_end = json.find(']', arr_start);
             if (arr_start != std::string::npos && arr_end != std::string::npos) {
-                std::string arr = json.substr(arr_start, arr_end - arr_start + 1);
+                std::string arr(json.substr(arr_start, arr_end - arr_start + 1));
                 size_t pos = 0;
                 while ((pos = arr.find('{', pos)) != std::string::npos) {
                     auto obj_end = arr.find('}', pos);
