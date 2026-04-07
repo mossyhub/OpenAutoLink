@@ -440,6 +440,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _bridgeUpdateMessage = MutableStateFlow("")
     val bridgeUpdateMessage: StateFlow<String> = _bridgeUpdateMessage
 
+    private val _bridgeVersion = MutableStateFlow<String?>(null)
+    val bridgeVersion: StateFlow<String?> = _bridgeVersion
+
+    private val _latestVersion = MutableStateFlow<String?>(null)
+    val latestVersion: StateFlow<String?> = _latestVersion
+
+    private val _lastCheckTime = MutableStateFlow<Long?>(null)
+    val lastCheckTime: StateFlow<Long?> = _lastCheckTime
+
+    private val _updateHistory = MutableStateFlow<List<com.openautolink.app.transport.UpdateHistoryEntry>>(emptyList())
+    val updateHistory: StateFlow<List<com.openautolink.app.transport.UpdateHistoryEntry>> = _updateHistory
+
     fun updateBridgeAutoUpdate(enabled: Boolean) {
         viewModelScope.launch { preferences.setBridgeAutoUpdate(enabled) }
     }
@@ -454,6 +466,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             manager.updateMessage.collect { _bridgeUpdateMessage.value = it }
+        }
+        viewModelScope.launch {
+            manager.bridgeVersion.collect { _bridgeVersion.value = it }
+        }
+        viewModelScope.launch {
+            manager.latestVersion.collect { _latestVersion.value = it }
+        }
+        viewModelScope.launch {
+            manager.lastCheckTime.collect { _lastCheckTime.value = it }
+        }
+        viewModelScope.launch {
+            manager.updateHistory.collect { _updateHistory.value = it }
         }
     }
 

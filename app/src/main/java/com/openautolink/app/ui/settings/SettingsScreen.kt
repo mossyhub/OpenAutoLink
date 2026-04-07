@@ -2202,6 +2202,65 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
         // Update status
         val updateState by viewModel.bridgeUpdateState.collectAsStateWithLifecycle()
         val updateMessage by viewModel.bridgeUpdateMessage.collectAsStateWithLifecycle()
+        val bridgeVersion by viewModel.bridgeVersion.collectAsStateWithLifecycle()
+        val latestVersion by viewModel.latestVersion.collectAsStateWithLifecycle()
+        val lastCheckTime by viewModel.lastCheckTime.collectAsStateWithLifecycle()
+        val updateHistory by viewModel.updateHistory.collectAsStateWithLifecycle()
+
+        // Version info
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(0.7f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(
+                    text = "Bridge version",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = bridgeVersion ?: "Not connected",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Column {
+                Text(
+                    text = "Latest release",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = latestVersion ?: "Unknown",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (latestVersion != null && bridgeVersion != null && latestVersion != bridgeVersion)
+                        MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Column {
+                Text(
+                    text = "Last checked",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = lastCheckTime?.let { ts ->
+                        val ago = (System.currentTimeMillis() - ts) / 1000
+                        when {
+                            ago < 60 -> "Just now"
+                            ago < 3600 -> "${ago / 60}m ago"
+                            ago < 86400 -> "${ago / 3600}h ago"
+                            else -> "${ago / 86400}d ago"
+                        }
+                    } ?: "Never",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
 
         if (updateMessage.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -2238,6 +2297,43 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             modifier = Modifier.testTag("checkBridgeUpdateButton"),
         ) {
             Text("Check for Update")
+        }
+
+        // Update history
+        if (updateHistory.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Update History",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+
+            updateHistory.take(10).forEach { entry ->
+                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date(entry.timestamp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .padding(vertical = 2.dp),
+                ) {
+                    Text(
+                        text = timeStr,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(70.dp),
+                    )
+                    Text(
+                        text = entry.event,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
     }
 }

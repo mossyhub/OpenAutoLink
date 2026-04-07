@@ -62,6 +62,15 @@ class BridgeUpdateManager(
     private val _latestVersion = MutableStateFlow<String?>(null)
     val latestVersion: StateFlow<String?> = _latestVersion.asStateFlow()
 
+    private val _bridgeVersion = MutableStateFlow<String?>(null)
+    val bridgeVersion: StateFlow<String?> = _bridgeVersion.asStateFlow()
+
+    private val _lastCheckTime = MutableStateFlow<Long?>(null)
+    val lastCheckTime: StateFlow<Long?> = _lastCheckTime.asStateFlow()
+
+    private val _updateHistory = MutableStateFlow<List<UpdateHistoryEntry>>(emptyList())
+    val updateHistory: StateFlow<List<UpdateHistoryEntry>> = _updateHistory.asStateFlow()
+
     private var updateJob: Job? = null
     private var cachedBinaryPath: String? = null
     private var cachedBinarySha256: String? = null
@@ -73,6 +82,7 @@ class BridgeUpdateManager(
      * and starts the update flow if so.
      */
     fun onBridgeConnected(bridgeInfo: BridgeInfo) {
+        _bridgeVersion.value = bridgeInfo.bridgeVersion
         updateJob?.cancel()
         updateJob = scope.launch {
             try {
@@ -97,6 +107,7 @@ class BridgeUpdateManager(
                 DiagnosticLog.i("update", "Bridge accepted update — starting transfer")
                 _updateState.value = BridgeUpdateState.TRANSFERRING
                 _updateMessage.value = "Transferring update..."
+                addHistory("Transfer started")
                 scope.launch { transferBinary() }
             }
             is ControlMessage.BridgeUpdateReject -> {
@@ -108,6 +119,7 @@ class BridgeUpdateManager(
                     "in_session" -> "Bridge busy (phone connected)"
                     else -> "Update rejected: ${message.reason}"
                 }
+                addHistory("Rejected: ${message.reason}")
             }
             is ControlMessage.BridgeUpdateStatus -> {
                 Log.i(TAG, "Bridge update status: ${message.status} — ${message.message}")
@@ -118,9 +130,11 @@ class BridgeUpdateManager(
                     "applied" -> {
                         _updateState.value = BridgeUpdateState.APPLIED
                         _updateMessage.value = "Update applied — bridge restarting..."
+                        addHistory("Applied: ${cachedBinaryVersion ?: "unknown"}")
                     }
                     "failed" -> {
                         _updateState.value = BridgeUpdateState.FAILED
+                        addHistory("Failed: ${message.message}")
                     }
                 }
             }
@@ -160,10 +174,12 @@ class BridgeUpdateManager(
         val release = fetchLatestRelease() ?: run {
             _updateState.value = BridgeUpdateState.IDLE
             _updateMessage.value = "Could not check for updates (no internet?)"
+            addHistory("Check failed: no internet")
             return
         }
 
         _latestVersion.value = release.version
+        _lastCheckTime.value = System.currentTimeMillis()
 
         // Find the bridge binary asset
         val asset = release.assets.find { it.name == ASSET_NAME } ?: run {
@@ -191,6 +207,7 @@ class BridgeUpdateManager(
             Log.i(TAG, "Bridge is up to date (${release.version})")
             _updateState.value = BridgeUpdateState.UP_TO_DATE
             _updateMessage.value = "Bridge ${release.version} is up to date"
+            addHistory("Up to date: ${release.version}")
             return
         }
 
@@ -198,6 +215,7 @@ class BridgeUpdateManager(
         DiagnosticLog.i("update", "Bridge update available: ${bridgeInfo.bridgeVersion ?: "?"} → ${release.version}")
         _updateState.value = BridgeUpdateState.UPDATE_AVAILABLE
         _updateMessage.value = "Update available: ${release.version}"
+        addHistory("Update available: ${bridgeInfo.bridgeVersion ?: "?"} → ${release.version}")
 
         // Send offer to bridge
         _updateState.value = BridgeUpdateState.OFFERING
@@ -397,6 +415,17 @@ class BridgeUpdateManager(
         updateJob = null
         _updateState.value = BridgeUpdateState.IDLE
     }
+
+    private fun addHistory(event: String) {
+        val entry = UpdateHistoryEntry(
+            timestamp = System.currentTimeMillis(),
+            event = event
+        )
+        val current = _updateHistory.value.toMutableList()
+        current.add(0, entry) // newest first
+        if (current.size > 20) current.removeAt(current.lastIndex) // cap at 20
+        _updateHistory.value = current
+    }
 }
 
 enum class BridgeUpdateState {
@@ -410,6 +439,11 @@ enum class BridgeUpdateState {
     APPLIED,
     FAILED
 }
+
+data class UpdateHistoryEntry(
+    val timestamp: Long,
+    val event: String
+)
 
 private data class GitHubRelease(
     val version: String,
