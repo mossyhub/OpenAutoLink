@@ -3,6 +3,7 @@ package com.openautolink.app.session
 import android.content.Context
 import android.media.AudioManager
 import android.net.Network
+import android.os.SystemClock
 import android.util.Log
 import com.openautolink.app.audio.AudioFrame
 import com.openautolink.app.audio.AudioPlayer
@@ -77,6 +78,9 @@ class SessionManager(
                 instance ?: SessionManager(scope, context, audioManager).also { instance = it }
             }
         }
+
+        /** Get existing instance without creating — for lifecycle callbacks (e.g. onResume). */
+        fun instanceOrNull(): SessionManager? = instance
     }
 
     // Use our own scope that survives ViewModel lifecycle — SupervisorJob so child
@@ -203,6 +207,13 @@ class SessionManager(
     private var callStateJob: Job? = null
     private var targetHost: String? = null
 
+    // Track last known active time — used to detect system sleep/wake gaps.
+    // When the car sleeps, the process freezes; on wake, elapsedRealtime jumps.
+    private var lastActiveTimestamp = SystemClock.elapsedRealtime()
+
+    // Previous ignition state — used to detect ignition ON transitions
+    private var previousIgnitionState: Int? = null
+
     fun start(host: String, port: Int = 5288, codecPreference: String = "h264", micSourcePreference: String = "car",
                diagnosticsEnabled: Boolean = false, diagnosticsMinLevel: String = "INFO",
                network: Network? = null, scalingMode: String = "letterbox") {
@@ -234,9 +245,13 @@ class SessionManager(
         // Create vehicle data forwarder
         _vehicleDataForwarder?.stop()
         _vehicleDataForwarder = context?.let { ctx ->
-            VehicleDataForwarderImpl(ctx) { vehicleData ->
-                scope.launch { connectionManager.sendControlMessage(vehicleData) }
-            }
+            VehicleDataForwarderImpl(
+                ctx,
+                sendMessage = { vehicleData ->
+                    scope.launch { connectionManager.sendControlMessage(vehicleData) }
+                },
+                onIgnitionOn = { ignitionState -> onIgnitionOn(ignitionState) }
+            )
         }
 
         // Create IMU forwarder
@@ -322,6 +337,7 @@ class SessionManager(
             // Observe control messages for session-level events
             launch {
                 connectionManager.controlMessages.collect { message ->
+                    lastActiveTimestamp = SystemClock.elapsedRealtime()
                     handleControlMessage(message)
                 }
             }
@@ -430,6 +446,46 @@ class SessionManager(
         _phoneBatteryCritical.value = false
         _voiceSessionActive.value = false
         _phoneSignalStrength.value = null
+    }
+
+    /**
+     * Called from Activity.onResume() to detect system sleep/wake.
+     * When the car sleeps, the AAOS process freezes and TCP sockets go dead.
+     * On wake, this method detects the time gap and forces a reconnect
+     * so the app doesn't stay stuck in "Disconnected" with dead sockets.
+     *
+     * Short gaps (< 10s) are ignored — those are normal navigation (Settings → back).
+     */
+    fun onSystemWake() {
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = now - lastActiveTimestamp
+        lastActiveTimestamp = now
+
+        if (elapsed < 10_000) return // Normal UI navigation, not a wake event
+
+        val state = _sessionState.value
+        if (state == SessionState.IDLE) return // Not connected, nothing to check
+
+        Log.i(TAG, "System wake detected (${elapsed / 1000}s gap, state=$state) — forcing reconnect")
+        com.openautolink.app.diagnostics.DiagnosticLog.i("transport", "System wake detected (${elapsed / 1000}s gap) — forcing reconnect")
+        connectionManager.forceReconnect()
+    }
+
+    /**
+     * Called when VHAL reports ignition state change to ON/START.
+     * This is a secondary wake signal — the car is starting and the bridge
+     * should be booting. Force-reconnect to get a fresh connection ASAP.
+     */
+    private fun onIgnitionOn(ignitionState: Int) {
+        val state = _sessionState.value
+        if (state == SessionState.IDLE) return
+        // If already streaming, the connection is alive — no need to force reconnect
+        if (state == SessionState.STREAMING) return
+
+        Log.i(TAG, "Ignition ON detected (state=$ignitionState) — forcing reconnect")
+        com.openautolink.app.diagnostics.DiagnosticLog.i("transport", "Ignition ON detected — forcing reconnect")
+        lastActiveTimestamp = SystemClock.elapsedRealtime()
+        connectionManager.forceReconnect()
     }
 
     suspend fun sendAppHello(displayWidth: Int, displayHeight: Int, displayDpi: Int) {

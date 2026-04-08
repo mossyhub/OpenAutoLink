@@ -289,8 +289,9 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
         // Observe vehicle data for car tab — standalone instance, no session required
         // (matches app_v1 pattern where VehiclePropertyMonitor was independent)
         val forwarder = com.openautolink.app.input.VehicleDataForwarderImpl(
-            application
-        ) { /* no-op sender — diagnostics only, no bridge forwarding */ }
+            application,
+            sendMessage = { /* no-op sender — diagnostics only, no bridge forwarding */ }
+        )
         diagnosticVehicleForwarder = forwarder
         forwarder.start()
 

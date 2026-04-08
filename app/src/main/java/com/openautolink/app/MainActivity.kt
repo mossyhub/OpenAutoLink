@@ -76,7 +76,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Display mode is now observed reactively — no need to re-read here
+        // On AAOS, resume after car sleep leaves TCP sockets dead.
+        // Detect time gaps and force-reconnect stale connections.
+        com.openautolink.app.session.SessionManager.instanceOrNull()?.onSystemWake()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

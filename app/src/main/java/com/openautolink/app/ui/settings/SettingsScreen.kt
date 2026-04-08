@@ -1883,6 +1883,185 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
     ) {
+        // --- Bridge Auto-Update (first, most important) ---
+        SectionHeader("Bridge Updates")
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Automatically update the bridge binary from GitHub Releases. " +
+                    "Disable this if you build the bridge locally for development.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Switch(
+                checked = uiState.bridgeAutoUpdate,
+                onCheckedChange = { viewModel.updateBridgeAutoUpdate(it) },
+                modifier = Modifier.testTag("bridgeAutoUpdateToggle"),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(
+                    text = "Auto-update bridge binary",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (uiState.bridgeAutoUpdate) "Enabled — checks GitHub on connect"
+                           else "Disabled — using local/manual builds",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Version info
+        val updateState by viewModel.bridgeUpdateState.collectAsStateWithLifecycle()
+        val updateMessage by viewModel.bridgeUpdateMessage.collectAsStateWithLifecycle()
+        val bridgeVersion by viewModel.bridgeVersion.collectAsStateWithLifecycle()
+        val latestVersion by viewModel.latestVersion.collectAsStateWithLifecycle()
+        val lastCheckTime by viewModel.lastCheckTime.collectAsStateWithLifecycle()
+        val updateHistory by viewModel.updateHistory.collectAsStateWithLifecycle()
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(0.7f),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(
+                    text = "Bridge version",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = bridgeVersion ?: "Not connected",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Column {
+                Text(
+                    text = "Latest release",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = latestVersion ?: "Unknown",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (latestVersion != null && bridgeVersion != null && latestVersion != bridgeVersion)
+                        MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Column {
+                Text(
+                    text = "Last checked",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = lastCheckTime?.let { ts ->
+                        val ago = (System.currentTimeMillis() - ts) / 1000
+                        when {
+                            ago < 60 -> "Just now"
+                            ago < 3600 -> "${ago / 60}m ago"
+                            ago < 86400 -> "${ago / 3600}h ago"
+                            else -> "${ago / 86400}d ago"
+                        }
+                    } ?: "Never",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+
+        // Status message
+        if (updateMessage.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = updateMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                color = when (updateState) {
+                    com.openautolink.app.transport.BridgeUpdateState.FAILED ->
+                        MaterialTheme.colorScheme.error
+                    com.openautolink.app.transport.BridgeUpdateState.UP_TO_DATE,
+                    com.openautolink.app.transport.BridgeUpdateState.APPLIED ->
+                        MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        if (updateState == com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING ||
+            updateState == com.openautolink.app.transport.BridgeUpdateState.CHECKING ||
+            updateState == com.openautolink.app.transport.BridgeUpdateState.OFFERING) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(0.5f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        FilledTonalButton(
+            onClick = { viewModel.checkForBridgeUpdate() },
+            enabled = updateState != com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING &&
+                      updateState != com.openautolink.app.transport.BridgeUpdateState.APPLYING,
+            modifier = Modifier.testTag("checkBridgeUpdateButton"),
+        ) {
+            Text("Check for Update")
+        }
+
+        // Update history
+        if (updateHistory.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Update History",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+
+            updateHistory.take(10).forEach { entry ->
+                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date(entry.timestamp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .padding(vertical = 2.dp),
+                ) {
+                    Text(
+                        text = timeStr,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(70.dp),
+                    )
+                    Text(
+                        text = entry.event,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         // --- Phone Connection ---
         SectionHeader("Phone Connection")
 
@@ -2151,93 +2330,6 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             modifier = Modifier.testTag("fullRestartButton"),
         ) {
             Text("Restart Bridge Services")
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- Bridge Auto-Update ---
-        SectionHeader("Bridge Updates")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Automatically update the bridge binary from GitHub Releases. " +
-                    "Disable this if you build the bridge locally for development.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Switch(
-                checked = uiState.bridgeAutoUpdate,
-                onCheckedChange = { viewModel.updateBridgeAutoUpdate(it) },
-                modifier = Modifier.testTag("bridgeAutoUpdateToggle"),
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = "Auto-update bridge binary",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = if (uiState.bridgeAutoUpdate) "Enabled — checks GitHub on connect"
-                           else "Disabled — using local/manual builds",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        // Update status
-        val updateState by viewModel.bridgeUpdateState.collectAsStateWithLifecycle()
-        val updateMessage by viewModel.bridgeUpdateMessage.collectAsStateWithLifecycle()
-
-        if (updateMessage.isNotBlank()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = updateMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = when (updateState) {
-                    com.openautolink.app.transport.BridgeUpdateState.FAILED ->
-                        MaterialTheme.colorScheme.error
-                    com.openautolink.app.transport.BridgeUpdateState.UP_TO_DATE,
-                    com.openautolink.app.transport.BridgeUpdateState.APPLIED ->
-                        MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-
-        if (updateState == com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING ||
-            updateState == com.openautolink.app.transport.BridgeUpdateState.CHECKING ||
-            updateState == com.openautolink.app.transport.BridgeUpdateState.OFFERING) {
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(0.5f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        FilledTonalButton(
-            onClick = { viewModel.checkForBridgeUpdate() },
-            enabled = updateState != com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING &&
-                      updateState != com.openautolink.app.transport.BridgeUpdateState.APPLYING,
-            modifier = Modifier.testTag("checkBridgeUpdateButton"),
-        ) {
-            Text("Check for Update")
         }
     }
 }

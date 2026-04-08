@@ -39,6 +39,7 @@ class TcpAudioChannel {
         val s = Socket()
         network?.bindSocket(s)
         s.tcpNoDelay = true
+        s.keepAlive = true
         s.soTimeout = 0 // Block waiting for frames
         s.connect(InetSocketAddress(host, port), timeoutMs)
         socket = s

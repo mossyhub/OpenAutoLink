@@ -177,6 +177,30 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
         }
     }
 
+    /**
+     * Force-close all sockets to break out of blocking reads.
+     * The connectLoop will detect the broken connection and retry with fresh backoff.
+     * Used when the system wakes from sleep and sockets may be dead.
+     */
+    fun forceReconnect() {
+        if (!autoReconnect) return
+        val state = _connectionState.value
+        if (state == ConnectionState.DISCONNECTED || state == ConnectionState.CONNECTING) return
+
+        Log.i(TAG, "Force-closing channels for reconnect (state=$state)")
+        DiagnosticLog.i("transport", "Force-closing channels for reconnect")
+
+        // Close sockets — readLine()/readFully() will throw IOException,
+        // returning control to connectLoop() which retries.
+        controlChannel.close()
+        videoChannel.close()
+        audioChannel.close()
+        videoJob?.cancel()
+        videoJob = null
+        audioJob?.cancel()
+        audioJob = null
+    }
+
     private suspend fun connectLoop() {
         var backoffMs = INITIAL_BACKOFF_MS
 

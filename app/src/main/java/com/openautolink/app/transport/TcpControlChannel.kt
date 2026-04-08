@@ -32,6 +32,7 @@ class TcpControlChannel {
             network?.bindSocket(s)
             s.connect(InetSocketAddress(host, port), timeoutMs)
             s.tcpNoDelay = true
+            s.keepAlive = true
             socket = s
             writer = BufferedWriter(OutputStreamWriter(s.getOutputStream(), Charsets.UTF_8))
         }

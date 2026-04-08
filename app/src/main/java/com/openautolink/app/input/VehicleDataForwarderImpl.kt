@@ -28,7 +28,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class VehicleDataForwarderImpl(
     private val context: Context,
-    private val sendMessage: (ControlMessage.VehicleData) -> Unit
+    private val sendMessage: (ControlMessage.VehicleData) -> Unit,
+    private val onIgnitionOn: ((Int) -> Unit)? = null
 ) : VehicleDataForwarder {
 
     companion object {
@@ -86,6 +87,10 @@ class VehicleDataForwarderImpl(
     // Latest values — updated by property callbacks, sent as batch
     private val currentValues = ConcurrentHashMap<Int, Any>()
     private var lastSendTime = 0L
+
+    // Previous ignition state — used to detect ON transitions for wake signaling
+    @Volatile
+    private var previousIgnitionState: Int? = null
 
     private val _latestVehicleData = MutableStateFlow(ControlMessage.VehicleData())
     override val latestVehicleData: StateFlow<ControlMessage.VehicleData> = _latestVehicleData.asStateFlow()
@@ -402,6 +407,20 @@ class VehicleDataForwarderImpl(
             val propertyId = propertyValue.javaClass.getMethod("getPropertyId").invoke(propertyValue) as? Int ?: return
             if (propertyId !in trackedPropertyIds) return
             val value = propertyValue.javaClass.getMethod("getValue").invoke(propertyValue) ?: return
+
+            // Detect ignition state transitions to ON(4)/START(5) for wake signaling
+            val ignitionId = VEHICLE_PROPERTY_ID_FALLBACK["IGNITION_STATE"]
+            if (propertyId == ignitionId && value is Int) {
+                val prev = previousIgnitionState
+                previousIgnitionState = value
+                // IGNITION_STATE: 0=UNDEFINED, 1=LOCK, 2=OFF, 3=ACC, 4=ON, 5=START
+                if (prev != null && prev < 4 && value >= 4) {
+                    Log.i(TAG, "Ignition ON detected (was $prev, now $value)")
+                    DiagnosticLog.i("vhal", "Ignition ON detected ($prev → $value)")
+                    onIgnitionOn?.invoke(value)
+                }
+            }
+
             currentValues[propertyId] = value
             throttledSend()
         } catch (e: Throwable) {
