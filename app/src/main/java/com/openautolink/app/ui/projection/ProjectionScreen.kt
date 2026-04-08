@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -144,9 +145,20 @@ fun ProjectionScreen(
             .onGloballyPositioned { boxRootPos = it.positionInParent() }
             .testTag("projectionScreen")
     ) {
-        val surfaceModifier = Modifier
-            .fillMaxSize()
-            .testTag("projectionSurface")
+        // Letterbox: constrain SurfaceView to 16:9 (matching AA video output), centered.
+        // Qualcomm c2.qti decoders ignore SCALE_TO_FIT and fill the surface,
+        // so the surface itself must match the video AR to avoid zoom/crop.
+        // Crop: fillMaxSize — decoder fills and crops (user-chosen tradeoff).
+        val surfaceModifier = if (uiState.videoScalingMode == "crop") {
+            Modifier
+                .fillMaxSize()
+                .testTag("projectionSurface")
+        } else {
+            Modifier
+                .align(Alignment.Center)
+                .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
+                .testTag("projectionSurface")
+        }
 
         // SurfaceView for video rendering — intercepts touch for forwarding to bridge
         @SuppressLint("ClickableViewAccessibility")

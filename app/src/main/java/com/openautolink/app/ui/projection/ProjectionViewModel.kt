@@ -56,6 +56,7 @@ data class ProjectionUiState(
     val contentInsetBottom: Int = AppPreferences.DEFAULT_CONTENT_INSET_BOTTOM,
     val contentInsetLeft: Int = AppPreferences.DEFAULT_CONTENT_INSET_LEFT,
     val contentInsetRight: Int = AppPreferences.DEFAULT_CONTENT_INSET_RIGHT,
+    val videoScalingMode: String = AppPreferences.DEFAULT_VIDEO_SCALING_MODE,
 )
 
 class ProjectionViewModel(application: Application) : AndroidViewModel(application) {
@@ -130,6 +131,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         preferences.contentInsetRight,
         sessionManager.phoneSignalStrength,
         _bridgeUptimeSeconds,
+        preferences.videoScalingMode,
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val info = values[2] as? com.openautolink.app.session.BridgeInfo
@@ -159,6 +161,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             contentInsetRight = values[21] as Int,
             phoneSignalStrength = values[22] as? Int,
             bridgeUptimeSeconds = values[23] as Long,
+            videoScalingMode = values[24] as String,
         )
     }.stateIn(
         viewModelScope,

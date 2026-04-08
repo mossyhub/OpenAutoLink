@@ -581,23 +581,10 @@ void OalSession::handle_app_hello(const std::string& json) {
             case 5: video_w = 3840; video_h = 2160; break;
         }
 
-        // Auto-compute pixel_aspect_ratio from display aspect ratio when not set.
-        // This tells the phone's AA to layout its UI for the actual display width
-        // instead of assuming square pixels (16:9). Without this, a 2.57:1 display
-        // showing a 16:9 video renders AA for 16:9, then the SurfaceView stretches
-        // everything horizontally — making it look zoomed/cropped.
-        if (config_.aa_ui_experiment.pixel_aspect_ratio_e4 == 0) {
-            double display_ar = static_cast<double>(display_w) / display_h;
-            double video_ar = static_cast<double>(video_w) / video_h;
-            if (display_ar > video_ar * 1.05) {
-                // Display is significantly wider than video — compute pixel AR
-                auto computed = static_cast<uint32_t>((display_ar / video_ar) * 10000);
-                config_.aa_ui_experiment.pixel_aspect_ratio_e4 = computed;
-                std::cerr << "[OAL] auto pixel_aspect_ratio=" << computed
-                          << " (display " << display_w << "x" << display_h
-                          << " AR=" << display_ar << " vs video AR=" << video_ar << ")" << std::endl;
-            }
-        } else {
+        // pixel_aspect_ratio: NOT auto-computed — leave at 0 (square pixels)
+        // by default. User can override via Settings → Video → Pixel Aspect.
+        // Auto-computing caused double-stretch when combined with crop mode.
+        if (config_.aa_ui_experiment.pixel_aspect_ratio_e4 > 0) {
             std::cerr << "[OAL] pixel_aspect_ratio=" << config_.aa_ui_experiment.pixel_aspect_ratio_e4
                       << " (manual override)" << std::endl;
         }
@@ -822,21 +809,21 @@ void OalSession::handle_config_update(const std::string& json) {
     }
 
     int wm = 0;
-    if (oal_json_extract_int(json, "aa_width_margin", wm) && wm > 0 &&
+    if (oal_json_extract_int(json, "aa_width_margin", wm) && wm >= 0 &&
         wm != static_cast<int>(config_.aa_ui_experiment.width_margin)) {
         config_.aa_ui_experiment.width_margin = wm;
         config_changed = true;
         std::cerr << "[OAL] width_margin override: " << wm << std::endl;
     }
     int hm = 0;
-    if (oal_json_extract_int(json, "aa_height_margin", hm) && hm > 0 &&
+    if (oal_json_extract_int(json, "aa_height_margin", hm) && hm >= 0 &&
         hm != static_cast<int>(config_.aa_ui_experiment.height_margin)) {
         config_.aa_ui_experiment.height_margin = hm;
         config_changed = true;
         std::cerr << "[OAL] height_margin override: " << hm << std::endl;
     }
     int pa = 0;
-    if (oal_json_extract_int(json, "aa_pixel_aspect", pa) && pa > 0 &&
+    if (oal_json_extract_int(json, "aa_pixel_aspect", pa) && pa >= 0 &&
         pa != static_cast<int>(config_.aa_ui_experiment.pixel_aspect_ratio_e4)) {
         config_.aa_ui_experiment.pixel_aspect_ratio_e4 = pa;
         config_changed = true;
