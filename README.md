@@ -21,6 +21,7 @@
 - Auto-reconnect on car startup — car on → brief "Connecting..." → projection appears
 - One-command SBC install
 - Remote diagnostics — structured logs and telemetry streamed to bridge over SSH (no ADB needed on GM)
+- Bridge auto-update — app checks GitHub Releases on connect, downloads and pushes new bridge binary over TCP. No user action needed for bridge-only releases
 - Fully open-source — app, bridge, protocol, and deployment scripts
 
 > **Fair warning:** This is a free, hobby project that is very much under active development. It might work great, it might not work at all. Stated features may or may not actually work. My goal is to eventually make it stable and production-quality, but it's not there yet — and honestly, it may never be. I'm building this because it's fun and because I want Android Auto back in my car. If that sounds like your kind of adventure, give it a try.
@@ -174,6 +175,7 @@ Because this is an AAOS app (not a standard phone app), getting it onto your car
 | [Embedded Knowledge](docs/embedded-knowledge.md) | Hardware lessons from real-car testing |
 | [Networking](docs/networking.md) | Three-network architecture (phone, car, SSH) |
 | [Local Testing](docs/testing.md) | Emulator + SBC setup, in-car testing workflow |
+| [Bridge OTA Updates](docs/bridge-update.md) | Auto-update system — design, flow, security, developer workflow |
 | [Work Plan](docs/work-plan.md) | Remaining items, car testing unknowns, future features |
 | [Bridge Build Guide](bridge/sbc/BUILD.md) | SBC build and deployment |
 ## Status

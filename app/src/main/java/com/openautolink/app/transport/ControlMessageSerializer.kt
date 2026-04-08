@@ -288,10 +288,10 @@ object ControlMessageSerializer {
                 message.carModel?.let { put("car_model", it) }
                 message.carYear?.let { put("car_year", it) }
                 message.fuelTypes?.let { types ->
-                    putJsonArray("fuel_types") { types.forEach { add(it) } }
+                    putJsonArray("fuel_types") { types.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
                 }
                 message.evConnectorTypes?.let { types ->
-                    putJsonArray("ev_connector_types") { types.forEach { add(it) } }
+                    putJsonArray("ev_connector_types") { types.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
                 }
                 // EV extended
                 message.evChargeState?.let { put("ev_charge_state", it) }
