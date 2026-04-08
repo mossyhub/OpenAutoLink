@@ -72,7 +72,13 @@ class OalClusterSession : Session() {
 
         navigationManager?.setNavigationManagerCallback(object : NavigationManagerCallback {
             override fun onStopNavigation() {
-                isNavigating = false
+                Log.i(TAG, "onStopNavigation callback from Templates Host")
+                try {
+                    navigationManager?.navigationStarted()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to re-assert navigationStarted(): ${e.message}")
+                    isNavigating = false
+                }
             }
             override fun onAutoDriveEnabled() {}
         })
@@ -165,7 +171,12 @@ class OalClusterSession : Session() {
             }
         }
 
-        val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
+        val distance = toDistance(
+            maneuver.distanceMeters ?: 0,
+            ClusterNavigationState.distanceUnits,
+            maneuver.displayDistance,
+            maneuver.displayDistanceUnit
+        )
         val stepEstimate = TravelEstimate.Builder(distance, eta).build()
         tripBuilder.addStep(stepBuilder.build(), stepEstimate)
         tripBuilder.setLoading(false)
@@ -212,7 +223,12 @@ class OalClusterScreen(carContext: CarContext) : Screen(carContext) {
                 }
             }
 
-            val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
+            val distance = toDistance(
+                maneuver.distanceMeters ?: 0,
+                ClusterNavigationState.distanceUnits,
+                maneuver.displayDistance,
+                maneuver.displayDistanceUnit
+            )
             val routingInfo = RoutingInfo.Builder()
                 .setCurrentStep(stepBuilder.build(), distance)
                 .build()

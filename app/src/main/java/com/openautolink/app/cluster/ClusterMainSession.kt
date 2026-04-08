@@ -86,8 +86,17 @@ class ClusterMainSession : Session() {
 
         navigationManager?.setNavigationManagerCallback(object : NavigationManagerCallback {
             override fun onStopNavigation() {
-                Log.i(TAG, "onStopNavigation callback")
-                isNavigating = false
+                Log.i(TAG, "onStopNavigation callback from Templates Host")
+                // Do NOT set isNavigating = false — GM's Templates Host may call this
+                // spuriously. We only end navigation on explicit nav_state_clear or
+                // arrival timeout. Re-calling navigationStarted() to re-assert nav.
+                try {
+                    navigationManager?.navigationStarted()
+                    Log.i(TAG, "Re-asserted navigationStarted() after onStopNavigation")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to re-assert navigationStarted(): ${e.message}")
+                    isNavigating = false
+                }
             }
 
             override fun onAutoDriveEnabled() {
@@ -228,7 +237,12 @@ class ClusterMainSession : Session() {
             }
         }
 
-        val distance = toDistance(maneuver.distanceMeters ?: 0, ClusterNavigationState.distanceUnits)
+        val distance = toDistance(
+            maneuver.distanceMeters ?: 0,
+            ClusterNavigationState.distanceUnits,
+            maneuver.displayDistance,
+            maneuver.displayDistanceUnit
+        )
         val stepEstimate = TravelEstimate.Builder(distance, eta).build()
         tripBuilder.addStep(stepBuilder.build(), stepEstimate)
         tripBuilder.setLoading(false)

@@ -182,6 +182,8 @@ sealed class ControlMessage {
         val carMake: String? = null,
         val carModel: String? = null,
         val carYear: String? = null,
+        val fuelTypes: List<Int>? = null,          // INFO_FUEL_TYPE — e.g. [10] = ELECTRIC
+        val evConnectorTypes: List<Int>? = null,   // INFO_EV_CONNECTOR_TYPE — e.g. [1,5] = J1772+COMBO_1
         // P5: IMU sensors
         val accelXe3: Int? = null,
         val accelYe3: Int? = null,

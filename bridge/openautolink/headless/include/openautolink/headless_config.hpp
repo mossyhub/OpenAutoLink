@@ -75,6 +75,8 @@ struct HeadlessConfig {
     std::string car_make = "OpenAutoLink";    // Updated from app VHAL INFO_MAKE
     std::string car_model = "Universal";       // Updated from app VHAL INFO_MODEL
     std::string car_year = "2024";             // Updated from app VHAL INFO_MODEL_YEAR
+    std::vector<int> fuel_types;               // From app VHAL INFO_FUEL_TYPE (e.g. [10]=ELECTRIC)
+    std::vector<int> ev_connector_types;       // From app VHAL INFO_EV_CONNECTOR_TYPE (e.g. [1,5])
     uint16_t tcp_port = 5277;
     int media_fd = -1;  // Binary media pipe fd (-1 = disabled)
     bool use_usb_host = false;  // true = wired AA (phone via USB), false = wireless AA (phone via WiFi)

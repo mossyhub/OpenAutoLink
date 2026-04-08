@@ -99,6 +99,8 @@ class VehicleDataForwarderImpl(
     private var carMake: String? = null
     private var carModel: String? = null
     private var carYear: String? = null
+    private var fuelTypes: List<Int>? = null
+    private var evConnectorTypes: List<Int>? = null
 
     private val _latestVehicleData = MutableStateFlow(ControlMessage.VehicleData())
     override val latestVehicleData: StateFlow<ControlMessage.VehicleData> = _latestVehicleData.asStateFlow()
@@ -236,8 +238,29 @@ class VehicleDataForwarderImpl(
         carModel = readStringProp("INFO_MODEL")
         carYear = readIntProp("INFO_MODEL_YEAR")?.toString()
 
+        // Read fuel type and EV connector arrays (Integer[] properties)
+        fun readIntArrayProp(fieldName: String): List<Int>? {
+            val propId = resolveIntConstant("android.car.VehiclePropertyIds", fieldName) ?: return null
+            return try {
+                val pv = pmClass.getMethod("getProperty", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                    .invoke(pm, propId, 0)
+                val value = pv?.javaClass?.getMethod("getValue")?.invoke(pv)
+                when (value) {
+                    is IntArray -> value.toList()
+                    is Array<*> -> value.filterIsInstance<Int>()
+                    else -> null
+                }
+            } catch (t: Throwable) {
+                DiagnosticLog.d("vhal", "$fieldName: read failed: ${t.rootCause().message}")
+                null
+            }
+        }
+
+        fuelTypes = readIntArrayProp("INFO_FUEL_TYPE")
+        evConnectorTypes = readIntArrayProp("INFO_EV_CONNECTOR_TYPE")
+
         if (carMake != null || carModel != null) {
-            DiagnosticLog.i("vhal", "Vehicle identity: $carMake $carModel $carYear")
+            DiagnosticLog.i("vhal", "Vehicle identity: $carMake $carModel $carYear fuel=$fuelTypes ev_conn=$evConnectorTypes")
         }
     }
 
@@ -586,7 +609,9 @@ class VehicleDataForwarderImpl(
             distanceDisplayUnits = distanceDisplayUnits,
             carMake = carMake,
             carModel = carModel,
-            carYear = carYear
+            carYear = carYear,
+            fuelTypes = fuelTypes,
+            evConnectorTypes = evConnectorTypes
         )
     }
 

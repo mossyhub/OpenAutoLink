@@ -287,6 +287,12 @@ object ControlMessageSerializer {
                 message.carMake?.let { put("car_make", it) }
                 message.carModel?.let { put("car_model", it) }
                 message.carYear?.let { put("car_year", it) }
+                message.fuelTypes?.let { types ->
+                    putJsonArray("fuel_types") { types.forEach { add(it) } }
+                }
+                message.evConnectorTypes?.let { types ->
+                    putJsonArray("ev_connector_types") { types.forEach { add(it) } }
+                }
                 // EV extended
                 message.evChargeState?.let { put("ev_charge_state", it) }
                 message.evChargeTimeRemainingSec?.let { put("ev_charge_time_s", it) }

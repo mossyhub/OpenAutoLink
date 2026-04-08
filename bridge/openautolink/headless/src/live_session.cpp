@@ -586,11 +586,24 @@ void HeadlessAutoEntity::onServiceDiscoveryRequest(
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_COMPASS);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GPS_SATELLITE_DATA);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM);
-      // Declare EV fuel type and connectors for Google Maps EV range display
-      // Blazer EV reports INFO_EV_CONNECTOR_TYPE = [1, 5] = J1772 + COMBO_1 (CCS)
-      ss->add_supported_fuel_types(aap_protobuf::service::sensorsource::message::FUEL_TYPE_ELECTRIC);
-      ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_J1772);
-      ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_COMBO_1);
+      // Declare fuel types and EV connectors for Google Maps EV range display.
+      // Populated dynamically from app VHAL reads (INFO_FUEL_TYPE, INFO_EV_CONNECTOR_TYPE).
+      // Falls back to ELECTRIC + J1772/COMBO_1 if app hasn't connected yet.
+      if (config_.fuel_types.empty()) {
+          ss->add_supported_fuel_types(aap_protobuf::service::sensorsource::message::FUEL_TYPE_ELECTRIC);
+      } else {
+          for (int ft : config_.fuel_types) {
+              ss->add_supported_fuel_types(static_cast<aap_protobuf::service::sensorsource::message::FuelType>(ft));
+          }
+      }
+      if (config_.ev_connector_types.empty()) {
+          ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_J1772);
+          ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_COMBO_1);
+      } else {
+          for (int ec : config_.ev_connector_types) {
+              ss->add_supported_ev_connector_types(static_cast<aap_protobuf::service::sensorsource::message::EvConnectorType>(ec));
+          }
+      }
       // Location characterization bitmask — tells AA about available sensor fusion
       // Bits: RAW_GPS_ONLY=256, ACCELEROMETER=4, GYROSCOPE=2, COMPASS=8, CAR_SPEED=64
       ss->set_location_characterization(256 | 4 | 2 | 8 | 64); }
@@ -1380,6 +1393,44 @@ void LiveAasdkSession::on_vehicle_data(const ParsedInputMessage& message) {
         cmd += "sed -i 's/^OAL_CAR_MODEL=.*/OAL_CAR_MODEL=" + sanitize(car_model) + "/' /etc/openautolink.env 2>/dev/null\n";
         cmd += "sed -i 's/^OAL_CAR_YEAR=.*/OAL_CAR_YEAR=" + sanitize(car_year) + "/' /etc/openautolink.env 2>/dev/null\n";
         system(cmd.c_str());
+    }
+
+    // Fuel type and EV connector arrays — parse JSON int arrays
+    auto parse_int_array = [&](const char* field) -> std::vector<int> {
+        std::vector<int> result;
+        auto pos = json.find(std::string("\"") + field + "\"");
+        if (pos == std::string::npos) return result;
+        auto arr_start = json.find('[', pos);
+        auto arr_end = json.find(']', arr_start);
+        if (arr_start == std::string::npos || arr_end == std::string::npos) return result;
+        std::string arr = json.substr(arr_start + 1, arr_end - arr_start - 1);
+        size_t p = 0;
+        while (p < arr.size()) {
+            while (p < arr.size() && (arr[p] == ' ' || arr[p] == ',')) ++p;
+            if (p >= arr.size()) break;
+            try {
+                size_t next = 0;
+                int val = std::stoi(arr.substr(p), &next);
+                result.push_back(val);
+                p += next;
+            } catch (...) { break; }
+        }
+        return result;
+    };
+
+    auto fuel_types = parse_int_array("fuel_types");
+    auto ev_connectors = parse_int_array("ev_connector_types");
+    if (!fuel_types.empty() && fuel_types != config_.fuel_types) {
+        config_.fuel_types = fuel_types;
+        std::string ft_str;
+        for (auto ft : fuel_types) { if (!ft_str.empty()) ft_str += ","; ft_str += std::to_string(ft); }
+        std::cerr << "[OAL] fuel_types updated: [" << ft_str << "]" << std::endl;
+    }
+    if (!ev_connectors.empty() && ev_connectors != config_.ev_connector_types) {
+        config_.ev_connector_types = ev_connectors;
+        std::string ec_str;
+        for (auto ec : ev_connectors) { if (!ec_str.empty()) ec_str += ","; ec_str += std::to_string(ec); }
+        std::cerr << "[OAL] ev_connector_types updated: [" << ec_str << "]" << std::endl;
     }
 
     std::cerr << "[aasdk] vehicle_data processed" << std::endl;
