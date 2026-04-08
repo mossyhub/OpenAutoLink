@@ -225,6 +225,10 @@ public:
     // Restart the AA session with updated config.
     void restart_with_config(const HeadlessConfig& new_config);
 
+    // Update config without restarting — used to push auto-computed values
+    // (pixel_aspect, stable_insets) before the phone connects.
+    void update_config(const HeadlessConfig& new_config);
+
     // P6: Notify phone that calls are available/unavailable (BT HFP state)
     void notify_call_availability(bool available);
 

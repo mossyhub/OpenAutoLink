@@ -615,23 +615,14 @@ void OalSession::handle_app_hello(const std::string& json) {
             case 5: video_w = 3840; video_h = 2160; break;
         }
 
-        // Auto-compute pixel_aspect_ratio from display aspect ratio.
-        // When the display is wider than 16:9, this tells AA to layout its UI
-        // for the wider display so crop mode doesn't look stretched/zoomed.
-        // Only auto-compute when not already set (0 = auto, >0 = manual override).
-        if (config_.aa_ui_experiment.pixel_aspect_ratio_e4 == 0) {
-            double display_ar = static_cast<double>(display_w) / display_h;
-            double video_ar = static_cast<double>(video_w) / video_h;
-            if (display_ar > video_ar * 1.05) {
-                auto computed = static_cast<uint32_t>((display_ar / video_ar) * 10000);
-                config_.aa_ui_experiment.pixel_aspect_ratio_e4 = computed;
-                std::cerr << "[OAL] auto pixel_aspect_ratio=" << computed
-                          << " (display " << display_w << "x" << display_h
-                          << " AR=" << display_ar << " vs video AR=" << video_ar << ")" << std::endl;
-            }
-        } else {
+        // pixel_aspect_ratio: NOT auto-computed. In letterbox mode (default),
+        // the SurfaceView is 16:9 so pixel_aspect must be 0 (square pixels).
+        // In crop mode, the user sets it via Settings → Video → Pixel Aspect.
+        // Auto-computing here would break letterbox after Save & Restart
+        // because the value leaks into the config and gets sent in the SDR.
+        if (config_.aa_ui_experiment.pixel_aspect_ratio_e4 > 0) {
             std::cerr << "[OAL] pixel_aspect_ratio=" << config_.aa_ui_experiment.pixel_aspect_ratio_e4
-                      << " (manual override)" << std::endl;
+                      << " (from env/override)" << std::endl;
         }
 
         // height_margin: NOT auto-computed for letterbox mode (no cropping).
@@ -665,6 +656,15 @@ void OalSession::handle_app_hello(const std::string& json) {
                       << std::endl;
         }
     }
+
+    // Push auto-computed config to the live AA session so the SDR
+    // includes pixel_aspect, stable_insets, etc. Without this, the
+    // LiveAasdkSession uses its initial config copy which has 0s.
+#ifdef PI_AA_ENABLE_AASDK_LIVE
+    if (aa_session_) {
+        aa_session_->update_config(config_);
+    }
+#endif
 
     // Send config echo so app knows current bridge settings
     send_config_echo();

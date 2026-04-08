@@ -98,7 +98,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_BRIDGE_PORT = 5288
         const val DEFAULT_VIDEO_CODEC = "h264"
         const val DEFAULT_VIDEO_FPS = 60
-        const val DEFAULT_DISPLAY_MODE = "system_ui_visible"
+        const val DEFAULT_DISPLAY_MODE = "fullscreen_immersive"
         const val DEFAULT_MIC_SOURCE = "car"
         const val DEFAULT_NETWORK_INTERFACE = "" // empty = auto-select first available
         const val DEFAULT_REMOTE_DIAGNOSTICS_ENABLED = false
@@ -114,7 +114,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_AA_WIDTH_MARGIN = 0 // 0 = auto from display AR
         const val DEFAULT_AA_HEIGHT_MARGIN = 0 // 0 = auto from display AR
         const val DEFAULT_AA_PIXEL_ASPECT = 0 // 0 = default (square pixels, 10000)
-        const val DEFAULT_VIDEO_SCALING_MODE = "letterbox" // "letterbox" or "crop"
+        const val DEFAULT_VIDEO_SCALING_MODE = "crop" // "letterbox" or "crop"
         const val DEFAULT_PHONE_MODE = "wireless"
         const val DEFAULT_WIFI_BAND = "5ghz"
         const val DEFAULT_WIFI_COUNTRY = "US"

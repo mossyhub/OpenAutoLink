@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -211,7 +212,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateDisplayMode(mode: String) {
-        viewModelScope.launch { preferences.setDisplayMode(mode) }
+        viewModelScope.launch {
+            preferences.setDisplayMode(mode)
+            // Recalculate pixel_aspect when display mode changes — surface size changes
+            recalculatePixelAspect()
+        }
     }
 
     fun updateMicSource(source: String) {
@@ -247,7 +252,60 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateVideoScalingMode(mode: String) {
-        viewModelScope.launch { preferences.setVideoScalingMode(mode) }
+        viewModelScope.launch {
+            preferences.setVideoScalingMode(mode)
+            recalculatePixelAspect()
+        }
+    }
+
+    /**
+     * Recalculate pixel_aspect based on current scaling mode and display mode.
+     * - Crop mode: compute from display surface AR (so AA pre-compensates for stretch)
+     * - Letterbox mode: 0 (16:9 surface = square pixels, no compensation needed)
+     * Only auto-sets if user hasn't set a manual override (pixel_aspect > 0 in prefs).
+     */
+    private suspend fun recalculatePixelAspect() {
+        val scalingMode = preferences.videoScalingMode.first()
+        val userPA = preferences.aaPixelAspect.first()
+        if (scalingMode == "crop") {
+            // Only auto-compute if user hasn't set a manual override
+            if (userPA == 0) {
+                val ctx = getApplication<Application>()
+                val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
+                val metrics = wm.maximumWindowMetrics
+                val w = metrics.bounds.width()
+                val h = metrics.bounds.height()
+                // Account for system bars if not in fullscreen
+                val displayMode = preferences.displayMode.first()
+                val barInsets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                    android.view.WindowInsets.Type.systemBars()
+                )
+                val cutoutInsets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                    android.view.WindowInsets.Type.displayCutout()
+                )
+                val surfaceW: Int
+                val surfaceH: Int
+                if (displayMode == "fullscreen_immersive") {
+                    surfaceW = w
+                    surfaceH = h
+                } else {
+                    // system_ui_visible: subtract bars + cutout (matching ProjectionScreen padding)
+                    surfaceW = w - maxOf(barInsets.left, cutoutInsets.left) - maxOf(barInsets.right, cutoutInsets.right)
+                    surfaceH = h - maxOf(barInsets.top, cutoutInsets.top) - maxOf(barInsets.bottom, cutoutInsets.bottom)
+                }
+                val displayAR = surfaceW.toDouble() / surfaceH
+                val videoAR = 1920.0 / 1080.0
+                if (displayAR > videoAR * 1.05) {
+                    val computed = ((displayAR / videoAR) * 10000).toInt()
+                    preferences.setAaPixelAspect(computed)
+                }
+            }
+        } else {
+            // Letterbox — clear pixel_aspect (16:9 surface = square pixels)
+            if (userPA > 0) {
+                preferences.setAaPixelAspect(0)
+            }
+        }
     }
 
     fun updatePhoneMode(mode: String) {

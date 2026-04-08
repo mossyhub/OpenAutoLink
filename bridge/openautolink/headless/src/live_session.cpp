@@ -1687,6 +1687,17 @@ void LiveAasdkSession::restart_with_config(const HeadlessConfig& new_config) {
     });
 }
 
+void LiveAasdkSession::update_config(const HeadlessConfig& new_config) {
+    config_ = new_config;
+    std::cerr << "[aasdk] config updated (no restart): pixel_aspect="
+              << config_.aa_ui_experiment.pixel_aspect_ratio_e4
+              << " stable={T:" << config_.aa_ui_experiment.initial_stable_insets.top
+              << " B:" << config_.aa_ui_experiment.initial_stable_insets.bottom
+              << " L:" << config_.aa_ui_experiment.initial_stable_insets.left
+              << " R:" << config_.aa_ui_experiment.initial_stable_insets.right << "}"
+              << std::endl;
+}
+
 const BackendState& LiveAasdkSession::state() const {
     return state_;
 }
