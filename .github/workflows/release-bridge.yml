@@ -48,13 +48,14 @@ jobs:
           EOF
 
           sudo apt-get update
-          # Install libudev1:arm64 first — required by libbluetooth3:arm64 and libusb-1.0-0:arm64
-          sudo apt-get install -y libudev1:arm64 || true
+          # Install all ARM64 cross-compile deps in one command so apt can
+          # resolve the libudev1:arm64 transitive dependency atomically.
           sudo apt-get install -y \
             g++-14-aarch64-linux-gnu \
             gcc-14-aarch64-linux-gnu \
             cmake make git \
             libc6-dev-arm64-cross \
+            libudev-dev:arm64 \
             libboost-system-dev:arm64 \
             libboost-log-dev:arm64 \
             libboost-filesystem-dev:arm64 \
