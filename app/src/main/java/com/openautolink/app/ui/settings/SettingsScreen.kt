@@ -49,6 +49,7 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -1515,38 +1517,70 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
 
         Spacer(modifier = Modifier.height(4.dp))
 
+        val recommendedDpi = when (uiState.aaResolution) {
+            "480p" -> 80
+            "720p" -> 107
+            "1440p" -> 213
+            "4k" -> 320
+            else -> 160
+        }
+
         Text(
-            text = "Controls how Android Auto lays out its UI. " +
-                    "Lower = more content visible, smaller controls. " +
-                    "Higher = bigger controls, less content.",
+            text = "Controls how Android Auto sizes its UI elements. " +
+                    "160 is standard for 1080p. For higher resolutions, scale DPI proportionally " +
+                    "to keep UI elements the same visual size (e.g. 320 for 4K). " +
+                    "Lower = more content, smaller controls. Higher = bigger controls, less content.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        listOf(
-            120 to "120 — Ultra-wide, tiny controls",
-            160 to "160 — Standard (Recommended)",
-            200 to "200 — Compact, larger controls",
-            240 to "240 — Large, phone-like layout",
-        ).forEach { (dpi, label) ->
-            Row(
+        if (!uiState.videoAutoNegotiate && uiState.aaResolution != "1080p" && uiState.aaDpi != recommendedDpi) {
+            Text(
+                text = "Recommended for ${uiState.aaResolution}: $recommendedDpi DPI (tap to apply)",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF64B5F6),
                 modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .clickable { viewModel.updateAaDpi(dpi) }
-                    .padding(vertical = 10.dp)
-                    .testTag("aaDpi_$dpi"),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = uiState.aaDpi == dpi,
-                    onClick = { viewModel.updateAaDpi(dpi) }
-                )
-                Spacer(modifier = Modifier.width(12.dp))
+                    .padding(bottom = 8.dp)
+                    .clickable { viewModel.updateAaDpi(recommendedDpi) }
+            )
+        }
+
+        // Slider for custom DPI (80-400 range)
+        var sliderDpi by remember(uiState.aaDpi) { mutableIntStateOf(uiState.aaDpi) }
+        Text(
+            text = "DPI: $sliderDpi",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Slider(
+            value = sliderDpi.toFloat(),
+            onValueChange = { sliderDpi = it.toInt() },
+            onValueChangeFinished = { viewModel.updateAaDpi(sliderDpi) },
+            valueRange = 80f..400f,
+            steps = 0,
+            modifier = Modifier.fillMaxWidth(0.7f)
+        )
+
+        // Quick presets
+        Row(
+            modifier = Modifier.fillMaxWidth(0.7f),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            listOf(120, 160, 200, 240, 320).forEach { preset ->
+                val isSelected = uiState.aaDpi == preset
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (uiState.aaDpi == dpi) FontWeight.SemiBold else FontWeight.Normal,
+                    text = "$preset",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable {
+                            sliderDpi = preset
+                            viewModel.updateAaDpi(preset)
+                        }
+                        .padding(vertical = 4.dp, horizontal = 4.dp)
                 )
             }
         }

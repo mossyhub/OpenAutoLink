@@ -1,6 +1,7 @@
 package com.openautolink.app.video
 
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.util.Log
 import android.view.Surface
@@ -379,6 +380,15 @@ class MediaCodecDecoder(
             // Low-latency hints for real-time video stream
             format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
             try { format.setInteger("priority", 0) } catch (_: Exception) {} // 0 = realtime priority
+            // Force 8-bit color output — H.265 decoders may default to 10-bit (P010)
+            // which causes green hue on surfaces that expect 8-bit YUV
+            if (mimeType == CodecSelector.MIME_H265) {
+                format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+                // Request SDR color range to avoid HDR tone-mapping issues
+                try { format.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED) }
+                catch (_: Exception) {}
+            }
 
             val mc = MediaCodec.createByCodecName(decoderName)
             mc.configure(format, surface, null, 0)
