@@ -216,9 +216,11 @@ class TouchForwarderImplTest {
 
     private fun mockMultiTouchEvent(
         action: Int,
-        pointers: List<PointerData>
+        pointers: List<PointerData>,
+        actionIdx: Int = 0
     ): MotionEvent = mockk {
         every { actionMasked } returns action
+        every { actionIndex } returns actionIdx
         every { pointerCount } returns pointers.size
         pointers.forEachIndexed { index, data ->
             every { getX(index) } returns data.x
