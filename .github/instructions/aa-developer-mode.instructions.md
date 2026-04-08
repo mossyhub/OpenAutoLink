@@ -20,13 +20,26 @@ Only needs to be done once. To disable: overflow menu → "Quit developer mode."
 |--------|-------------|------------|
 | **Start head unit server** | Turns the phone into an AA server on port 5277 (for DHU testing) | Testing with Desktop Head Unit on PC |
 | **Allow unknown sources** | Lets AA run sideloaded media/messaging apps (NOT needed for Car App Library apps) | Testing media apps not from Play Store |
-| **Video resolution** | Override the video resolution AA requests | Testing different resolutions |
+| **Video resolution** | Unlock all resolution tiers the phone can encode (see below) | Testing 1440p/4K or validating HW decoder support |
 | **Application mode** | Switch between developer/production behavior | General debugging |
+
+### Video Resolution Override (Important for OpenAutoLink)
+In AA developer settings on the phone, the **Video resolution** option lets you unlock ALL resolutions the phone's encoder supports. By default, the phone may restrict to standard tiers based on negotiation. With developer mode, you can force:
+
+| Resolution | AA Tier | Our `aa_resolution` Setting | Pixel Dimensions |
+|------------|---------|---------------------------|-----------------|
+| 480p | 1 | `480p` | 800×480 |
+| 720p | 2 | `720p` | 1280×720 |
+| 1080p | 3 | `1080p` | 1920×1080 |
+| 1440p | 4 | `1440p` | 2560×1440 |
+| 4K | 5 | `4k` | 3840×2160 |
+
+**How it interacts with our bridge**: The phone selects from resolutions offered in our ServiceDiscoveryResponse's VideoConfiguration list. With developer mode enabled, the phone will accept higher tiers even if it normally wouldn't. This is useful to test whether the GM Blazer EV's Snapdragon HW decoders handle 1440p/4K properly. Change the AA Resolution in our app Settings → Video tab to match.
 
 ### Relevance to OpenAutoLink
 - **Not needed for normal operation** — our bridge connects to the phone via WiFi TCP, not through the DHU path
 - **"Start head unit server"** could theoretically be used to connect our bridge directly to the phone via adb forward, bypassing BT/WiFi setup — useful for debugging
-- **Video resolution override** — can test if the phone honors different resolution requests independently of what our bridge's ServiceDiscoveryResponse says
+- **Video resolution override** — enables testing higher resolution tiers that the phone might not normally negotiate. Combined with our app's AA Resolution setting, lets you test 1440p/4K on real hardware
 
 ---
 
