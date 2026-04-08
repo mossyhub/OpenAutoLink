@@ -347,6 +347,7 @@ object ControlMessageSerializer {
                 put("version", message.version)
                 put("size", message.size)
                 put("sha256", message.sha256)
+                put("auto_apply", message.autoApply)
             }
 
             is ControlMessage.BridgeUpdateData -> buildJsonObject {

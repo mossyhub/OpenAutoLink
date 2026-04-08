@@ -61,6 +61,7 @@ data class SettingsUiState(
     val sendImuSensors: Boolean = AppPreferences.DEFAULT_SEND_IMU_SENSORS,
     val distanceUnits: String = AppPreferences.DEFAULT_DISTANCE_UNITS,
     val bridgeAutoUpdate: Boolean = AppPreferences.DEFAULT_BRIDGE_AUTO_UPDATE,
+    val bridgeAutoApply: Boolean = AppPreferences.DEFAULT_BRIDGE_AUTO_APPLY,
     // AA safe area insets
     val safeAreaTop: Int = AppPreferences.DEFAULT_SAFE_AREA_TOP,
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
@@ -128,6 +129,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.sendImuSensors,
         preferences.distanceUnits,
         preferences.bridgeAutoUpdate,
+        preferences.bridgeAutoApply,
         preferences.safeAreaTop,
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
@@ -176,14 +178,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             sendImuSensors = values[35] as Boolean,
             distanceUnits = values[36] as String,
             bridgeAutoUpdate = values[37] as Boolean,
-            safeAreaTop = values[38] as Int,
-            safeAreaBottom = values[39] as Int,
-            safeAreaLeft = values[40] as Int,
-            safeAreaRight = values[41] as Int,
-            contentInsetTop = values[42] as Int,
-            contentInsetBottom = values[43] as Int,
-            contentInsetLeft = values[44] as Int,
-            contentInsetRight = values[43] as Int,
+            bridgeAutoApply = values[38] as Boolean,
+            safeAreaTop = values[39] as Int,
+            safeAreaBottom = values[40] as Int,
+            safeAreaLeft = values[41] as Int,
+            safeAreaRight = values[42] as Int,
+            contentInsetTop = values[43] as Int,
+            contentInsetBottom = values[44] as Int,
+            contentInsetLeft = values[45] as Int,
+            contentInsetRight = values[44] as Int,
         )
     }.stateIn(
         viewModelScope,
@@ -454,6 +457,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateBridgeAutoUpdate(enabled: Boolean) {
         viewModelScope.launch { preferences.setBridgeAutoUpdate(enabled) }
+    }
+
+    fun updateBridgeAutoApply(enabled: Boolean) {
+        viewModelScope.launch { preferences.setBridgeAutoApply(enabled) }
     }
 
     /**

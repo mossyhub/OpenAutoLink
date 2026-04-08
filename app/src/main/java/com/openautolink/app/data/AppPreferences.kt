@@ -73,6 +73,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val OVERLAY_PHONE_SWITCH_BUTTON = booleanPreferencesKey("overlay_phone_switch_button")
         val DEFAULT_PHONE_MAC = stringPreferencesKey("default_phone_mac")
         val BRIDGE_AUTO_UPDATE = booleanPreferencesKey("bridge_auto_update")
+        val BRIDGE_AUTO_APPLY = booleanPreferencesKey("bridge_auto_apply")
         val GITHUB_REPO_OWNER = stringPreferencesKey("github_repo_owner")
         val GITHUB_REPO_NAME = stringPreferencesKey("github_repo_name")
 
@@ -131,6 +132,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_OVERLAY_PHONE_SWITCH_BUTTON = true
         const val DEFAULT_DEFAULT_PHONE_MAC = ""
         const val DEFAULT_BRIDGE_AUTO_UPDATE = true
+        const val DEFAULT_BRIDGE_AUTO_APPLY = true
         const val DEFAULT_GITHUB_REPO_OWNER = "mossyhub"
         const val DEFAULT_GITHUB_REPO_NAME = "openautolink"
         const val DEFAULT_SAFE_AREA_TOP = 0
@@ -296,6 +298,10 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     val bridgeAutoUpdate: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[BRIDGE_AUTO_UPDATE] ?: DEFAULT_BRIDGE_AUTO_UPDATE
+    }
+
+    val bridgeAutoApply: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[BRIDGE_AUTO_APPLY] ?: DEFAULT_BRIDGE_AUTO_APPLY
     }
 
     val githubRepoOwner: Flow<String> = dataStore.data.map { prefs ->
@@ -500,6 +506,10 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     suspend fun setBridgeAutoUpdate(enabled: Boolean) {
         dataStore.edit { it[BRIDGE_AUTO_UPDATE] = enabled }
+    }
+
+    suspend fun setBridgeAutoApply(enabled: Boolean) {
+        dataStore.edit { it[BRIDGE_AUTO_APPLY] = enabled }
     }
 
     suspend fun setSafeAreaTop(value: Int) {

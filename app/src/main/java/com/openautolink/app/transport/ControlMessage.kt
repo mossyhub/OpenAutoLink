@@ -231,7 +231,8 @@ sealed class ControlMessage {
     data class BridgeUpdateOffer(
         val version: String,
         val size: Int,
-        val sha256: String
+        val sha256: String,
+        val autoApply: Boolean = true
     ) : ControlMessage()
 
     data class BridgeUpdateData(

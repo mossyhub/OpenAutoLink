@@ -89,7 +89,8 @@ class BridgeUpdateManager(
         // Reset state on reconnect — don't carry stale APPLIED/FAILED from last session
         if (_updateState.value == BridgeUpdateState.APPLIED ||
             _updateState.value == BridgeUpdateState.FAILED ||
-            _updateState.value == BridgeUpdateState.OFFERING) {
+            _updateState.value == BridgeUpdateState.OFFERING ||
+            _updateState.value == BridgeUpdateState.DEFERRED) {
             _updateState.value = BridgeUpdateState.IDLE
             _updateMessage.value = ""
         }
@@ -141,6 +142,11 @@ class BridgeUpdateManager(
                 _updateMessage.value = message.message
                 when (message.status) {
                     "verified", "applying" -> _updateState.value = BridgeUpdateState.APPLYING
+                    "deferred" -> {
+                        _updateState.value = BridgeUpdateState.DEFERRED
+                        _updateMessage.value = "Update ready — will apply when phone disconnects"
+                        addHistory("Deferred: waiting for phone disconnect")
+                    }
                     "applied" -> {
                         _updateState.value = BridgeUpdateState.APPLIED
                         _updateMessage.value = "Update applied — bridge restarting..."
@@ -247,12 +253,14 @@ class BridgeUpdateManager(
         lastPushedSha = localSha
 
         // Send offer to bridge
+        val autoApply = preferences.bridgeAutoApply.first()
         _updateState.value = BridgeUpdateState.OFFERING
         _updateMessage.value = "Offering update to bridge..."
         sendMessage(ControlMessage.BridgeUpdateOffer(
             version = release.version,
             size = localFile.length().toInt(),
-            sha256 = localSha
+            sha256 = localSha,
+            autoApply = autoApply
         ))
         // Wait for bridge_update_accept or bridge_update_reject via onUpdateMessage()
     }
@@ -477,6 +485,7 @@ enum class BridgeUpdateState {
     OFFERING,
     TRANSFERRING,
     APPLYING,
+    DEFERRED,
     APPLIED,
     FAILED
 }

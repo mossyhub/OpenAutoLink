@@ -96,6 +96,7 @@ void OalSession::on_app_disconnected() {
     }
     update_bytes_received_ = 0;
     update_expected_size_ = 0;
+    update_pending_apply_ = false;
     std::cerr << "[OAL] app disconnected" << std::endl;
 }
 
@@ -131,6 +132,20 @@ void OalSession::on_phone_disconnected(const std::string& reason) {
         send_phone_disconnected(reason);
     }
     std::cerr << "[OAL] phone disconnected: " << reason << std::endl;
+
+    // Apply deferred update now that the phone is gone
+    if (update_pending_apply_ && !update_temp_path_.empty()) {
+        update_pending_apply_ = false;
+        std::cerr << "[OAL] applying deferred bridge update" << std::endl;
+        if (app_connected_) {
+            send_control_line(R"({"type":"bridge_update_status","status":"applying","message":"Phone disconnected — applying update..."})");
+        }
+
+        std::string apply_cmd = "/opt/openautolink/bin/apply-bridge-update.sh " + update_temp_path_ + " &";
+        std::cerr << "[OAL] bridge update: running apply script" << std::endl;
+        usleep(200000);
+        system(apply_cmd.c_str());
+    }
 }
 
 void OalSession::on_session_active() {
@@ -1241,19 +1256,17 @@ void OalSession::handle_bridge_update_offer(const std::string& json) {
     int size = 0;
     oal_json_extract_int(json, "size", size);
 
-    std::cerr << "[OAL] bridge update offer: v" << version << " size=" << size << std::endl;
+    // Parse auto_apply flag (default true if not present)
+    std::string auto_apply_str = oal_json_extract_string(json, "auto_apply");
+    update_auto_apply_ = (auto_apply_str != "false");
+
+    std::cerr << "[OAL] bridge update offer: v" << version << " size=" << size
+              << " auto_apply=" << (update_auto_apply_ ? "true" : "false") << std::endl;
 
     // Check if updates are disabled (dev mode)
     if (config_.update_mode == "disabled") {
         std::cerr << "[OAL] bridge update rejected: update mode disabled" << std::endl;
         send_control_line(R"({"type":"bridge_update_reject","reason":"disabled"})");
-        return;
-    }
-
-    // Don't update while a phone session is active (safety)
-    if (phone_connected_) {
-        std::cerr << "[OAL] bridge update rejected: phone session active" << std::endl;
-        send_control_line(R"({"type":"bridge_update_reject","reason":"in_session"})");
         return;
     }
 
@@ -1424,6 +1437,16 @@ void OalSession::handle_bridge_update_complete(const std::string& json) {
 
     // Make executable
     chmod(update_temp_path_.c_str(), 0755);
+
+    // If phone is connected and auto_apply is off, defer the restart.
+    // When auto_apply is on (default), apply immediately — the 5-second
+    // interruption and auto-reconnect is acceptable for most users.
+    if (phone_connected_ && !update_auto_apply_) {
+        std::cerr << "[OAL] bridge update: phone connected, auto_apply=false — deferring" << std::endl;
+        send_control_line(R"({"type":"bridge_update_status","status":"deferred","message":"Update ready — will apply when phone disconnects"})");
+        update_pending_apply_ = true;
+        return;
+    }
 
     // Apply update via the update script
     send_control_line(R"({"type":"bridge_update_status","status":"applying","message":"Swapping binary..."})");

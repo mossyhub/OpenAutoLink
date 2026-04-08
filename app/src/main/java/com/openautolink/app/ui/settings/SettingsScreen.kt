@@ -1923,6 +1923,38 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             }
         }
 
+        // Auto-apply toggle (only shown when auto-update is on)
+        if (uiState.bridgeAutoUpdate) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = uiState.bridgeAutoApply,
+                    onCheckedChange = { viewModel.updateBridgeAutoApply(it) },
+                    modifier = Modifier.testTag("bridgeAutoApplyToggle"),
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "Apply automatically",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (uiState.bridgeAutoApply)
+                            "Applies immediately — brief 5s reconnect"
+                        else
+                            "Waits for phone disconnect. Or disconnect phone and press Check for Update.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         // Version info
         val updateState by viewModel.bridgeUpdateState.collectAsStateWithLifecycle()
         val updateMessage by viewModel.bridgeUpdateMessage.collectAsStateWithLifecycle()
@@ -1995,7 +2027,8 @@ private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
                     com.openautolink.app.transport.BridgeUpdateState.FAILED ->
                         MaterialTheme.colorScheme.error
                     com.openautolink.app.transport.BridgeUpdateState.UP_TO_DATE,
-                    com.openautolink.app.transport.BridgeUpdateState.APPLIED ->
+                    com.openautolink.app.transport.BridgeUpdateState.APPLIED,
+                    com.openautolink.app.transport.BridgeUpdateState.DEFERRED ->
                         MaterialTheme.colorScheme.primary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },

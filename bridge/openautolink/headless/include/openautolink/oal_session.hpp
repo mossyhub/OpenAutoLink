@@ -194,6 +194,8 @@ private:
     size_t update_bytes_received_ = 0;  // bytes written so far
     int update_fd_ = -1;               // fd of temp file being written
     std::string binary_sha256_cache_;   // cached SHA-256 of running binary
+    bool update_pending_apply_ = false; // verified update waiting for phone disconnect to apply
+    bool update_auto_apply_ = true;    // from app's auto_apply field in offer
 #ifdef PI_AA_ENABLE_AASDK_LIVE
     LiveAasdkSession* aa_session_ = nullptr;
 #endif
