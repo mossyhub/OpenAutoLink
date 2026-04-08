@@ -8,6 +8,8 @@
 
 **An open-source wireless Android Auto bridge for AAOS head units.** An SBC handles the phone's Android Auto session over WiFi, then streams video, audio, and touch to an app on your car's display over Ethernet — no janky, closed-source and hacky USB adapter hardware required.
 
+> **Heads up — this is a hobby project under active development.** It might work great, it might not work at all. Features listed below are implemented but not all are battle-tested. The goal is production quality, but it's not there yet. I'm building this because it's fun and because I want Android Auto back in my car — if that sounds like your kind of adventure, give it a try.
+
 ## Why Not a CPC200 / USB Adapter?
 
 The CPC200-CCPA and similar USB adapters are closed-source hardware dongles that relay Android Auto over a proprietary USB protocol. They got the community started (and credit to them for proving the concept), but they have fundamental limitations that an open, software-defined bridge doesn't:
@@ -49,8 +51,6 @@ The short version: CPC200 adapters are dumb relays with fixed resolution and no 
 - Remote diagnostics — structured logs and telemetry streamed to bridge over SSH (no ADB needed on GM)
 - Bridge auto-update — app checks GitHub Releases on connect, downloads and pushes new bridge binary over TCP. No user action needed for bridge-only releases
 - Fully open-source — app, bridge, protocol, and deployment scripts
-
-> **Fair warning:** This is a free, hobby project that is very much under active development. It might work great, it might not work at all. Stated features may or may not actually work. My goal is to eventually make it stable and production-quality, but it's not there yet — and honestly, it may never be. I'm building this because it's fun and because I want Android Auto back in my car. If that sounds like your kind of adventure, give it a try.
 
 Starting with the 2024 model year, GM dropped Apple CarPlay and Android Auto from their electric vehicles (Blazer EV, Equinox EV, Silverado EV, Lyriq, etc.) in favor of Google built-in infotainment. GM has indicated this will expand to all GM vehicles in the 2025-2026+ timeframe. **OpenAutoLink brings Android Auto back** to these vehicles by bridging a phone's Android Auto session to the car's AAOS head unit over the network — no USB adapter hardware needed.
 
