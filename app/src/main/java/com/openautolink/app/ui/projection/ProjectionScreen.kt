@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -145,7 +146,10 @@ fun ProjectionScreen(
         }
 
         // SurfaceView for video rendering — intercepts touch for forwarding to bridge
+        // Key on videoScalingMode so Compose recreates the SurfaceView when mode changes.
+        // Without this, the old SurfaceView keeps its dimensions after switching modes.
         @SuppressLint("ClickableViewAccessibility")
+        key(uiState.videoScalingMode, uiState.displayMode) {
         AndroidView(
             factory = { context ->
                 SurfaceView(context).apply {
@@ -180,6 +184,7 @@ fun ProjectionScreen(
             },
             modifier = surfaceModifier
         )
+        }
 
         // Connection status HUD — centered overlay, visible when not streaming
         if (uiState.sessionState != SessionState.STREAMING) {

@@ -98,7 +98,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_BRIDGE_PORT = 5288
         const val DEFAULT_VIDEO_CODEC = "h264"
         const val DEFAULT_VIDEO_FPS = 60
-        const val DEFAULT_DISPLAY_MODE = "fullscreen_immersive"
+        const val DEFAULT_DISPLAY_MODE = "system_ui_visible"
         const val DEFAULT_MIC_SOURCE = "car"
         const val DEFAULT_NETWORK_INTERFACE = "" // empty = auto-select first available
         const val DEFAULT_REMOTE_DIAGNOSTICS_ENABLED = false
@@ -114,7 +114,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_AA_WIDTH_MARGIN = 0 // 0 = auto from display AR
         const val DEFAULT_AA_HEIGHT_MARGIN = 0 // 0 = auto from display AR
         const val DEFAULT_AA_PIXEL_ASPECT = 0 // 0 = default (square pixels, 10000)
-        const val DEFAULT_VIDEO_SCALING_MODE = "crop" // "letterbox" or "crop"
+        const val DEFAULT_VIDEO_SCALING_MODE = "letterbox" // "letterbox" or "crop"
         const val DEFAULT_PHONE_MODE = "wireless"
         const val DEFAULT_WIFI_BAND = "5ghz"
         const val DEFAULT_WIFI_COUNTRY = "US"
@@ -617,31 +617,22 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
             config["video_dpi"]?.let { it.toIntOrNull()?.let { v -> prefs[AA_DPI] = v } }
             config["aa_width_margin"]?.let { it.toIntOrNull()?.let { v -> prefs[AA_WIDTH_MARGIN] = v } }
             config["aa_height_margin"]?.let { it.toIntOrNull()?.let { v -> prefs[AA_HEIGHT_MARGIN] = v } }
-            config["aa_pixel_aspect"]?.let { it.toIntOrNull()?.let { v -> prefs[AA_PIXEL_ASPECT] = v } }
+            // aa_pixel_aspect: only sync from bridge if app has no value yet (0/unset).
+            // This preserves user manual overrides while allowing fresh installs
+            // to pick up the bridge's persisted value.
+            config["aa_pixel_aspect"]?.let { it.toIntOrNull()?.let { v ->
+                if (v > 0 && (prefs[AA_PIXEL_ASPECT] ?: 0) == 0) {
+                    prefs[AA_PIXEL_ASPECT] = v
+                }
+            } }
             config["drive_side"]?.let { prefs[DRIVE_SIDE] = it }
             config["head_unit_name"]?.let { prefs[HEAD_UNIT_NAME] = it }
             config["hide_clock"]?.let { prefs[HIDE_AA_CLOCK] = it.toBooleanStrictOrNull() ?: false }
             config["hide_phone_signal"]?.let { prefs[HIDE_PHONE_SIGNAL] = it.toBooleanStrictOrNull() ?: false }
             config["hide_battery_level"]?.let { prefs[HIDE_BATTERY_LEVEL] = it.toBooleanStrictOrNull() ?: false }
-            // Parse insets: "top,bottom,left,right"
-            config["aa_stable_insets"]?.let { str ->
-                val parts = str.split(",").mapNotNull { it.trim().toIntOrNull() }
-                if (parts.size == 4) {
-                    prefs[SAFE_AREA_TOP] = parts[0]
-                    prefs[SAFE_AREA_BOTTOM] = parts[1]
-                    prefs[SAFE_AREA_LEFT] = parts[2]
-                    prefs[SAFE_AREA_RIGHT] = parts[3]
-                }
-            }
-            config["aa_content_insets"]?.let { str ->
-                val parts = str.split(",").mapNotNull { it.trim().toIntOrNull() }
-                if (parts.size == 4) {
-                    prefs[CONTENT_INSET_TOP] = parts[0]
-                    prefs[CONTENT_INSET_BOTTOM] = parts[1]
-                    prefs[CONTENT_INSET_LEFT] = parts[2]
-                    prefs[CONTENT_INSET_RIGHT] = parts[3]
-                }
-            }
+            // aa_stable_insets and aa_content_insets NOT synced from config_echo.
+            // stable_insets are auto-computed by the bridge from display cutout.
+            // content_insets are user-configured via the editor.
         }
     }
 }

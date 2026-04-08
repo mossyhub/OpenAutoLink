@@ -334,7 +334,9 @@ class MediaCodecDecoder(
             mc.configure(format, surface, null, 0)
             mc.start()
             if (scalingMode == "crop") {
-                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING) }
+                // Use SCALE_TO_FIT — Qualcomm c2.qti may preserve aspect ratio
+                // (uniform scale) rather than stretching to fill both axes
+                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
                 catch (_: Exception) {}
             }
             codec = mc
@@ -383,7 +385,7 @@ class MediaCodecDecoder(
             mc.configure(format, surface, null, 0)
             mc.start()
             if (scalingMode == "crop") {
-                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING) }
+                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
                 catch (_: Exception) {}
             }
             codec = mc

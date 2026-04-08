@@ -15,17 +15,36 @@ Hard-won knowledge from the original CPC200 adapter app. These findings were val
 - DPI: 200
 
 ### Display Cutout & Wide-Screen AA
+
+> **⚠️ CRITICAL — DO NOT CHANGE THE VIDEO SCALING MODE ⚠️**
+>
+> The MediaCodec scaling mode in `MediaCodecDecoder.kt` MUST be `VIDEO_SCALING_MODE_SCALE_TO_FIT`.
+> **NEVER use `VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING`.**
+>
+> **Why:** The Qualcomm `c2.qti.avc.decoder` on GM AAOS head units responds to these two
+> modes completely differently:
+> - `SCALE_TO_FIT`: Decoder preserves aspect ratio (uniform scale). Combined with
+>   `pixel_aspect_ratio` in the AA SDR, AA pre-compensates its layout for the wider
+>   display. The result: video fills the surface, circles are circles, all AA UI visible.
+> - `SCALE_TO_FIT_WITH_CROPPING`: Decoder stretches non-uniformly to fill both axes
+>   independently. Circles become ovals. `pixel_aspect_ratio` cannot fix this because
+>   it only affects AA's UI layout, not the decoder's physical pixel stretch.
+>
+> This was debugged extensively over multiple sessions. Every attempt to use
+> `SCALE_TO_FIT_WITH_CROPPING` failed. Do not revisit this.
+
 - AAOS display cutout insets describe where the physical screen curves/slopes away
 - The app reads these via `WindowInsets.Type.displayCutout()` and sends them to the bridge in the hello message
-- The bridge auto-computes AA video parameters from display + cutout:
-  - `pixel_aspect_ratio_e4` — tells AA to layout for the actual display AR (e.g., 14444 for 2.57:1)
-  - `height_margin` — tells AA how many video pixels are cropped by SCALE_TO_FIT_WITH_CROPPING
-  - `stable_insets` — tells AA where physical curves are (buttons stay away)
-- MediaCodec `SCALE_TO_FIT_WITH_CROPPING` stretches the 1920×1080 video to fill the display width, cropping top/bottom
-- Maps render edge-to-edge (including into curved areas); buttons/text stay in the safe center band
-- All auto-computed from AAOS APIs — works on any AAOS head unit with any screen shape
-- Override via Settings → Video tab (Width Margin, Height Margin, Pixel Aspect) or `/etc/openautolink.env`
-- SoC: **Qualcomm Snapdragon** (some GM generations use Intel — same screen/AAOS, different decoders)
+- The bridge auto-computes `stable_insets` from cutout (tells AA where physical curves are)
+- `pixel_aspect_ratio_e4` is set manually by the user (default 0, set via Settings → Video)
+  - For the Blazer EV in fullscreen crop mode: 14454
+  - This tells AA to layout its UI for the actual display aspect ratio
+  - Combined with `SCALE_TO_FIT`, the decoder preserves aspect ratio and the
+    pre-compensated layout fills the screen correctly
+- Settings are all manual — no auto-computation of pixel_aspect (auto-compute was
+  removed because it caused inconsistent behavior across sessions)
+- Override via Settings → Video tab (Width Margin, Height Margin, Pixel Aspect)
+- SoC: **Qualcomm Snapdragon SA8155P** (some GM generations use Intel — same screen/AAOS, different decoders)
 
 ### HW Video Decoders
 - `c2.qti.avc.decoder` — H.264, max 8192×4320 @ 480fps

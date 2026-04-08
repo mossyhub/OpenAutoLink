@@ -251,48 +251,6 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             val diagEnabled = preferences.remoteDiagnosticsEnabled.first()
             val diagMinLevel = preferences.remoteDiagnosticsMinLevel.first()
             val scalingMode = preferences.videoScalingMode.first()
-
-            // Auto-compute pixel_aspect on startup if crop mode + unset.
-            // This handles fresh install where default is crop but pixel_aspect
-            // hasn't been computed yet (recalculatePixelAspect only runs on UI changes).
-            val pixelAspect = preferences.aaPixelAspect.first()
-            if (scalingMode == "crop" && pixelAspect == 0) {
-                val ctx = getApplication<android.app.Application>()
-                val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
-                val metrics = wm.maximumWindowMetrics
-                val dispW = metrics.bounds.width()
-                val dispH = metrics.bounds.height()
-                val displayMode = preferences.displayMode.first()
-                val barInsets = metrics.windowInsets.getInsetsIgnoringVisibility(
-                    android.view.WindowInsets.Type.systemBars()
-                )
-                val cutoutInsets = metrics.windowInsets.getInsetsIgnoringVisibility(
-                    android.view.WindowInsets.Type.displayCutout()
-                )
-                val surfaceW: Int
-                val surfaceH: Int
-                if (displayMode == "fullscreen_immersive") {
-                    // Fullscreen — no padding, video fills entire framebuffer
-                    surfaceW = dispW
-                    surfaceH = dispH
-                } else {
-                    // system_ui_visible: pad for status bar (top) + cutout (right/left/bottom)
-                    surfaceW = dispW - cutoutInsets.left - cutoutInsets.right
-                    surfaceH = dispH - maxOf(barInsets.top, cutoutInsets.top) - cutoutInsets.bottom
-                }
-                val displayAR = surfaceW.toDouble() / surfaceH
-                val videoAR = 1920.0 / 1080.0
-                if (displayAR > videoAR * 1.05) {
-                    val computed = ((displayAR / videoAR) * 10000).toInt()
-                    preferences.setAaPixelAspect(computed)
-                    Log.i(TAG, "Auto pixel_aspect=$computed for crop mode (surface ${surfaceW}x${surfaceH})")
-                    // Send to bridge immediately so the SDR has it before phone connects
-                    com.openautolink.app.transport.ConfigUpdateSender.sendConfigUpdate(
-                        mapOf("aa_pixel_aspect" to computed.toString())
-                    )
-                }
-            }
-
             val network = resolveNetwork(ifaceName)
             sessionManager.start(host, port, codec, micSrc,
                 diagnosticsEnabled = diagEnabled, diagnosticsMinLevel = diagMinLevel,
