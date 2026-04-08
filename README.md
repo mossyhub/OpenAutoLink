@@ -8,6 +8,32 @@
 
 **An open-source wireless Android Auto bridge for AAOS head units.** An SBC handles the phone's Android Auto session over WiFi, then streams video, audio, and touch to an app on your car's display over Ethernet — no janky, closed-source and hacky USB adapter hardware required.
 
+## Why Not a CPC200 / USB Adapter?
+
+The CPC200-CCPA and similar USB adapters are closed-source hardware dongles that relay Android Auto over a proprietary USB protocol. They got the community started (and credit to them for proving the concept), but they have fundamental limitations that an open, software-defined bridge doesn't:
+
+| | CPC200 / USB Adapter | OpenAutoLink (SBC Bridge) |
+|---|---|---|
+| **Resolution** | Fixed 800×480 (some 720p) | Up to 1080p60, configurable per-session. 1440p/4K possible with AA dev mode |
+| **Codec** | H.264 only, hardcoded | H.264, H.265, VP9 — user selectable, phone negotiates best match |
+| **Display adaptation** | None — fixed output, black bars or stretched | Auto-reads AAOS display dimensions + cutout insets, computes pixel aspect ratio and crop margins. Maps render edge-to-edge on any screen shape |
+| **Vehicle data to AA** | None or minimal | Full sensor pipeline: speed, gear, parking brake, night mode, EV battery %, range, temperature, GPS, accelerometer, gyroscope, compass, tire pressure, HVAC — all from real VHAL, forwarded to phone |
+| **EV support** | None | Declares fuel type + connector type from VHAL to AA. Google Maps can use battery % and range for EV routing |
+| **Navigation cluster** | Not possible | Turn-by-turn on instrument cluster — maneuver icons, lane guidance, distance, road names, ETA |
+| **Media cluster** | Not possible | Album art + track info on cluster display |
+| **Multi-phone** | Not possible | Pair multiple phones, set default, switch with one tap |
+| **Microphone** | Phone only (BT HFP) | Car mic or phone mic — configurable |
+| **Steering wheel buttons** | Limited or none | Full media + voice button forwarding (with GM F-key mapping) |
+| **Updates** | Buy new hardware | Bridge auto-updates from GitHub. App updates via Play Store |
+| **Wide display / ultra-wide** | Bad — letterboxed or distorted | Native — pixel aspect ratio auto-computed from display AR. Tested on 2914×1134 (2.57:1) GM screen |
+| **Customization** | None | Safe area insets, content insets, display mode, video scaling, DPI — all configurable in app settings |
+| **Source code** | Closed, encrypted firmware | Fully open-source — app, bridge, protocol, deployment |
+| **Cost** | $50–$150 for adapter hardware | ~$35 for a Pi 4 + a $10 USB Ethernet adapter |
+
+The short version: CPC200 adapters are dumb relays with fixed resolution and no car integration. OpenAutoLink is a full Android Auto head unit implementation that adapts to your car's display, reads your car's sensors, talks to your instrument cluster, and updates itself over the air — built from open-source software running on commodity hardware.
+
+### Features
+
 - Wireless Android Auto — phone connects via Bluetooth + WiFi, no cables
 - Up to 1080p60 video with H.264, H.265, or VP9 codec support
 - Auto wide-display adaptation — reads AAOS display dimensions and cutout insets, auto-computes pixel aspect ratio, crop margins, and safe areas so AA fills your screen correctly on any head unit
