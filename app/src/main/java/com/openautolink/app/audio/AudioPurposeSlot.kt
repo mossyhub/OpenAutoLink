@@ -11,12 +11,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * One AudioTrack + AudioRingBuffer per audio purpose.
- * Based on app_v1's production-proven approach:
  * - Ring buffer absorbs TCP/network jitter (500ms capacity)
- * - Dedicated URGENT_AUDIO thread drains at steady rate
+ * - Dedicated URGENT_AUDIO drain thread writes at steady 10ms intervals
  * - Pre-fill 80ms before calling AudioTrack.play()
- * - Non-blocking writes with residual tracking (no data loss)
- * - Steady 10ms write pacing from dedicated thread
+ * - Non-blocking feedPcm() — TCP thread never blocks on AudioTrack
  */
 class AudioPurposeSlot(
     val purpose: AudioPurpose,
@@ -26,16 +24,27 @@ class AudioPurposeSlot(
 ) {
     companion object {
         private const val TAG = "AudioPurposeSlot"
+        /** Drain thread writes 10ms chunks to AudioTrack. */
+        private const val DRAIN_INTERVAL_MS = 10L
+        /** Pre-fill 80ms before starting playback to absorb initial jitter. */
+        private const val PREFILL_MS = 80
     }
 
     private var audioTrack: AudioTrack? = null
+    private var ringBuffer: AudioRingBuffer? = null
+    private var drainThread: Thread? = null
 
     private val active = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
     private val pausedByFocusLoss = AtomicBoolean(false)
+    private val draining = AtomicBoolean(false)
+    private val prefilled = AtomicBoolean(false)
 
     val framesWritten = AtomicLong(0)
     val underrunCount = AtomicLong(0)
+
+    /** Bytes per millisecond for this format. */
+    private val bytesPerMs: Int get() = sampleRate * channelCount * 2 / 1000
 
     fun initialize() {
         if (released.get()) return
@@ -60,28 +69,40 @@ class AudioPurposeSlot(
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        Log.d(TAG, "Initialized $purpose: ${sampleRate}Hz ${channelCount}ch, track=${trackBufSize}B")
+        // Ring buffer: 500ms capacity for jitter absorption
+        val ringCapacity = bytesPerMs * bufferDurationMs
+        ringBuffer = AudioRingBuffer(maxOf(ringCapacity, 16384))
+
+        Log.d(TAG, "Initialized $purpose: ${sampleRate}Hz ${channelCount}ch, track=${trackBufSize}B, ring=${ringBuffer!!.capacity}B")
     }
 
     fun start() {
         if (released.get() || active.get()) return
         val track = audioTrack ?: return
         active.set(true)
-        track.play()
+        prefilled.set(false)
+
+        // Start drain thread — writes ring buffer to AudioTrack at steady pace
+        startDrainThread(track)
+
         Log.d(TAG, "$purpose started")
     }
 
     fun stop() {
         pausedByFocusLoss.set(false)
         if (!active.getAndSet(false)) return
+        stopDrainThread()
         audioTrack?.pause()
         audioTrack?.flush()
+        ringBuffer?.clear()
+        prefilled.set(false)
         Log.d(TAG, "$purpose stopped")
     }
 
     fun pause() {
         if (!active.getAndSet(false)) return
         pausedByFocusLoss.set(true)
+        stopDrainThread()
         audioTrack?.pause()
         Log.d(TAG, "$purpose paused")
     }
@@ -91,23 +112,19 @@ class AudioPurposeSlot(
         if (!pausedByFocusLoss.getAndSet(false)) return
         val track = audioTrack ?: return
         active.set(true)
-        track.play()
+        startDrainThread(track)
         Log.d(TAG, "$purpose resumed")
     }
 
     val isPausedByFocus: Boolean get() = pausedByFocusLoss.get()
 
     /**
-     * Write PCM directly to AudioTrack. Called from audioDispatcher thread.
-     * Blocking write — AudioTrack paces to real-time.
-     * Each 8192-byte frame from bridge = 42.7ms of audio.
-     * The per-write overhead (~50ms on emulator) is acceptable for 42ms chunks.
+     * Write PCM into ring buffer. Non-blocking — never stalls the TCP thread.
+     * The drain thread will pick it up and write to AudioTrack.
      */
     fun feedPcm(data: ByteArray) {
-        val track = audioTrack ?: return
         if (!active.get()) return
-        track.write(data, 0, data.size) // blocking
-        framesWritten.addAndGet(data.size.toLong() / (channelCount * 2))
+        ringBuffer?.write(data) ?: return
     }
 
     fun setVolume(volume: Float) {
@@ -119,12 +136,63 @@ class AudioPurposeSlot(
         stop()
         audioTrack?.release()
         audioTrack = null
+        ringBuffer = null
         Log.d(TAG, "$purpose released")
     }
 
     val isActive: Boolean get() = active.get()
-    val ringBufferAvailable: Int get() = 0
-    val ringBufferCapacity: Int get() = 0
+    val ringBufferAvailable: Int get() = ringBuffer?.available ?: 0
+    val ringBufferCapacity: Int get() = ringBuffer?.capacity ?: 0
+
+    /**
+     * Drain thread: reads from ring buffer and writes to AudioTrack at steady 10ms intervals.
+     * Runs at URGENT_AUDIO priority. AudioTrack.write() paces to hardware clock.
+     */
+    private fun startDrainThread(track: AudioTrack) {
+        if (draining.getAndSet(true)) return
+
+        drainThread = Thread({
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
+            val chunkBytes = bytesPerMs * DRAIN_INTERVAL_MS.toInt()
+            val buf = ByteArray(chunkBytes)
+            val prefillBytes = bytesPerMs * PREFILL_MS
+
+            while (draining.get()) {
+                val ring = ringBuffer ?: break
+
+                // Pre-fill: wait until enough data arrives before starting playback
+                if (!prefilled.get()) {
+                    if (ring.available >= prefillBytes) {
+                        prefilled.set(true)
+                        track.play()
+                    } else {
+                        try { Thread.sleep(DRAIN_INTERVAL_MS) } catch (_: InterruptedException) { break }
+                        continue
+                    }
+                }
+
+                val read = ring.read(buf, 0, chunkBytes)
+                if (read > 0) {
+                    track.write(buf, 0, read)
+                    framesWritten.addAndGet(read.toLong() / (channelCount * 2))
+                } else {
+                    // Underrun — ring is empty, AudioTrack plays silence
+                    underrunCount.incrementAndGet()
+                    try { Thread.sleep(DRAIN_INTERVAL_MS) } catch (_: InterruptedException) { break }
+                }
+            }
+        }, "AudioDrain-$purpose").also {
+            it.isDaemon = true
+            it.start()
+        }
+    }
+
+    private fun stopDrainThread() {
+        draining.set(false)
+        drainThread?.interrupt()
+        drainThread?.join(200)
+        drainThread = null
+    }
 
     private fun buildAudioAttributes(purpose: AudioPurpose): AudioAttributes {
         val usage = when (purpose) {

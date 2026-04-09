@@ -128,6 +128,24 @@ void OalSession::on_phone_connected(const std::string& phone_name,
 void OalSession::on_phone_disconnected(const std::string& reason) {
     phone_connected_ = false;
     session_active_ = false;
+
+    // Send audio_stop for all active purposes before phone_disconnected
+    // so the app can clean up AudioTracks even if phone died abruptly
+    {
+        std::lock_guard<std::mutex> lock(audio_purposes_mutex_);
+        if (app_connected_ && !active_audio_purposes_.empty()) {
+            for (const auto& ap : active_audio_purposes_) {
+                std::ostringstream oss;
+                oss << R"({"type":"audio_stop","purpose":")"
+                    << oal_purpose_to_string(ap.purpose) << R"("})";
+                send_control_line(oss.str());
+            }
+            std::cerr << "[OAL] sent audio_stop for " << active_audio_purposes_.size()
+                      << " active purposes on phone disconnect" << std::endl;
+        }
+        active_audio_purposes_.clear();
+    }
+
     if (app_connected_) {
         send_phone_disconnected(reason);
     }
@@ -379,6 +397,15 @@ void OalSession::send_audio_start(uint8_t purpose, uint16_t sample_rate, uint8_t
 }
 
 void OalSession::send_audio_stop(uint8_t purpose) {
+    // Remove from active purposes so reconnect replay doesn't resurrect stopped audio
+    {
+        std::lock_guard<std::mutex> lock(audio_purposes_mutex_);
+        active_audio_purposes_.erase(
+            std::remove_if(active_audio_purposes_.begin(), active_audio_purposes_.end(),
+                [purpose](const AudioPurposeInfo& info) { return info.purpose == purpose; }),
+            active_audio_purposes_.end());
+    }
+
     std::ostringstream oss;
     oss << R"({"type":"audio_stop","purpose":")"
         << oal_purpose_to_string(purpose) << R"("})";

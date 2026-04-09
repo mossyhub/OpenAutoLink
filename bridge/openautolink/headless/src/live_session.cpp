@@ -2566,6 +2566,12 @@ void HeadlessAudioHandler::onChannelError(const aasdk::error::Error& e) {
                        (type_ == ChannelType::Speech) ? "speech" : "system";
     output_.emit(R"({"type":"event","event_type":"audio_channel_error","channel":")" +
                  std::string(name) + R"(","error":")" + std::string(e.what()) + R"("})");
+
+    // Send audio_stop so the app doesn't leave the AudioTrack active
+    if (oal_session_) {
+        uint8_t purpose = audio_channel_to_oal_purpose(name);
+        oal_session_->send_audio_stop(purpose);
+    }
 }
 
 // ============================================================================

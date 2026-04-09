@@ -39,10 +39,12 @@ void ScoAudio::stop() {
         listen_fd_ = -1;
     }
 
-    // Close active SCO socket
+    // Close active SCO socket — if there was an active call, send audio_stop
     int fd = sco_fd_.exchange(-1);
     if (fd >= 0) {
         close(fd);
+        // Ensure app gets audio_stop for call purpose even on unclean shutdown
+        oal_session_.send_audio_stop(OalAudioPurpose::CALL);
     }
 
     if (listen_thread_.joinable()) listen_thread_.join();
