@@ -19,20 +19,22 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.min
 
 /**
  * Manages the control TCP connection to the bridge with automatic reconnection.
- * Reconnects with exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s cap.
+ * Retries every 1 second until the bridge is reachable.
  */
 class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
 
     companion object {
         private const val TAG = "ConnectionManager"
-        private const val INITIAL_BACKOFF_MS = 1000L
-        private const val MAX_BACKOFF_MS = 30_000L
-        private const val BACKOFF_MULTIPLIER = 2.0
+        private const val RETRY_INTERVAL_MS = 1000L
     }
+
+    /** True while the reconnect loop is running — even during the inter-retry delay (DISCONNECTED state).
+     *  Returns false only when no connection has been started or after an explicit [disconnect]. */
+    val isReconnecting: Boolean
+        get() = autoReconnect && connectionJob?.isActive == true
 
     private val controlChannel = TcpControlChannel()
     private val videoChannel = TcpVideoChannel()
@@ -198,14 +200,20 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
     }
 
     /**
-     * Force-close all sockets to break out of blocking reads.
-     * The connectLoop will detect the broken connection and retry with fresh backoff.
+     * Force a reconnect immediately.
+     *
+     * - If sockets are live (CONNECTED/PHONE_CONNECTED/STREAMING): closes them so that
+     *   blocking reads throw IOException and control returns to connectLoop().
+     * - If stuck in the inter-retry delay (DISCONNECTED): cancels and restarts the
+     *   connectLoop coroutine so the next attempt begins without waiting for the delay.
+     * - If actively mid-connect (CONNECTING): no-op — already trying.
+     *
      * Used when the system wakes from sleep and sockets may be dead.
      */
     fun forceReconnect() {
         if (!autoReconnect) return
         val state = _connectionState.value
-        if (state == ConnectionState.DISCONNECTED || state == ConnectionState.CONNECTING) return
+        if (state == ConnectionState.CONNECTING) return // Already actively trying
 
         Log.i(TAG, "Force-closing channels for reconnect (state=$state)")
         DiagnosticLog.i("transport", "Force-closing channels for reconnect")
@@ -219,11 +227,17 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
         videoJob = null
         audioJob?.cancel()
         audioJob = null
+
+        // If we're in the inter-retry delay (state=DISCONNECTED), the connectLoop is
+        // suspended in delay() and won't fire until the 1s interval expires.
+        // Cancel and restart it so the next attempt begins immediately.
+        if (state == ConnectionState.DISCONNECTED) {
+            connectionJob?.cancel()
+            connectionJob = scope.launch { connectLoop() }
+        }
     }
 
     private suspend fun connectLoop() {
-        var backoffMs = INITIAL_BACKOFF_MS
-
         while (autoReconnect) {
             val host = targetHost ?: return
             _connectionState.value = ConnectionState.CONNECTING
@@ -237,7 +251,6 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
                 Log.i(TAG, "Connected to bridge at $host:$targetPort")
                 DiagnosticLog.i("transport", "Connected to bridge at $host:$targetPort")
                 _connectionState.value = ConnectionState.CONNECTED
-                backoffMs = INITIAL_BACKOFF_MS // Reset backoff on success
 
                 // Start receiving messages
                 receiveMessages()
@@ -257,9 +270,8 @@ class ConnectionManager(private val scope: CoroutineScope) : BridgeConnection {
 
             if (!autoReconnect) break
 
-            Log.d(TAG, "Reconnecting in ${backoffMs}ms")
-            delay(backoffMs)
-            backoffMs = min((backoffMs * BACKOFF_MULTIPLIER).toLong(), MAX_BACKOFF_MS)
+            Log.d(TAG, "Reconnecting in ${RETRY_INTERVAL_MS}ms")
+            delay(RETRY_INTERVAL_MS)
         }
     }
 

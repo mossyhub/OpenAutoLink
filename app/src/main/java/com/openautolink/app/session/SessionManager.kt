@@ -453,7 +453,7 @@ class SessionManager(
      * Called from Activity.onResume() to detect system sleep/wake.
      * When the car sleeps, the AAOS process freezes and TCP sockets go dead.
      * On wake, this method detects the time gap and forces a reconnect
-     * so the app doesn't stay stuck in "Disconnected" with dead sockets.
+     * so the app doesn't stay stuck waiting for the next retry interval.
      *
      * Short gaps (< 10s) are ignored — those are normal navigation (Settings → back).
      */
@@ -465,7 +465,10 @@ class SessionManager(
         if (elapsed < 10_000) return // Normal UI navigation, not a wake event
 
         val state = _sessionState.value
-        if (state == SessionState.IDLE) return // Not connected, nothing to check
+        // Only skip if there is no active connection attempt at all (truly idle — no loop running).
+        // When reconnecting, state can be IDLE because DISCONNECTED (held during the inter-retry
+        // delay) maps to IDLE; we must NOT skip in that case.
+        if (state == SessionState.IDLE && !connectionManager.isReconnecting) return
 
         Log.i(TAG, "System wake detected (${elapsed / 1000}s gap, state=$state) — forcing reconnect")
         com.openautolink.app.diagnostics.DiagnosticLog.i("transport", "System wake detected (${elapsed / 1000}s gap) — forcing reconnect")
