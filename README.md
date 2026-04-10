@@ -16,6 +16,8 @@ OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units.
 
 > This is a hobby project under active development. Core features are implemented and working on real hardware, but the project is not yet polished or broadly validated across vehicles.
 
+> **Discuss on XDA:** [OpenAutoLink — Wireless Android Auto bridge for AAOS (GM EVs)](https://xdaforums.com/t/open-source-openautolink-wireless-android-auto-bridge-for-aaos-gm-evs.4785192/) — questions, feedback, and build reports welcome.
+
 ## Contents
 
 - [Why This Exists](#why-this-exists)
