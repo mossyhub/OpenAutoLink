@@ -8,6 +8,12 @@
 
 OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units. An SBC handles the phone's Android Auto session over WiFi, then streams video, audio, and control data to an app on the car's display over Ethernet. The goal is to restore a native-feeling Android Auto experience on vehicles that ship with AAOS but without built-in Android Auto support.
 
+<p align="center">
+  <img src="docs/screenshots/AA-Streaming-Screenshot.jpg" alt="Android Auto streaming on a 2024 Blazer EV via OpenAutoLink" width="720">
+  <br>
+  <em>Android Auto streaming wirelessly on a 2024 Chevrolet Blazer EV</em>
+</p>
+
 > This is a hobby project under active development. Core features are implemented and working on real hardware, but the project is not yet polished or broadly validated across vehicles.
 
 ## Contents
@@ -49,6 +55,27 @@ The current design is purpose-built for this setup:
 - Automatic reconnect after car sleep / power loss
 - Bridge auto-update from GitHub Releases
 - Fully open-source app, bridge, protocol, and deployment scripts
+
+<details>
+<summary>📱 App Screenshots</summary>
+<br>
+<p>
+  <a href="docs/screenshots/01-projection-screen-idle.png"><img src="docs/screenshots/01-projection-screen-idle.png" alt="Projection screen (idle)" width="400"></a>
+  <a href="docs/screenshots/02-settings-connection-tab-top.png"><img src="docs/screenshots/02-settings-connection-tab-top.png" alt="Settings — Connection" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/03-settings-phones-tab.png"><img src="docs/screenshots/03-settings-phones-tab.png" alt="Settings — Phones" width="400"></a>
+  <a href="docs/screenshots/04-settings-bridge-tab-top.png"><img src="docs/screenshots/04-settings-bridge-tab-top.png" alt="Settings — Bridge" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Settings — Display" width="400"></a>
+  <a href="docs/screenshots/06-settings-video-tab-top.png"><img src="docs/screenshots/06-settings-video-tab-top.png" alt="Settings — Video" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/07-settings-audio-tab-top.png"><img src="docs/screenshots/07-settings-audio-tab-top.png" alt="Settings — Audio" width="400"></a>
+  <a href="docs/screenshots/09-diagnostics-system-tab-top.png"><img src="docs/screenshots/09-diagnostics-system-tab-top.png" alt="Diagnostics — System" width="400"></a>
+</p>
+</details>
 
 ## How It Works
 
@@ -105,6 +132,19 @@ By default, OpenAutoLink uses auto-negotiation. The bridge offers supported code
 
 H.264 generally tops out at 1080p for practical phone encoder support. H.265 and VP9 are the paths to 1440p and 4K.
 
+<details>
+<summary>🎬 Video Settings Screenshots</summary>
+<br>
+<p>
+  <a href="docs/screenshots/06-settings-video-tab-top.png"><img src="docs/screenshots/06-settings-video-tab-top.png" alt="Video — Auto Negotiate" width="400"></a>
+  <a href="docs/screenshots/14-settings-video-manual-top.png"><img src="docs/screenshots/14-settings-video-manual-top.png" alt="Video — Manual Mode" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/14-settings-video-manual-scrolled1.png"><img src="docs/screenshots/14-settings-video-manual-scrolled1.png" alt="Video — Resolution Tiers" width="400"></a>
+  <a href="docs/screenshots/06-settings-video-tab-scrolled1.png"><img src="docs/screenshots/06-settings-video-tab-scrolled1.png" alt="Video — Scaling & Margins" width="400"></a>
+</p>
+</details>
+
 ### Enabling Higher Resolutions
 
 1. On the phone, enable [Android Auto Developer Mode](https://developer.android.com/training/cars/testing#developer-mode).
@@ -118,6 +158,19 @@ H.264 generally tops out at 1080p for practical phone encoder support. H.265 and
 OpenAutoLink is designed for AAOS displays that are not simple 16:9 rectangles. It reads display dimensions and cutout insets, computes safe areas, and keeps interactive Android Auto UI away from clipped edges while still letting maps and backgrounds fill the available space.
 
 For the 2024 Blazer EV, the bridge is pre-configured with a right-side stable inset in `bridge/sbc/openautolink.env` so interactive elements stay away from the curved bezel.
+
+<details>
+<summary>🖥️ Display & Layout Screenshots</summary>
+<br>
+<p>
+  <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Display Mode & Safe Area" width="400"></a>
+  <a href="docs/screenshots/15-safe-area-editor.png"><img src="docs/screenshots/15-safe-area-editor.png" alt="Safe Area Editor" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/16-content-inset-editor.png"><img src="docs/screenshots/16-content-inset-editor.png" alt="Content Inset Editor" width="400"></a>
+  <a href="docs/screenshots/05-settings-display-tab-scrolled1.png"><img src="docs/screenshots/05-settings-display-tab-scrolled1.png" alt="Display — Features & Toggles" width="400"></a>
+</p>
+</details>
 
 ## What You Need
 
@@ -262,6 +315,23 @@ Active development. Core features are implemented and working on real hardware o
 - Microphone support
 - Steering wheel control forwarding
 - Automatic reconnect
+
+<details>
+<summary>🔍 Diagnostics & Vehicle Data Screenshots</summary>
+<br>
+<p>
+  <a href="docs/screenshots/09-diagnostics-system-tab-top.png"><img src="docs/screenshots/09-diagnostics-system-tab-top.png" alt="Diagnostics — System" width="400"></a>
+  <a href="docs/screenshots/10-diagnostics-network-tab.png"><img src="docs/screenshots/10-diagnostics-network-tab.png" alt="Diagnostics — Network" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/11-diagnostics-bridge-tab.png"><img src="docs/screenshots/11-diagnostics-bridge-tab.png" alt="Diagnostics — Bridge" width="400"></a>
+  <a href="docs/screenshots/12-diagnostics-car-tab-top.png"><img src="docs/screenshots/12-diagnostics-car-tab-top.png" alt="Diagnostics — Car / VHAL" width="400"></a>
+</p>
+<p>
+  <a href="docs/screenshots/12-diagnostics-car-tab-scrolled1.png"><img src="docs/screenshots/12-diagnostics-car-tab-scrolled1.png" alt="Diagnostics — VHAL Property Status" width="400"></a>
+  <a href="docs/screenshots/13-diagnostics-logs-tab.png"><img src="docs/screenshots/13-diagnostics-logs-tab.png" alt="Diagnostics — Logs" width="400"></a>
+</p>
+</details>
 
 ## Known Issues
 
