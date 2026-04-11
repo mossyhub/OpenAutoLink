@@ -213,6 +213,8 @@ object ControlMessageSerializer {
                     put("bar_left", message.barLeft)
                     put("bar_right", message.barRight)
                 }
+                put("protocol_version", ControlMessage.PROTOCOL_VERSION)
+                put("min_protocol_version", ControlMessage.MIN_PROTOCOL_VERSION)
             }
 
             is ControlMessage.Touch -> buildJsonObject {

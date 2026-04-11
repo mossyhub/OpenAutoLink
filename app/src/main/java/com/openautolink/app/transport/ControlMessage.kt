@@ -15,6 +15,8 @@ sealed class ControlMessage {
     companion object {
         /** App's protocol version — increment when adding breaking changes. */
         const val PROTOCOL_VERSION = 1
+        /** Minimum bridge protocol version this app supports. */
+        const val MIN_PROTOCOL_VERSION = 1
     }
 
     // Bridge → App
