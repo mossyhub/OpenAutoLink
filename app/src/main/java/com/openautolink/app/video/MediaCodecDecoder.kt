@@ -90,11 +90,10 @@ class MediaCodecDecoder(
     @Volatile private var lastQueuedPtsMs = -1L
     private var consecutiveDrops = 0
 
-    // H.265 warm-up: skip rendering the first few output frames after codec config.
-    // Qualcomm c2.qti.hevc.decoder may output green/corrupt frames while its
-    // reference picture buffer and color pipeline initialize.
-    private var warmupFramesRemaining = 0
-    private val HEVC_WARMUP_FRAMES = 2
+    // H.265 render gate: don't render output until after the first keyframe has
+    // been queued to the decoder. Prevents green/blocky frames from P-frames
+    // decoded before the IDR reference is established.
+    @Volatile private var renderingEnabled = false
 
     override fun attach(surface: Surface, width: Int, height: Int) {
         val surfaceChanged = this.surface !== surface
@@ -285,6 +284,7 @@ class MediaCodecDecoder(
         }
         Log.i(TAG, "IDR keyframe received: ${frame.data.size} bytes")
         receivedIdr = true
+        renderingEnabled = true  // Safe to render — IDR establishes clean reference
         _needsKeyframe = false
         _needsKeyframeFlow.value = false
         cachedIdrFrame = null  // Clear cache — we have a live IDR now
@@ -407,7 +407,7 @@ class MediaCodecDecoder(
             codec = mc
             firstFrameRendered = false
             decodeStartTimeMs = System.currentTimeMillis()
-            warmupFramesRemaining = if (mimeType == CodecSelector.MIME_H265) HEVC_WARMUP_FRAMES else 0
+            renderingEnabled = false  // Don't render until first IDR is queued
 
             // Start output drain thread
             startDrainThread(mc)
@@ -457,6 +457,7 @@ class MediaCodecDecoder(
             codec = mc
             firstFrameRendered = false
             decodeStartTimeMs = System.currentTimeMillis()
+            renderingEnabled = true  // VP9/AV1: no reference dependency, render immediately
 
             startDrainThread(mc)
 
@@ -548,11 +549,10 @@ class MediaCodecDecoder(
                     val outputIndex = mc.dequeueOutputBuffer(bufferInfo, OUTPUT_TIMEOUT_US)
                     when {
                         outputIndex >= 0 -> {
-                            // H.265 warmup: skip first few frames (may be green/corrupt)
-                            if (warmupFramesRemaining > 0) {
-                                mc.releaseOutputBuffer(outputIndex, false) // don't render
-                                warmupFramesRemaining--
-                                Log.d(TAG, "Skipped H.265 warmup frame ($warmupFramesRemaining remaining)")
+                            if (!renderingEnabled) {
+                                // Don't render until first IDR is decoded — prevents
+                                // green/blocky frames from stale P-frames
+                                mc.releaseOutputBuffer(outputIndex, false)
                             } else {
                                 // Render to surface — this is live UI state, render immediately
                                 mc.releaseOutputBuffer(outputIndex, true)
@@ -611,9 +611,9 @@ class MediaCodecDecoder(
         if (codec != null) codecResetCount++
         codec = null
         receivedIdr = false
+        renderingEnabled = false
         lastQueuedPtsMs = -1
         consecutiveDrops = 0
-        warmupFramesRemaining = 0
     }
 
     /**
