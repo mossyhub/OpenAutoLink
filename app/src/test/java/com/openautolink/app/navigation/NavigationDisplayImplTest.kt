@@ -106,4 +106,26 @@ class NavigationDisplayImplTest {
         assertEquals(100, state.distanceMeters)
         assertEquals("Second St", state.roadName)
     }
+
+    @Test
+    fun `onNavState uses bridge display distance for decimal miles`() {
+        val display = NavigationDisplayImpl()
+
+        display.onNavState(
+            ControlMessage.NavState(
+                maneuver = "turn_right",
+                distanceMeters = 4506,
+                road = "NE 40th St W",
+                etaSeconds = 480,
+                displayDistance = "2.8",
+                displayDistanceUnit = "miles_p1"
+            )
+        )
+
+        val state = display.currentManeuver.value
+        assertNotNull(state)
+        assertEquals("2.8 mi", state!!.formattedDistance)
+        assertEquals("2.8", state.displayDistance)
+        assertEquals("miles_p1", state.displayDistanceUnit)
+    }
 }

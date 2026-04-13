@@ -3596,13 +3596,14 @@ static std::string map_lane_shape(int shape) {
 // Map DistanceUnits enum to wire string
 static std::string map_distance_unit(int unit) {
     switch (unit) {
-        case 0: return "meters";
-        case 1: return "kilometers";
-        case 2: return "kilometers_p1";
-        case 3: return "miles";
-        case 4: return "miles_p1";
-        case 5: return "feet";
-        case 6: return "yards";
+        // AA navigation DistanceUnits starts at 1; 0 is UNKNOWN_DISTANCE_UNIT.
+        case 1: return "meters";
+        case 2: return "kilometers";
+        case 3: return "kilometers_p1";
+        case 4: return "miles";
+        case 5: return "miles_p1";
+        case 6: return "feet";
+        case 7: return "yards";
         default: return "unknown";
     }
 }
