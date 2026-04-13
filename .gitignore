@@ -36,6 +36,18 @@ openautolink-headless
 Thumbs.db
 desktop.ini
 
+# Captures and local reverse-engineering artifacts
+*.btsnoop
+external/carlink_native_ref/
+tmp_cpc200/
+scripts/*.armv7
+scripts/hci_sniff
+scripts/hci_sniff.c
+scripts/hci_sniff2
+scripts/i2cscan
+scripts/mfi_read
+scripts/mfi_read2
+
 # Keys/secrets
 *.keystore
 *.jks
