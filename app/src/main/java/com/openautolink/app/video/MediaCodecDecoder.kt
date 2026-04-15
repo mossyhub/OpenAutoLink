@@ -36,7 +36,6 @@ class MediaCodecDecoder(
         private const val INPUT_TIMEOUT_BEHIND_US = 5000L // 5ms — shorter when catching up
         private const val OUTPUT_TIMEOUT_US = 1000L // 1ms timeout for output drain
         private const val STATS_INTERVAL_MS = 500L
-        private const val FRESH_IDR_TIMEOUT_MS = 2000L // fallback: enable rendering if fresh IDR never arrives
     }
 
     private val _decoderState = MutableStateFlow(DecoderState.IDLE)
@@ -91,14 +90,10 @@ class MediaCodecDecoder(
     @Volatile private var lastQueuedPtsMs = -1L
     private var consecutiveDrops = 0
 
-    // Render gate: don't render output until the decoder has a valid IDR reference.
-    // After codec reset, require TWO IDRs before rendering:
-    //  1st IDR: might be stale cached/replayed from bridge — primes decoder, no render
-    //  2nd IDR: fresh from phone (triggered by VideoFocusIndication) — render enabled
-    // This prevents green/blocky artifacts from P-frames decoded against a stale reference.
+    // H.265 render gate: don't render output until after the first keyframe has
+    // been queued to the decoder. Prevents green/blocky frames from P-frames
+    // decoded before the IDR reference is established.
     @Volatile private var renderingEnabled = false
-    @Volatile private var idrCountSinceReset = 0
-    @Volatile private var firstIdrTimeMs = 0L
 
     override fun attach(surface: Surface, width: Int, height: Int) {
         val surfaceChanged = this.surface !== surface
@@ -289,27 +284,10 @@ class MediaCodecDecoder(
         }
         Log.i(TAG, "IDR keyframe received: ${frame.data.size} bytes")
         receivedIdr = true
+        renderingEnabled = true  // Safe to render — IDR establishes clean reference
         _needsKeyframe = false
         _needsKeyframeFlow.value = false
         cachedIdrFrame = null  // Clear cache — we have a live IDR now
-
-        // Two-IDR gate: after codec reset (renderingEnabled=false for NAL codecs),
-        // don't render until the second IDR. The first might be stale cached/replayed
-        // from the bridge. The second is a fresh IDR from the phone, triggered by
-        // the bridge's VideoFocusIndication in response to our keyframe_request.
-        if (!renderingEnabled) {
-            idrCountSinceReset++
-            if (idrCountSinceReset >= 2) {
-                renderingEnabled = true
-                Log.i(TAG, "Fresh IDR received (count=$idrCountSinceReset) — rendering enabled")
-                DiagnosticLog.i("video", "Fresh IDR — rendering enabled")
-            } else {
-                firstIdrTimeMs = System.currentTimeMillis()
-                Log.i(TAG, "Post-reset IDR (count=$idrCountSinceReset) — priming decoder, awaiting fresh keyframe")
-                DiagnosticLog.i("video", "Post-reset IDR — priming, awaiting fresh")
-            }
-        }
-
         queueFrame(frame)
     }
 
@@ -318,14 +296,6 @@ class MediaCodecDecoder(
             framesDropped.incrementAndGet()
             updateDropStats()
             return
-        }
-        // Timeout fallback: if fresh IDR hasn't arrived within 2s after the first
-        // post-reset IDR, enable rendering anyway (better late artifacts than black screen)
-        if (!renderingEnabled && firstIdrTimeMs > 0 &&
-            System.currentTimeMillis() - firstIdrTimeMs > FRESH_IDR_TIMEOUT_MS) {
-            Log.w(TAG, "Timed out waiting for fresh IDR (${System.currentTimeMillis() - firstIdrTimeMs}ms) — enabling rendering")
-            DiagnosticLog.w("video", "Fresh IDR timeout — forcing render enable")
-            renderingEnabled = true
         }
         if (codec == null) {
             framesDropped.incrementAndGet()
@@ -428,18 +398,15 @@ class MediaCodecDecoder(
             val mc = MediaCodec.createByCodecName(decoderName)
             mc.configure(format, surface, null, 0)
             mc.start()
-            if (scalingMode == "crop") {
-                // Use SCALE_TO_FIT — Qualcomm c2.qti may preserve aspect ratio
-                // (uniform scale) rather than stretching to fill both axes
-                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
-                catch (_: Exception) {}
-            }
+            // Always use SCALE_TO_FIT — Qualcomm c2.qti decoders stretch
+            // non-uniformly with the default (SCALE_TO_FIT_WITH_CROPPING),
+            // making circles into ovals. SCALE_TO_FIT preserves aspect ratio.
+            try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
+            catch (_: Exception) {}
             codec = mc
             firstFrameRendered = false
             decodeStartTimeMs = System.currentTimeMillis()
-            renderingEnabled = false  // Don't render until second IDR (fresh from phone)
-            idrCountSinceReset = 0
-            firstIdrTimeMs = 0L
+            renderingEnabled = false  // Don't render until first IDR is queued
 
             // Start output drain thread
             startDrainThread(mc)
@@ -482,10 +449,8 @@ class MediaCodecDecoder(
             val mc = MediaCodec.createByCodecName(decoderName)
             mc.configure(format, surface, null, 0)
             mc.start()
-            if (scalingMode == "crop") {
-                try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
-                catch (_: Exception) {}
-            }
+            try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
+            catch (_: Exception) {}
             codec = mc
             firstFrameRendered = false
             decodeStartTimeMs = System.currentTimeMillis()
@@ -644,8 +609,6 @@ class MediaCodecDecoder(
         codec = null
         receivedIdr = false
         renderingEnabled = false
-        idrCountSinceReset = 0
-        firstIdrTimeMs = 0L
         lastQueuedPtsMs = -1
         consecutiveDrops = 0
     }
