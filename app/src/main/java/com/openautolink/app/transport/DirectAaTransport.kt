@@ -7,6 +7,7 @@ import com.openautolink.app.diagnostics.DiagnosticLog
 import com.openautolink.app.video.VideoFrame
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -290,7 +291,9 @@ class DirectAaTransport(private val scope: CoroutineScope) {
         Log.i(TAG, "Starting aasdk with fd=$fd ${sessionWidth}x${sessionHeight}@${sessionFps}fps dpi=$sessionDpi")
 
         // Transition to PHONE_CONNECTED happens when aasdk calls onPhoneConnected callback
-        // Start monitoring control messages for state transitions
+        // Use a CompletableDeferred to block until the session ends (onPhoneDisconnected)
+        val sessionDone = CompletableDeferred<Unit>()
+
         val controlMonitorJob = scope.launch {
             AasdkJni.controlMessages.collect { message ->
                 when (message) {
@@ -298,7 +301,7 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                         _connectionState.value = ConnectionState.PHONE_CONNECTED
                     }
                     is ControlMessage.PhoneDisconnected -> {
-                        // Session ended — runRelaySession will return and reconnect loop restarts
+                        sessionDone.complete(Unit)
                     }
                     else -> {}
                 }
@@ -315,8 +318,11 @@ class DirectAaTransport(private val scope: CoroutineScope) {
         }
 
         try {
-            // 5. Run aasdk (blocks on IO dispatcher until session ends)
+            // 5. Start aasdk (non-blocking — spawns io_service thread)
             AasdkJni.startSessionWithFd(fd, sessionWidth, sessionHeight, sessionFps, sessionDpi)
+
+            // Wait for session to end (onPhoneDisconnected fires sessionDone)
+            sessionDone.await()
         } finally {
             controlMonitorJob.cancel()
             videoMonitorJob.cancel()
@@ -335,17 +341,41 @@ class DirectAaTransport(private val scope: CoroutineScope) {
     /**
      * Extract the native file descriptor from a Socket via reflection.
      * Required to pass the connected socket to aasdk via JNI.
+     *
+     * Android uses SocksSocketImpl which wraps PlainSocketImpl.
+     * Walk the class hierarchy to find the 'fd' field.
      */
     private fun getSocketFd(socket: Socket): Int {
         val implField = Socket::class.java.getDeclaredField("impl")
         implField.isAccessible = true
         val impl = implField.get(socket)
-        val fdField = impl.javaClass.getDeclaredField("fd")
+
+        // Walk up the class hierarchy to find 'fd' (SocksSocketImpl -> AbstractPlainSocketImpl)
+        var cls: Class<*>? = impl.javaClass
+        var fdField: java.lang.reflect.Field? = null
+        while (cls != null && fdField == null) {
+            try {
+                fdField = cls.getDeclaredField("fd")
+            } catch (_: NoSuchFieldException) {
+                cls = cls.superclass
+            }
+        }
+        if (fdField == null) throw NoSuchFieldException("fd not found in ${impl.javaClass.name} hierarchy")
+
         fdField.isAccessible = true
         val fd = fdField.get(impl) as java.io.FileDescriptor
-        val fdIntField = java.io.FileDescriptor::class.java.getDeclaredField("fd")
-        fdIntField.isAccessible = true
-        return fdIntField.getInt(fd)
+
+        // FileDescriptor field name varies: "fd" on older Android, "descriptor" on newer
+        val fdInt = try {
+            val f = java.io.FileDescriptor::class.java.getDeclaredField("descriptor")
+            f.isAccessible = true
+            f.getInt(fd)
+        } catch (_: NoSuchFieldException) {
+            val f = java.io.FileDescriptor::class.java.getDeclaredField("fd")
+            f.isAccessible = true
+            f.getInt(fd)
+        }
+        return fdInt
     }
 
     /** Send a JSON control message to the bridge via the control channel. */
