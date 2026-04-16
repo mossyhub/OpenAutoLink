@@ -199,11 +199,19 @@ class SessionManager(
         val t = DirectAaTransport(scope)
         transport = t
 
-        // Configure session parameters from DataStore prefs (read at start, not sent to bridge)
-        t.sessionWidth = 1920  // TODO: resolve from aa_resolution pref
-        t.sessionHeight = 1080
-        t.sessionFps = 60
-        t.sessionDpi = 160
+        // Configure session parameters from DataStore prefs
+        val ctx = context
+        if (ctx != null) {
+            val prefs = AppPreferences.getInstance(ctx)
+            val resolution = kotlinx.coroutines.runBlocking { prefs.aaResolution.first() }
+            val dpi = kotlinx.coroutines.runBlocking { prefs.aaDpi.first() }
+            val fps = kotlinx.coroutines.runBlocking { prefs.videoFps.first() }
+            val (w, h) = resolveResolution(resolution)
+            t.sessionWidth = w
+            t.sessionHeight = h
+            t.sessionFps = fps
+            t.sessionDpi = dpi
+        }
 
         // Create mic capture manager -- sends PCM via aasdk JNI
         _micCaptureManager?.release()
@@ -563,6 +571,16 @@ class SessionManager(
             }
             else -> {}
         }
+    }
+
+    /** Map resolution preference string to width/height for aasdk. */
+    private fun resolveResolution(resolution: String): Pair<Int, Int> = when (resolution) {
+        "480p" -> 800 to 480
+        "720p" -> 1280 to 720
+        "1080p" -> 1920 to 1080
+        "1440p" -> 2560 to 1440
+        "4k" -> 3840 to 2160
+        else -> 1920 to 1080
     }
 }
 

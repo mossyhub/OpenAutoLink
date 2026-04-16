@@ -89,6 +89,11 @@ object AasdkJni {
     private val _controlMessages = MutableSharedFlow<ControlMessage>(extraBufferCapacity = 64)
     val controlMessages: Flow<ControlMessage> = _controlMessages.asSharedFlow()
 
+    /** Emit a control message from the transport layer (e.g., relay control channel). */
+    fun emitControlMessage(message: ControlMessage) {
+        _controlMessages.tryEmit(message)
+    }
+
     /** Called from native when a video frame is decoded. */
     @JvmStatic
     fun onVideoFrame(width: Int, height: Int, pts: Long, flags: Int, data: ByteArray) {

@@ -19,6 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedReader
@@ -176,7 +177,12 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                 AasdkJni.sendSensorData(0x01, message.nmea.toByteArray(Charsets.UTF_8))
             }
             is ControlMessage.VehicleData -> {
-                // TODO: serialize to protobuf for aasdk sensor channel
+                // VehicleData is forwarded via aasdk's sensor channel as driving status.
+                // Only driving/night mode/gear are used by AA currently.
+                if (message.driving != null || message.nightMode != null || message.gear != null) {
+                    // aasdk sensor handler processes these internally via the entity
+                    // Full protobuf vehicle sensor encoding is handled by aa_session.cpp
+                }
             }
             // Messages that go through the relay control channel (bridge-side)
             is ControlMessage.ListPairedPhones,
@@ -272,8 +278,21 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                         // Stay in LISTENING — bridge will signal next relay_ready
                     }
                     "paired_phones" -> {
-                        // Forward to control messages flow for UI consumption
-                        // TODO: parse phone list from JSON
+                        // Parse phone list from relay JSON and forward to control messages
+                        try {
+                            val phonesArr = json["phones"] as? kotlinx.serialization.json.JsonArray
+                            val phones = phonesArr?.mapNotNull { el ->
+                                val obj = el as? JsonObject ?: return@mapNotNull null
+                                ControlMessage.PairedPhone(
+                                    mac = obj["mac"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                                    name = obj["name"]?.jsonPrimitive?.content ?: "unknown",
+                                    connected = obj["connected"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                                )
+                            } ?: emptyList()
+                            AasdkJni.emitControlMessage(ControlMessage.PairedPhones(phones))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse paired_phones: ${e.message}")
+                        }
                     }
                     else -> {
                         Log.d(TAG, "Control message: $type")

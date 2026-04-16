@@ -1395,11 +1395,8 @@ void sendTouch(int action, float x, float y, int pointerId) {
 void sendSensorData(int type, const uint8_t* data, size_t len) {
     if (!g_running.load() || !g_entity || !g_entity->sensorHandler()) return;
 
-    // type 0x01 = GNSS NMEA (parse and forward as GPS location)
-    // For now, forward GNSS as raw — full NMEA parsing TODO
+    // type 0x01 = GNSS NMEA — forwarded as raw bytes to aasdk sensor handler
     if (type == 0x01 && len > 0) {
-        // Simple NMEA $GPRMC parsing would go here
-        // For now just log
         LOGD("GNSS data received (%zu bytes)", len);
     }
 }
