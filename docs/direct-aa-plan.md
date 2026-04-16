@@ -3,18 +3,18 @@
 **Branch:** `feature/direct-aa`
 **Scope:** This branch converts the app to direct-mode-only. No toggle, no bridge mode fallback.
 
-**Status:** Phase 1+2 complete (commit `9b7b942b`). Phase 3 next.
+**Status:** All 8 phases complete. Live-tested on Orange Pi Zero2 + OnePlus 13 phone + AAOS emulator.
 
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1. Remove Bridge Code | ✅ Done | All OAL code removed, clean compile, tests pass |
-| 2. NDK/JNI Build | ✅ Done | arm64-v8a full, x86_64 stub. `startSessionWithFd` added |
+| 2. NDK/JNI Build | ✅ Done | arm64-v8a + x86_64 full aasdk. `startSessionWithFd` added |
 | 3. Direct AA Transport | ✅ Done | `DirectAaTransport.kt` with relay + control + reconnect |
 | 4. Wire Up SessionManager | ✅ Done | All forwarders routed through aasdk JNI |
-| 5. Settings UI Cleanup | ✅ Mostly done | Completed in Phase 1, phone mgmt via relay TODO |
-| 6. Bridge Relay Binary | ✅ Done | `openautolink-relay` — 67KB stripped, zero deps |
-| 7. Bridge Deployment | ⬜ | Depends on Phase 6 |
-| 8. Remove Old Bridge Code | ⬜ | Final cleanup + doc sweep |
+| 5. Settings UI Cleanup | ✅ Done | Phone mgmt wired via relay control channel |
+| 6. Bridge Relay Binary | ✅ Done | `openautolink-relay` -- 67KB stripped, zero deps |
+| 7. Bridge Deployment | ✅ Done | Scripts, services, env, CI all updated for relay |
+| 8. Remove Old Bridge Code | ✅ Done | ~14,800 lines deleted, docs rewritten |
 
 ## Goal
 
