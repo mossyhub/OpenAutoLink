@@ -55,7 +55,6 @@ The current design is purpose-built for this setup:
 - Instrument-cluster integration for turn-by-turn and media metadata
 - Multi-phone pairing and one-tap switching
 - Automatic reconnect after car sleep / power loss
-- Bridge auto-update from GitHub Releases
 - Fully open-source app, bridge, protocol, and deployment scripts
 
 <details>
@@ -66,8 +65,8 @@ The current design is purpose-built for this setup:
   <a href="docs/screenshots/02-settings-connection-tab-top.png"><img src="docs/screenshots/02-settings-connection-tab-top.png" alt="Settings — Connection" width="400"></a>
 </p>
 <p>
-  <a href="docs/screenshots/03-settings-phones-tab.png"><img src="docs/screenshots/03-settings-phones-tab.png" alt="Settings — Phones" width="400"></a>
-  <a href="docs/screenshots/04-settings-bridge-tab-top.png"><img src="docs/screenshots/04-settings-bridge-tab-top.png" alt="Settings — Bridge" width="400"></a>
+  <a href="docs/screenshots/03-settings-phones-tab.png"><img src="docs/screenshots/03-settings-phones-tab.png" alt="Settings -- Phones" width="400"></a>
+  <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Settings -- Display" width="400"></a>
 </p>
 <p>
   <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Settings — Display" width="400"></a>
@@ -84,16 +83,16 @@ The current design is purpose-built for this setup:
 An SBC bridges the phone's Android Auto session to the car over WiFi + Ethernet. The car runs the OpenAutoLink app and the SBC runs the bridge. [DietPi](https://dietpi.com/) is the recommended OS — it is lightweight, boots quickly from eMMC, and supports a wide range of ARM64 boards out of the box.
 
 ```
-Android Phone ──WiFi TCP:5277──▶                    ┌── Control :5288 (JSON lines)
-                  BT pairing    ▶ SBC Bridge ──Eth──▶├── Video   :5290 (binary frames)
-                                                    └── Audio   :5289 (binary frames)
+Android Phone ──WiFi TCP:5277──▶                    ┌── Control :5288 (JSON signaling)
+                  BT pairing    ▶ SBC Relay  ──Eth──▶└── Relay   :5291 (raw byte splice)
                                                           ▼
                                                   Car Head Unit App (AAOS)
-                                                    Renders video/audio
-                                                    Forwards touch/GNSS/VHAL
+                                                    aasdk via NDK/JNI
+                                                    TLS + protobuf + AA protocol
+                                                    MediaCodec + AudioTrack
 ```
 
-The short version is simple: the phone talks Android Auto to the SBC, and the SBC talks OpenAutoLink's TCP protocol to the AAOS app.
+The bridge is a thin TCP relay -- it does **zero** AA protocol processing. aasdk runs inside the AAOS app via NDK/JNI, handling TLS, protobuf, video, and audio directly. The relay just splices raw bytes between the phone's inbound connection and the app's outbound connection.
 
 ## Why Not a USB Adapter?
 
