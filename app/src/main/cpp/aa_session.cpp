@@ -1000,10 +1000,7 @@ void JniAutoEntity::onServiceDiscoveryRequest(
         ? aap_protobuf::service::control::message::DRIVER_POSITION_RIGHT
         : aap_protobuf::service::control::message::DRIVER_POSITION_LEFT);
 
-    // Pixel aspect ratio for wide displays (AA pre-compensates rendering)
-    if (config_.pixelAspect > 0) {
-        resp.set_pixel_aspect_ratio(config_.pixelAspect);
-    }
+    // Pixel aspect ratio is set per-video-config in UiConfig, not at the SDR level
 
     int aaW, aaH;
     tierToDimensions(config_.resolutionTier, aaW, aaH);
@@ -1028,16 +1025,13 @@ void JniAutoEntity::onServiceDiscoveryRequest(
       vc->set_codec_resolution(static_cast<aap_protobuf::service::media::sink::message::VideoCodecResolutionType>(config_.resolutionTier));
       vc->set_frame_rate(fps);
       vc->set_density(config_.dpi);
-      // UI config: margins + insets for display-aware AA layout
-      auto* ui = vc->mutable_ui_config();
-      if (config_.marginWidth > 0 || config_.marginHeight > 0 ||
-          config_.safeLeft > 0 || config_.safeRight > 0) {
-          auto* margins = ui->mutable_margins();
-          margins->set_top(config_.marginHeight / 2);
-          margins->set_bottom(config_.marginHeight / 2);
-          margins->set_left(config_.marginWidth / 2);
-          margins->set_right(config_.marginWidth / 2);
+      if (config_.pixelAspect > 0) {
+          vc->set_pixel_aspect_ratio_e4(config_.pixelAspect);
       }
+      if (config_.marginWidth > 0) vc->set_width_margin(config_.marginWidth);
+      if (config_.marginHeight > 0) vc->set_height_margin(config_.marginHeight);
+      // UI config: insets for display-aware AA layout
+      auto* ui = vc->mutable_ui_config();
       if (config_.safeTop > 0 || config_.safeBottom > 0 ||
           config_.safeLeft > 0 || config_.safeRight > 0) {
           auto* si = ui->mutable_stable_content_insets();

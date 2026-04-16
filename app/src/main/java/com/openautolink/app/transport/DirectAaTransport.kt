@@ -200,7 +200,8 @@ class DirectAaTransport(private val scope: CoroutineScope) {
             // Messages that go through the relay control channel (bridge-side)
             is ControlMessage.ListPairedPhones,
             is ControlMessage.SwitchPhone,
-            is ControlMessage.ForgetPhone -> {
+            is ControlMessage.ForgetPhone,
+            is ControlMessage.RestartServices -> {
                 sendControlJson(message)
             }
             is ControlMessage.AppLog,
@@ -424,6 +425,7 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                 is ControlMessage.ListPairedPhones -> """{"type":"list_paired_phones"}"""
                 is ControlMessage.SwitchPhone -> """{"type":"switch_phone","mac":"${message.mac}"}"""
                 is ControlMessage.ForgetPhone -> """{"type":"forget_phone","mac":"${message.mac}"}"""
+                is ControlMessage.RestartServices -> """{"type":"restart_services","bluetooth":"${message.bluetooth}","wireless":"${message.wireless}"}"""
                 is ControlMessage.AppLog -> """{"type":"app_log","ts":${message.ts},"level":"${message.level}","tag":"${message.tag}","msg":"${message.msg.replace("\"", "\\\"")}"}"""
                 is ControlMessage.AppTelemetry -> """{"type":"app_telemetry","ts":${message.ts}}"""
                 else -> return

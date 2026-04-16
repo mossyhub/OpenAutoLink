@@ -307,6 +307,15 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         connect()
     }
 
+    /** Tell bridge to restart BT so phone reconnects with new AA settings. */
+    fun restartBridgeServices() {
+        viewModelScope.launch {
+            sessionManager.sendControlMessage(
+                com.openautolink.app.transport.ControlMessage.RestartServices(bluetooth = true)
+            )
+        }
+    }
+
     fun disconnect() {
         sessionManager.stop()
     }

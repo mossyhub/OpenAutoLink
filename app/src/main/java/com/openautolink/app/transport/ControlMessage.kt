@@ -203,6 +203,11 @@ sealed class ControlMessage {
         val session: com.openautolink.app.diagnostics.SessionTelemetry? = null,
         val cluster: com.openautolink.app.diagnostics.ClusterTelemetry? = null
     ) : ControlMessage()
+
+    data class RestartServices(
+        val wireless: Boolean = false,
+        val bluetooth: Boolean = true
+    ) : ControlMessage()
 }
 
 enum class AudioPurpose {

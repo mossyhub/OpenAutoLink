@@ -55,6 +55,8 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 viewModel = settingsViewModel,
                 sessionState = projectionUiState.sessionState,
                 onSaveAndConnect = {
+                    // Restart bridge BT so phone reconnects with new AA settings
+                    projectionViewModel.restartBridgeServices()
                     projectionViewModel.reconnect()
                     navController.popBackStack()
                 },

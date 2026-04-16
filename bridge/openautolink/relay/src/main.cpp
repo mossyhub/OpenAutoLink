@@ -321,6 +321,21 @@ static void handle_control_line(const std::string& line) {
     } else if (type == "app_telemetry") {
         // Forward to stderr
         std::cerr << "[app:telemetry] " << line << std::endl;
+    } else if (type == "restart_services") {
+        // Restart BT (and optionally wireless) to trigger phone reconnection.
+        // Used by "Save & Restart" in the app after settings changes that
+        // require a new AA session (resolution, codec, DPI, insets, etc.)
+        std::string bt = json_extract_string(line, "bluetooth");
+        std::string wifi = json_extract_string(line, "wireless");
+        std::cerr << "[relay] restart_services: bt=" << bt << " wifi=" << wifi << std::endl;
+        if (bt == "true" || bt == "1") {
+            int r = system("systemctl restart openautolink-bt 2>/dev/null");
+            std::cerr << "[relay] restarted openautolink-bt (exit=" << r << ")" << std::endl;
+        }
+        if (wifi == "true" || wifi == "1") {
+            int r = system("systemctl restart openautolink-wireless 2>/dev/null");
+            std::cerr << "[relay] restarted openautolink-wireless (exit=" << r << ")" << std::endl;
+        }
     } else {
         std::cerr << "[relay] unknown control message type: " << type << std::endl;
     }
