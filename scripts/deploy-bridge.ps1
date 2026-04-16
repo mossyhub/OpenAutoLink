@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$BinaryPath = Join-Path $RepoRoot "build-bridge-arm64\openautolink-headless-stripped"
+$BinaryPath = Join-Path $RepoRoot "build-bridge-arm64\openautolink-relay-stripped"
 $SbcDir = Join-Path $RepoRoot "bridge\sbc"
 # Use the install-time hostname by default; fall back to user@host if SbcUser specified
 $Target = if ($SbcUser) { "${SbcUser}@${SbcHost}" } else { $SbcHost }
@@ -68,7 +68,7 @@ ssh $Target "sudo systemctl stop openautolink.service 2>/dev/null; true"
 # ── Step 3: Full provisioning (only with -Full) ──────────────────────
 if ($Full) {
     Write-Host ">>> Installing system packages..." -ForegroundColor Yellow
-    Invoke-Ssh "sudo apt-get update -qq && sudo apt-get install -y -qq hostapd dnsmasq bluez libbluetooth3 python3-dbus python3-gi avahi-daemon avahi-utils openssl"
+    Invoke-Ssh "sudo apt-get update -qq && sudo apt-get install -y -qq hostapd dnsmasq bluez python3-dbus python3-gi avahi-daemon avahi-utils"
     Write-Host ""
 
     Write-Host ">>> Creating directory structure..." -ForegroundColor Yellow
@@ -97,13 +97,8 @@ if ($Full) {
         }
     }
 
-    # Avahi mDNS service
-    $avahiSvc = Join-Path $RepoRoot "bridge\openautolink\headless\avahi\openautolink.service"
-    if (Test-Path $avahiSvc) {
-        $filesToDeploy += @{ Local = $avahiSvc; Final = "/etc/avahi/services/openautolink.service" }
-    }
-
-    # Env config (only if missing on SBC)
+    # Avahi mDNS service — no longer needed (relay doesn't publish mDNS)
+    # Old headless installations may have this — clean up
     $envExists = ssh $Target "test -f /etc/openautolink.env && echo 'exists' || echo 'missing'"
     if ($envExists.Trim() -eq "missing") {
         $filesToDeploy += @{ Local = "$SbcDir\openautolink.env"; Final = "/etc/openautolink.env" }
@@ -133,9 +128,10 @@ if ($Full) {
         Write-Host "  $($f.Final)" -ForegroundColor DarkGray
     }
 
-    # Note: aasdk has embedded TLS certs (JVC Kenwood AA cert) that work with all phones.
-    # Do NOT generate custom certs — custom self-signed certs cause SSL handshake failures.
-    # If /etc/aasdk/ exists with bad certs, remove it so aasdk falls back to embedded ones.
+    # Note: aasdk runs inside the app — no certs needed on the bridge.
+
+    # Clean up old headless files
+    Invoke-Ssh "sudo rm -f /opt/openautolink/bin/openautolink-headless /opt/openautolink/bin/openautolink-headless.bak /opt/openautolink/bin/apply-bridge-update.sh /etc/avahi/services/openautolink.service 2>/dev/null; true"
 
     # Enable services
     Write-Host ">>> Enabling systemd services..." -ForegroundColor Yellow
@@ -148,16 +144,10 @@ Write-Host ">>> Deploying binary..." -ForegroundColor Yellow
 # Ensure bin dir exists (for non-Full deploys after a manual mkdir)
 ssh $Target "sudo mkdir -p /opt/openautolink/bin" 2>$null
 # SCP to /tmp then sudo mv (lance user can't write to /opt directly)
-scp $BinaryPath "${Target}:/tmp/openautolink-headless"
+scp $BinaryPath "${Target}:/tmp/openautolink-relay"
 if ($LASTEXITCODE -ne 0) { throw "SCP binary failed" }
-Invoke-Ssh "sudo mv /tmp/openautolink-headless /opt/openautolink/bin/openautolink-headless && sudo chmod +x /opt/openautolink/bin/openautolink-headless"
+Invoke-Ssh "sudo mv /tmp/openautolink-relay /opt/openautolink/bin/openautolink-relay && sudo chmod +x /opt/openautolink/bin/openautolink-relay"
 
-# Always deploy the update apply script alongside the binary
-$applyScript = Join-Path $SbcDir "apply-bridge-update.sh"
-if (Test-Path $applyScript) {
-    scp $applyScript "${Target}:/tmp/apply-bridge-update.sh"
-    Invoke-Ssh "sudo mv /tmp/apply-bridge-update.sh /opt/openautolink/bin/apply-bridge-update.sh && sudo sed -i 's/\r$//' /opt/openautolink/bin/apply-bridge-update.sh && sudo chmod +x /opt/openautolink/bin/apply-bridge-update.sh"
-}
 
 # ── Step 5: Start service ─────────────────────────────────────────────
 Write-Host ">>> Starting service..." -ForegroundColor Yellow

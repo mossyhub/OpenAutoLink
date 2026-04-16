@@ -36,27 +36,11 @@ fi
 echo ">>> [1/8] Installing system packages..."
 apt-get update -qq
 
-# Release binaries are dynamically linked against protobuf. Package names vary
-# slightly between Debian/Ubuntu releases, so resolve the runtime package here.
-PROTOBUF_RUNTIME_PKG=""
-for pkg in libprotobuf32t64 libprotobuf32; do
-    if apt-cache show "$pkg" >/dev/null 2>&1; then
-        PROTOBUF_RUNTIME_PKG="$pkg"
-        break
-    fi
-done
-if [ -z "$PROTOBUF_RUNTIME_PKG" ]; then
-    echo "WARNING: Could not find a protobuf runtime package; falling back to libprotobuf-dev" >&2
-    PROTOBUF_RUNTIME_PKG="libprotobuf-dev"
-fi
-
 apt-get install -y -qq \
     hostapd dnsmasq \
-    bluez libbluetooth-dev python3-dbus python3-gi \
+    bluez python3-dbus python3-gi \
     avahi-daemon avahi-utils \
-    curl jq \
-    "$PROTOBUF_RUNTIME_PKG"
-echo "  Protobuf runtime: ${PROTOBUF_RUNTIME_PKG}"
+    curl jq
 echo ""
 
 # ── 2. Download latest release from GitHub ────────────────────────────
@@ -75,11 +59,11 @@ echo "  Latest release: ${LATEST_TAG}"
 RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${LATEST_TAG}"
 RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${LATEST_TAG}"
 
-# Download the bridge binary
-echo "  Downloading bridge binary..."
-if ! curl -fsSL -o "${TMP_DIR}/openautolink-headless" \
-    "${RELEASE_URL}/openautolink-headless"; then
-    echo "ERROR: Failed to download bridge binary." >&2
+# Download the relay binary
+echo "  Downloading relay binary..."
+if ! curl -fsSL -o "${TMP_DIR}/openautolink-relay" \
+    "${RELEASE_URL}/openautolink-relay"; then
+    echo "ERROR: Failed to download relay binary." >&2
     echo "  The release may not have finished building yet." >&2
     echo "  Check: https://github.com/${GITHUB_REPO}/releases/tag/${LATEST_TAG}" >&2
     exit 1
@@ -99,8 +83,7 @@ declare -A SBC_FILES=(
     ["start-wireless.sh"]="bridge/sbc/start-wireless.sh"
     ["stop-wireless.sh"]="bridge/sbc/stop-wireless.sh"
     ["aa_bt_all.py"]="bridge/openautolink/scripts/aa_bt_all.py"
-    ["apply-bridge-update.sh"]="bridge/sbc/apply-bridge-update.sh"
-    ["avahi-openautolink.service"]="bridge/openautolink/headless/avahi/openautolink.service"
+
 )
 
 echo "  Downloading configuration files..."
@@ -114,9 +97,9 @@ echo ">>> [3/8] Installing to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}/bin" "${INSTALL_DIR}/scripts"
 
 # Binary
-cp "${TMP_DIR}/openautolink-headless" "${INSTALL_DIR}/bin/"
-chmod +x "${INSTALL_DIR}/bin/openautolink-headless"
-echo "  Installed openautolink-headless binary"
+cp "${TMP_DIR}/openautolink-relay" "${INSTALL_DIR}/bin/"
+chmod +x "${INSTALL_DIR}/bin/openautolink-relay"
+echo "  Installed openautolink-relay binary"
 
 # Scripts
 for script in run-openautolink.sh setup-network.sh \
@@ -124,11 +107,6 @@ for script in run-openautolink.sh setup-network.sh \
     [ -f "${TMP_DIR}/${script}" ] && cp "${TMP_DIR}/${script}" "${INSTALL_DIR}/"
 done
 chmod +x "${INSTALL_DIR}"/*.sh 2>/dev/null || true
-
-# Update apply script goes in bin/ (called by the bridge binary)
-[ -f "${TMP_DIR}/apply-bridge-update.sh" ] && \
-    cp "${TMP_DIR}/apply-bridge-update.sh" "${INSTALL_DIR}/bin/"
-chmod +x "${INSTALL_DIR}/bin/apply-bridge-update.sh" 2>/dev/null || true
 
 # BT script
 [ -f "${TMP_DIR}/aa_bt_all.py" ] && \
@@ -142,22 +120,14 @@ else
     echo "  /etc/openautolink.env exists — not overwriting"
 fi
 
-# mDNS discovery is published dynamically by openautolink-headless via
-# avahi-publish-service. A static Avahi service file causes a duplicate
-# advertisement and "Local name collision" warnings at runtime.
+# Clean up stale files from old headless installations
 if [ -d /etc/avahi/services ]; then
     rm -f /etc/avahi/services/openautolink.service
-    echo "  Removed stale static Avahi mDNS service (dynamic publish only)"
 fi
-
-# SSL certificates for Android Auto TLS handshake
-# aasdk has embedded certs (JVC Kenwood AA cert) that work with all phones.
-# Do NOT generate custom certs — they cause SSL handshake failures.
-# If /etc/aasdk/ exists with custom certs from a previous install, remove them.
-if [ -d "/etc/aasdk" ]; then
-    echo "  Removing custom certs (aasdk uses embedded certs)"
-    rm -rf "/etc/aasdk"
-fi
+rm -f "${INSTALL_DIR}/bin/openautolink-headless" \
+      "${INSTALL_DIR}/bin/openautolink-headless.bak" \
+      "${INSTALL_DIR}/bin/apply-bridge-update.sh" 2>/dev/null
+rm -rf /etc/aasdk 2>/dev/null
 echo ""
 
 # ── 4. USB gadget + kernel modules (only if not using external-nic) ──
@@ -285,7 +255,7 @@ systemctl start openautolink-network 2>/dev/null || true
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "  Binary:   ${INSTALL_DIR}/bin/openautolink-headless"
+echo "  Binary:   ${INSTALL_DIR}/bin/openautolink-relay"
 echo "  Config:   /etc/openautolink.env"
 echo "  Hostname: openautolink"
 echo "  SSH user: openautolink (passwordless sudo)"

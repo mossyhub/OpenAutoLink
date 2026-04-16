@@ -9,9 +9,9 @@
 |-------|--------|-------|
 | 1. Remove Bridge Code | ✅ Done | All OAL code removed, clean compile, tests pass |
 | 2. NDK/JNI Build | ✅ Done | arm64-v8a full, x86_64 stub. `startSessionWithFd` added |
-| 3. Direct AA Transport | ⬜ Next | `DirectAaTransport.kt` + relay connection |
-| 4. Wire Up SessionManager | ⬜ | Route forwarders through aasdk JNI |
-| 5. Settings UI Cleanup | ⬜ | Mostly done in Phase 1 — remaining: phone management via relay |
+| 3. Direct AA Transport | ✅ Done | `DirectAaTransport.kt` with relay + control + reconnect |
+| 4. Wire Up SessionManager | ✅ Done | All forwarders routed through aasdk JNI |
+| 5. Settings UI Cleanup | ✅ Mostly done | Completed in Phase 1, phone mgmt via relay TODO |
 | 6. Bridge Relay Binary | ✅ Done | `openautolink-relay` — 67KB stripped, zero deps |
 | 7. Bridge Deployment | ⬜ | Depends on Phase 6 |
 | 8. Remove Old Bridge Code | ⬜ | Final cleanup + doc sweep |
@@ -199,24 +199,24 @@ present), x86_64 auto-detects stub mode (no OpenSSL → `OAL_STUB_ONLY=ON`). All
 - Added `.gitignore` exception for `app/src/main/cpp/third_party/openssl/**/*.a` (prebuilt NDK deps)
 - Fixed `JniPhoneStatusHandler` — interface had `onPhoneStatusUpdate()` pure virtual not in original code
 
-### Phase 3: Direct AA Transport
+### Phase 3: Direct AA Transport ✅ DONE
 
-Create `DirectAaTransport.kt` — adapt for outbound relay mode.
+Created `DirectAaTransport.kt` for outbound relay mode (commit `18c7c31c`).
 
 Note: `AasdkJni.kt` was already created in Phase 2.
 
-| Step | Description |
-|------|-------------|
-| 3b | Create `DirectAaTransport.kt` — the sole transport implementation |
-| 3c | Relay connection flow: connect outbound to bridge:5291, hold socket |
-| 3d | Lightweight control connection to bridge:5288 — exchange hello, wait for `relay_ready` |
-| 3e | On `relay_ready`: extract socket fd, call `AasdkJni.startSessionWithFd()` |
-| 3f | JNI callbacks → SharedFlows (videoFrames, audioFrames, controlMessages) |
-| 3g | `sendControlMessage(Touch)` → `AasdkJni.sendTouch()` |
-| 3h | `sendControlMessage(Gnss)` → `AasdkJni.sendSensorData(GNSS, nmea)` |
-| 3i | `sendMicAudio()` → `AasdkJni.sendMicAudio()` |
-| 3j | Reconnect loop: on disconnect, reconnect outbound to bridge and wait again |
-| 3k | `[doc]` **Update** `docs/networking.md` — rewrite "Bridge → Car" section: replace 3-TCP OAL description with single relay socket (5291) + lightweight control (5288). Add relay architecture diagram. Keep Phone → Bridge and SSH sections unchanged |
+| Step | Status | Description |
+|------|--------|-------------|
+| 3b | ✅ | Created `DirectAaTransport.kt` -- connects to bridge control (5288) + relay (5291), waits for `relay_ready`, extracts socket fd via reflection, calls `AasdkJni.startSessionWithFd()` |
+| 3c | ✅ | Relay connection with `createSocket()`, `Network.bindSocket()` for USB Ethernet |
+| 3d | ✅ | Control channel reads JSON lines: `hello`, `phone_bt_connected`, `relay_ready`, `relay_disconnected` |
+| 3e | ✅ | `getSocketFd()` via reflection on `Socket.impl.fd` |
+| 3f | ✅ | Delegates to `AasdkJni` SharedFlows (no extra buffering layer) |
+| 3g | ✅ | `Touch` -> `AasdkJni.sendTouch()`, `Button` -> `AasdkJni.sendButton()` |
+| 3h | ✅ | `Gnss` -> `AasdkJni.sendSensorData(0x01, nmea.toByteArray())` |
+| 3i | ✅ | `sendMicAudio(pcm)` -> `AasdkJni.sendMicAudio(pcm)` |
+| 3j | ✅ | Exponential backoff reconnect (1s-30s), `forceReconnect()` cancels + restarts |
+| 3k | Deferred | `docs/networking.md` update deferred |
 
 State flow: `DISCONNECTED → CONNECTING → LISTENING → PHONE_CONNECTED → STREAMING`
 
@@ -225,19 +225,21 @@ State flow: `DISCONNECTED → CONNECTING → LISTENING → PHONE_CONNECTED → S
 - `PHONE_CONNECTED` — aasdk JNI reports phone connected
 - `STREAMING` — first video frame received
 
-### Phase 4: Wire Up SessionManager
+### Phase 4: Wire Up SessionManager ✅ DONE
 
-| Step | Description |
-|------|-------------|
-| 4a | `SessionManager` creates `DirectAaTransport` (only transport, no factory/toggle) |
-| 4b | GNSS forwarder sends via aasdk JNI (`sendSensorData`) instead of OAL JSON |
-| 4c | Vehicle data forwarder sends via aasdk JNI instead of OAL JSON |
-| 4d | IMU forwarder sends via aasdk JNI instead of OAL JSON |
-| 4e | Mic capture sends via `AasdkJni.sendMicAudio()` instead of `TcpAudioChannel` |
-| 4f | Remote diagnostics sends via relay control channel (bridge:5288 stays for this) |
-| 4g | Video/audio frame collection from JNI SharedFlows — same pattern as before |
-| 4h | Settings (resolution, FPS, DPI, codec) read from DataStore, passed directly to `AasdkJni.startSession*()` — no config_update needed |
-| 4i | `[doc]` **Update** `docs/embedded-knowledge.md` — add NDK/JNI section: aasdk thread model in-app, socket fd relay pattern, JNI callback performance (ByteArray allocation, AttachCurrentThread). Keep existing video/audio/VHAL hardware knowledge unchanged |
+All forwarders now route through `DirectAaTransport` -> aasdk JNI (commit `18c7c31c`).
+
+| Step | Status | Description |
+|------|--------|-------------|
+| 4a | ✅ | `SessionManager` creates `DirectAaTransport`, calls `t.connect(host)`. Stub flows removed |
+| 4b | ✅ | GNSS forwarder -> `transport.sendControlMessage(Gnss)` -> `AasdkJni.sendSensorData()` |
+| 4c | ✅ | Vehicle data forwarder -> `transport.sendControlMessage(VehicleData)` (protobuf TODO) |
+| 4d | ✅ | IMU forwarder -> `transport.sendControlMessage()` |
+| 4e | ✅ | MicCaptureManager -> `transport.sendMicAudio()` -> `AasdkJni.sendMicAudio()` |
+| 4f | ✅ | Remote diagnostics -> `transport.sendControlMessage()` -> relay control JSON |
+| 4g | ✅ | Video: `transport.videoFrames` -> `videoDispatcher` -> decoder. Audio: same pattern |
+| 4h | ✅ | Session params set on transport before connect. DataStore resolution mapping TODO |
+| 4i | Deferred | `docs/embedded-knowledge.md` update deferred |
 
 ### Phase 5: Settings UI Cleanup
 
