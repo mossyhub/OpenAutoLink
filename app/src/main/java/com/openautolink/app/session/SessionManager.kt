@@ -214,6 +214,27 @@ class SessionManager(
             t.sessionMarginW = kotlinx.coroutines.runBlocking { prefs.aaWidthMargin.first() }
             t.sessionMarginH = kotlinx.coroutines.runBlocking { prefs.aaHeightMargin.first() }
             t.sessionPixelAspect = kotlinx.coroutines.runBlocking { prefs.aaPixelAspect.first() }
+            // Auto-calculate pixel aspect in crop mode: the video fills the display
+            // surface which has a different AR than 16:9. Without pixel_aspect,
+            // circles become horizontally stretched ovals.
+            if (scalingMode == "crop" && t.sessionPixelAspect == 0) {
+                val dm = ctx.getSystemService(Context.DISPLAY_SERVICE) as? android.hardware.display.DisplayManager
+                val display = dm?.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                if (display != null) {
+                    val mode = display.mode
+                    val displayW = mode.physicalWidth.toFloat()
+                    val displayH = mode.physicalHeight.toFloat()
+                    val videoAr = w.toFloat() / h.toFloat()
+                    val displayAr = displayW / displayH
+                    if (displayAr > 0 && videoAr > 0 && displayAr != videoAr) {
+                        val pa = (displayAr / videoAr * 10000).toInt()
+                        if (pa != 10000) {
+                            t.sessionPixelAspect = pa
+                            Log.i(TAG, "Auto pixel_aspect for crop mode: $pa (display=${displayW.toInt()}x${displayH.toInt()}, video=${w}x${h})")
+                        }
+                    }
+                }
+            }
             t.sessionDriverPos = if (kotlinx.coroutines.runBlocking { prefs.driveSide.first() } == "right") 1 else 0
             t.sessionSafeTop = kotlinx.coroutines.runBlocking { prefs.safeAreaTop.first() }
             t.sessionSafeBottom = kotlinx.coroutines.runBlocking { prefs.safeAreaBottom.first() }
