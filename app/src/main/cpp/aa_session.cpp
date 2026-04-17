@@ -1399,23 +1399,26 @@ void JniAutoEntity::onServiceDiscoveryRequest(
         if (config_.marginHeight > 0) vc->set_height_margin(config_.marginHeight);
 
         // UI config: insets for display-aware AA layout
+        // From AA APK decompile (ihm.m21822c):
+        //   Field 1 (margins)  → defines the rect where AA places interactive UI
+        //                        (status bar, nav cards, buttons, menus).
+        //                        Map/video still renders full-size behind these margins.
+        //                        Rect = (left, top, width-right, height-bottom)
+        //   Field 2 (content_insets) → secondary, used by GMS for projected apps
+        //   Field 3 (stable_content_insets) → phone computes this itself, HU value ignored
+        //
+        // "Safe area" = margins field 1: keeps interactive AA UI away from edges
+        // "Content insets" = also margins field 1 (same effect, different intent)
         auto* ui = vc->mutable_ui_config();
         if (config_.safeTop > 0 || config_.safeBottom > 0 ||
             config_.safeLeft > 0 || config_.safeRight > 0) {
-            auto* si = ui->mutable_stable_content_insets();
-            si->set_top(config_.safeTop);
-            si->set_bottom(config_.safeBottom);
-            si->set_left(config_.safeLeft);
-            si->set_right(config_.safeRight);
+            auto* margins = ui->mutable_margins();
+            margins->set_top(config_.safeTop);
+            margins->set_bottom(config_.safeBottom);
+            margins->set_left(config_.safeLeft);
+            margins->set_right(config_.safeRight);
         }
-        if (config_.contentTop > 0 || config_.contentBottom > 0 ||
-            config_.contentLeft > 0 || config_.contentRight > 0) {
-            auto* ci = ui->mutable_content_insets();
-            ci->set_top(config_.contentTop);
-            ci->set_bottom(config_.contentBottom);
-            ci->set_left(config_.contentLeft);
-            ci->set_right(config_.contentRight);
-        }
+
     };
 
     // 9a: Multi-codec video — H.265 at all tiers (5→1), H.264 fallback at tiers 3→1

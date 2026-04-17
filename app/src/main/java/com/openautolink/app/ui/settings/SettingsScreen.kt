@@ -1,4 +1,4 @@
-﻿package com.openautolink.app.ui.settings
+package com.openautolink.app.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -112,7 +112,6 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     onNavigateToDiagnostics: () -> Unit = {},
     onNavigateToSafeAreaEditor: () -> Unit = {},
-    onNavigateToContentInsetEditor: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(SettingsTab.CONNECTION) }
@@ -127,7 +126,7 @@ fun SettingsScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .testTag("settingsScreen"),
         ) {
-            // Left rail â€” back button + tab icons
+            // Left rail — back button + tab icons
             Column(
                 modifier = Modifier.fillMaxHeight(),
             ) {
@@ -171,14 +170,14 @@ fun SettingsScreen(
                 }
             }
 
-            // Content pane â€” fills remaining width
+            // Content pane — fills remaining width
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
                     .weight(1f)
                     .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
-                // Connection status bar + Save & Connect button â€” always visible
+                // Connection status bar + Save & Connect button — always visible
                 ConnectionStatusBar(
                     sessionState = sessionState,
                     onSaveAndConnect = onSaveAndConnect,
@@ -194,7 +193,6 @@ fun SettingsScreen(
                         SettingsTab.DISPLAY -> DisplayTab(
                             viewModel, uiState,
                             onNavigateToSafeAreaEditor,
-                            onNavigateToContentInsetEditor,
                         )
                         SettingsTab.VIDEO -> VideoTab(viewModel, uiState)
                         SettingsTab.AUDIO -> AudioTab(viewModel, uiState)
@@ -237,7 +235,7 @@ private fun ConnectionStatusBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Save & Connect button â€” left-aligned, first element
+        // Save & Connect button — left-aligned, first element
         Button(
             onClick = onSaveAndConnect,
             modifier = Modifier.testTag("saveAndConnectButton"),
@@ -300,7 +298,7 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
             modifier = Modifier.padding(bottom = 12.dp),
         )
 
-        // Dropdown â€” always shown, even when empty
+        // Dropdown — always shown, even when empty
         var dropdownExpanded by remember { mutableStateOf(false) }
         val savedIfaceName = uiState.networkInterface
         val selectedIface = networkInterfaces.find { it.name == savedIfaceName }
@@ -317,7 +315,7 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
             OutlinedTextField(
                 value = when {
                     networkInterfaces.isEmpty() -> "No interfaces found"
-                    effectiveSelection != null -> "${effectiveSelection.displayName} â€” ${effectiveSelection.ipAddress ?: "no IP"}"
+                    effectiveSelection != null -> "${effectiveSelection.displayName} — ${effectiveSelection.ipAddress ?: "no IP"}"
                     savedIfaceName.isNotBlank() -> "$savedIfaceName (not present)"
                     else -> "Select interface"
                 },
@@ -666,7 +664,6 @@ private fun DisplayTab(
     viewModel: SettingsViewModel,
     uiState: SettingsUiState,
     onNavigateToSafeAreaEditor: () -> Unit,
-    onNavigateToContentInsetEditor: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -722,14 +719,14 @@ private fun DisplayTab(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- AA Safe Area ---
-        SectionHeader("AA Safe Area")
+        // --- AA Display Insets ---
+        SectionHeader("AA Display Insets")
 
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Tells Android Auto where to keep interactive UI (buttons, cards, text). " +
-                    "Maps and backgrounds still render edge-to-edge.",
+            text = "Insets the AA UI from the display edges. " +
+                    "Use to keep controls away from curved or obstructed edges. Requires reconnect.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -746,7 +743,7 @@ private fun DisplayTab(
                 onClick = onNavigateToSafeAreaEditor,
                 modifier = Modifier.testTag("editSafeAreaButton"),
             ) {
-                Text("Edit Safe Area")
+                Text("Edit Display Insets")
             }
 
             val hasStable = uiState.safeAreaTop > 0 || uiState.safeAreaBottom > 0 ||
@@ -756,59 +753,6 @@ private fun DisplayTab(
                     text = formatInsetLabel(
                         uiState.safeAreaTop, uiState.safeAreaBottom,
                         uiState.safeAreaLeft, uiState.safeAreaRight
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Text(
-                    text = "Not set",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- AA Content Insets ---
-        SectionHeader("AA Content Insets")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Hard cutoff â€” nothing renders outside these boundaries (maps stop too). " +
-                    "Use only if you need a black gap, not just a safe area.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(bottom = 12.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(0.7f),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalButton(
-                onClick = onNavigateToContentInsetEditor,
-                modifier = Modifier.testTag("editContentInsetButton"),
-            ) {
-                Text("Edit Content Insets")
-            }
-
-            val hasContent = uiState.contentInsetTop > 0 || uiState.contentInsetBottom > 0 ||
-                    uiState.contentInsetLeft > 0 || uiState.contentInsetRight > 0
-            if (hasContent) {
-                Text(
-                    text = formatInsetLabel(
-                        uiState.contentInsetTop, uiState.contentInsetBottom,
-                        uiState.contentInsetLeft, uiState.contentInsetRight
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
@@ -1340,11 +1284,11 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
         )
 
         listOf(
-            Triple("480p", "480p (800Ã—480)", false),
-            Triple("720p", "720p (1280Ã—720)", false),
-            Triple("1080p", "1080p (1920Ã—1080)", false),
-            Triple("1440p", "1440p (2560Ã—1440)", true),
-            Triple("4k", "4K (3840Ã—2160)", true),
+            Triple("480p", "480p (800×480)", false),
+            Triple("720p", "720p (1280×720)", false),
+            Triple("1080p", "1080p (1920×1080)", false),
+            Triple("1440p", "1440p (2560×1440)", true),
+            Triple("4k", "4K (3840×2160)", true),
         ).forEach { (key, label, isHighRes) ->
             val warningColor = Color(0xFFFFB74D)
             Row(
@@ -1437,7 +1381,7 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             modifier = Modifier.fillMaxWidth(0.7f)
         )
 
-        // Quick presets â€” laid out as chips, not aligned to slider
+        // Quick presets — laid out as chips, not aligned to slider
         Row(
             modifier = Modifier
                 .fillMaxWidth(0.7f)
@@ -1597,7 +1541,7 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = "Ã—10000. 0 = auto from display. Only set to override.",
+                    text = "×10000. 0 = auto from display. Only set to override.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1921,7 +1865,7 @@ private fun DiagnosticsSettingsTab(
             )
         }
 
-        // Log level selector â€” only visible when enabled
+        // Log level selector — only visible when enabled
         if (uiState.remoteDiagnosticsEnabled) {
             Spacer(modifier = Modifier.height(16.dp))
 

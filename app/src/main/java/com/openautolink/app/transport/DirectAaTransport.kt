@@ -483,7 +483,13 @@ class DirectAaTransport(private val scope: CoroutineScope) {
 
     /** Send a JSON control message to the bridge via the control channel. */
     private fun sendControlJson(message: ControlMessage) {
-        val writer = controlWriter ?: return
+        val writer = controlWriter
+        if (writer == null) {
+            Log.w(TAG, "sendControlJson: controlWriter is null, cannot send ${message::class.simpleName}")
+            return
+        }
+        val socket = controlSocket
+        Log.d(TAG, "sendControlJson: socket=${socket?.isClosed}/${socket?.isConnected}, writer.checkError=${writer.checkError()}")
         try {
             val json = when (message) {
                 is ControlMessage.ListPairedPhones -> """{"type":"list_paired_phones"}"""
@@ -494,9 +500,18 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                 is ControlMessage.AppTelemetry -> """{"type":"app_telemetry","ts":${message.ts}}"""
                 else -> return
             }
-            writer.println(json)
+            // Use the underlying stream directly to get real exceptions
+            val os = socket?.getOutputStream()
+            if (os == null) {
+                Log.w(TAG, "sendControlJson: socket output stream is null")
+                return
+            }
+            val bytes = (json + "\n").toByteArray(Charsets.UTF_8)
+            os.write(bytes)
+            os.flush()
+            Log.i(TAG, "sendControlJson: sent ${message::class.simpleName} (${bytes.size} bytes)")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to send control message: ${e.message}")
+            Log.w(TAG, "sendControlJson: failed to send ${message::class.simpleName}: ${e::class.simpleName}: ${e.message}")
         }
     }
 

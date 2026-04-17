@@ -320,12 +320,18 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             // Update transport properties from current prefs so the next
             // aasdk session uses the new values in its SDR.
             sessionManager.updateTransportParams()
+            android.util.Log.i("ProjectionViewModel", "Save & Restart: params updated, sending RestartServices")
 
-            // Tell the bridge to restart BT — phone disconnects, then reconnects.
-            // The transport's reconnect loop handles the rest.
-            sessionManager.sendControlMessage(
-                com.openautolink.app.transport.ControlMessage.RestartServices(bluetooth = true)
-            )
+            // Send restart_services to the bridge. If the control socket is
+            // alive, this makes the bridge restart BT → phone disconnects →
+            // phone reconnects → new AA session with updated params.
+            try {
+                sessionManager.sendControlMessage(
+                    com.openautolink.app.transport.ControlMessage.RestartServices(bluetooth = true)
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("ProjectionViewModel", "RestartServices send failed: ${e.message}")
+            }
         }
     }
 
