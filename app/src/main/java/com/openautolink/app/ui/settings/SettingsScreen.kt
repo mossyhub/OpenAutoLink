@@ -22,13 +22,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DisplaySettings
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Router
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SettingsRemote
-import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoSettings
 import androidx.compose.material.icons.filled.Visibility
@@ -82,7 +80,6 @@ private enum class SettingsTab(
 ) {
     CONNECTION("Connection", Icons.Default.Router),
     PHONES("Phones", Icons.Default.PhoneAndroid),
-    BRIDGE("Bridge", Icons.Default.SettingsRemote),
     DISPLAY("Display", Icons.Default.DisplaySettings),
     VIDEO("Video", Icons.Default.VideoSettings),
     AUDIO("Audio", Icons.Default.Mic),
@@ -116,21 +113,9 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     onNavigateToDiagnostics: () -> Unit = {},
     onNavigateToSafeAreaEditor: () -> Unit = {},
-    onNavigateToContentInsetEditor: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(SettingsTab.CONNECTION) }
-
-    // Bind bridge update manager from session manager (if running)
-    LaunchedEffect(Unit) {
-        val ctx = viewModel.getApplication<android.app.Application>()
-        val am = ctx.getSystemService(android.media.AudioManager::class.java)
-        val sm = com.openautolink.app.session.SessionManager.getInstance(
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main),
-            ctx, am
-        )
-        viewModel.bindUpdateManager(sm.bridgeUpdateManager)
-    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -206,11 +191,9 @@ fun SettingsScreen(
                     when (selectedTab) {
                         SettingsTab.CONNECTION -> ConnectionTab(viewModel, uiState)
                         SettingsTab.PHONES -> PhonesTab(viewModel, uiState)
-                        SettingsTab.BRIDGE -> BridgeTab(viewModel, uiState)
                         SettingsTab.DISPLAY -> DisplayTab(
                             viewModel, uiState,
                             onNavigateToSafeAreaEditor,
-                            onNavigateToContentInsetEditor,
                         )
                         SettingsTab.VIDEO -> VideoTab(viewModel, uiState)
                         SettingsTab.AUDIO -> AudioTab(viewModel, uiState)
@@ -229,10 +212,11 @@ private fun ConnectionStatusBar(
     sessionState: SessionState,
     onSaveAndConnect: () -> Unit,
 ) {
+    var showSaveDialog by remember { mutableStateOf(false) }
     val statusColor = when (sessionState) {
         SessionState.STREAMING -> Color(0xFF4CAF50) // Green
         SessionState.PHONE_CONNECTED -> Color(0xFF8BC34A) // Light green
-        SessionState.BRIDGE_CONNECTED -> Color(0xFFFF9800) // Orange
+        SessionState.LISTENING -> Color(0xFFFF9800) // Orange
         SessionState.CONNECTING -> Color(0xFFFFC107) // Amber
         SessionState.IDLE -> Color(0xFF9E9E9E) // Grey
         SessionState.ERROR -> Color(0xFFF44336) // Red
@@ -240,10 +224,34 @@ private fun ConnectionStatusBar(
     val statusText = when (sessionState) {
         SessionState.STREAMING -> "Streaming"
         SessionState.PHONE_CONNECTED -> "Phone Connected"
-        SessionState.BRIDGE_CONNECTED -> "Bridge Connected"
+        SessionState.LISTENING -> "Waiting for Phone"
         SessionState.CONNECTING -> "Connecting..."
         SessionState.IDLE -> "Disconnected"
         SessionState.ERROR -> "Error"
+    }
+
+    // Save confirmation dialog
+    if (showSaveDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Settings Saved") },
+            text = {
+                Text(
+                    "To apply the new settings:\n\n" +
+                    "1. Force close OpenAutoLink from Settings → Apps\n" +
+                    "2. Relaunch the app\n" +
+                    "3. Toggle Bluetooth off then on on your phone\n\n" +
+                    "The phone will reconnect with the updated configuration."
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showSaveDialog = false
+                }) {
+                    Text("OK")
+                }
+            },
+        )
     }
 
     Row(
@@ -253,18 +261,18 @@ private fun ConnectionStatusBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Save & Connect button — left-aligned, first element
+        // Save button — saves settings, shows instructions dialog
         Button(
-            onClick = onSaveAndConnect,
+            onClick = { showSaveDialog = true },
             modifier = Modifier.testTag("saveAndConnectButton"),
         ) {
             Icon(
-                imageVector = Icons.Default.Refresh,
+                imageVector = Icons.Default.Check,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Save & Restart")
+            Text("Save")
         }
 
         // Status indicator dot + text
@@ -292,18 +300,11 @@ private fun ConnectionStatusBar(
 
 @Composable
 private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
-    val discoveredBridges by viewModel.discoveredBridges.collectAsStateWithLifecycle()
-    val isDiscovering by viewModel.isDiscovering.collectAsStateWithLifecycle()
     val networkInterfaces by viewModel.networkInterfaces.collectAsStateWithLifecycle()
 
     // Scan interfaces on first composition
     LaunchedEffect(Unit) {
         viewModel.scanNetworkInterfaces()
-    }
-
-    // Stop discovery when leaving the Connection tab
-    DisposableEffect(Unit) {
-        onDispose { viewModel.stopDiscovery() }
     }
 
     Column(
@@ -477,108 +478,11 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "The app connects to the bridge at this address. " +
+            text = "The app connects to the bridge relay at this address. " +
                     "Default: 192.168.222.222:5288",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.5f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        SectionHeader("Network Discovery")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Scan the local network for OpenAutoLink bridges via mDNS.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            FilledTonalButton(
-                onClick = {
-                    if (isDiscovering) viewModel.stopDiscovery() else viewModel.startDiscovery()
-                },
-                modifier = Modifier.testTag("discoverBridgesButton"),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isDiscovering) "Stop" else "Discover")
-            }
-
-            if (isDiscovering) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                Text(
-                    text = "Scanning...",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        if (discoveredBridges.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            discoveredBridges.forEach { bridge ->
-                val isSelected = uiState.bridgeHost == bridge.host &&
-                        uiState.bridgePort == bridge.port
-
-                Surface(
-                    tonalElevation = if (isSelected) 4.dp else 1.dp,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier
-                        .fillMaxWidth(0.5f)
-                        .padding(vertical = 4.dp)
-                        .clickable { viewModel.selectBridge(bridge) }
-                        .testTag("discoveredBridge_${bridge.host}"),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = bridge.displayName,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "${bridge.host}:${bridge.port}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (isSelected) {
-                            Text(
-                                text = "Selected",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-            }
-        } else if (!isDiscovering) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "No bridges found. Make sure the bridge is running and on the same network.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
@@ -786,7 +690,6 @@ private fun DisplayTab(
     viewModel: SettingsViewModel,
     uiState: SettingsUiState,
     onNavigateToSafeAreaEditor: () -> Unit,
-    onNavigateToContentInsetEditor: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -842,14 +745,14 @@ private fun DisplayTab(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- AA Safe Area ---
-        SectionHeader("AA Safe Area")
+        // --- AA Display Insets ---
+        SectionHeader("AA Display Insets")
 
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Tells Android Auto where to keep interactive UI (buttons, cards, text). " +
-                    "Maps and backgrounds still render edge-to-edge.",
+            text = "Insets the AA UI from the display edges. " +
+                    "Use to keep controls away from curved or obstructed edges. Requires reconnect.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -866,7 +769,7 @@ private fun DisplayTab(
                 onClick = onNavigateToSafeAreaEditor,
                 modifier = Modifier.testTag("editSafeAreaButton"),
             ) {
-                Text("Edit Safe Area")
+                Text("Edit Display Insets")
             }
 
             val hasStable = uiState.safeAreaTop > 0 || uiState.safeAreaBottom > 0 ||
@@ -876,59 +779,6 @@ private fun DisplayTab(
                     text = formatInsetLabel(
                         uiState.safeAreaTop, uiState.safeAreaBottom,
                         uiState.safeAreaLeft, uiState.safeAreaRight
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Text(
-                    text = "Not set",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- AA Content Insets ---
-        SectionHeader("AA Content Insets")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Hard cutoff — nothing renders outside these boundaries (maps stop too). " +
-                    "Use only if you need a black gap, not just a safe area.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(bottom = 12.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(0.7f),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalButton(
-                onClick = onNavigateToContentInsetEditor,
-                modifier = Modifier.testTag("editContentInsetButton"),
-            ) {
-                Text("Edit Content Insets")
-            }
-
-            val hasContent = uiState.contentInsetTop > 0 || uiState.contentInsetBottom > 0 ||
-                    uiState.contentInsetLeft > 0 || uiState.contentInsetRight > 0
-            if (hasContent) {
-                Text(
-                    text = formatInsetLabel(
-                        uiState.contentInsetTop, uiState.contentInsetBottom,
-                        uiState.contentInsetLeft, uiState.contentInsetRight
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
@@ -1602,7 +1452,7 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             text = "How the video fits your screen. " +
                     "Letterbox shows the full frame with black bars on the sides. " +
                     "Crop fills the screen but cuts off top/bottom. " +
-                    "Requires reconnect (Save & Restart).",
+                    "Requires app restart and phone BT toggle to take effect.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
@@ -1959,497 +1809,6 @@ private fun SettingRow(label: String, value: String) {
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
         )
-    }
-}
-
-@Composable
-private fun BridgeTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-    ) {
-        // --- Bridge Auto-Update (first, most important) ---
-        SectionHeader("Bridge Updates")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Automatically update the bridge binary from GitHub Releases. " +
-                    "Disable this if you build the bridge locally for development.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Switch(
-                checked = uiState.bridgeAutoUpdate,
-                onCheckedChange = { viewModel.updateBridgeAutoUpdate(it) },
-                modifier = Modifier.testTag("bridgeAutoUpdateToggle"),
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = "Auto-update bridge binary",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = if (uiState.bridgeAutoUpdate) "Enabled — checks GitHub on connect"
-                           else "Disabled — using local/manual builds",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        // Auto-apply toggle (only shown when auto-update is on)
-        if (uiState.bridgeAutoUpdate) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Switch(
-                    checked = uiState.bridgeAutoApply,
-                    onCheckedChange = { viewModel.updateBridgeAutoApply(it) },
-                    modifier = Modifier.testTag("bridgeAutoApplyToggle"),
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "Apply automatically",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = if (uiState.bridgeAutoApply)
-                            "Applies immediately — brief 5s reconnect"
-                        else
-                            "Waits for phone disconnect. Or disconnect phone and press Check for Update.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // Version info
-        val updateState by viewModel.bridgeUpdateState.collectAsStateWithLifecycle()
-        val updateMessage by viewModel.bridgeUpdateMessage.collectAsStateWithLifecycle()
-        val bridgeVersion by viewModel.bridgeVersion.collectAsStateWithLifecycle()
-        val latestVersion by viewModel.latestVersion.collectAsStateWithLifecycle()
-        val lastCheckTime by viewModel.lastCheckTime.collectAsStateWithLifecycle()
-        val updateHistory by viewModel.updateHistory.collectAsStateWithLifecycle()
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(0.7f),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(
-                    text = "Bridge version",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = bridgeVersion ?: "Not connected",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Column {
-                Text(
-                    text = "Latest release",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = latestVersion ?: "Unknown",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (latestVersion != null && bridgeVersion != null && latestVersion != bridgeVersion)
-                        MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Column {
-                Text(
-                    text = "Last checked",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = lastCheckTime?.let { ts ->
-                        val ago = (System.currentTimeMillis() - ts) / 1000
-                        when {
-                            ago < 60 -> "Just now"
-                            ago < 3600 -> "${ago / 60}m ago"
-                            ago < 86400 -> "${ago / 3600}h ago"
-                            else -> "${ago / 86400}d ago"
-                        }
-                    } ?: "Never",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        }
-
-        // Status message
-        if (updateMessage.isNotBlank()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = updateMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = when (updateState) {
-                    com.openautolink.app.transport.BridgeUpdateState.FAILED ->
-                        MaterialTheme.colorScheme.error
-                    com.openautolink.app.transport.BridgeUpdateState.UP_TO_DATE,
-                    com.openautolink.app.transport.BridgeUpdateState.APPLIED,
-                    com.openautolink.app.transport.BridgeUpdateState.DEFERRED ->
-                        MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-
-        if (updateState == com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING ||
-            updateState == com.openautolink.app.transport.BridgeUpdateState.CHECKING ||
-            updateState == com.openautolink.app.transport.BridgeUpdateState.OFFERING) {
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(0.5f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        FilledTonalButton(
-            onClick = { viewModel.checkForBridgeUpdate() },
-            enabled = updateState != com.openautolink.app.transport.BridgeUpdateState.TRANSFERRING &&
-                      updateState != com.openautolink.app.transport.BridgeUpdateState.APPLYING,
-            modifier = Modifier.testTag("checkBridgeUpdateButton"),
-        ) {
-            Text("Check for Update")
-        }
-
-        // Update history
-        if (updateHistory.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Update History",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-
-            updateHistory.take(10).forEach { entry ->
-                val timeStr = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
-                    .format(java.util.Date(entry.timestamp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .padding(vertical = 2.dp),
-                ) {
-                    Text(
-                        text = timeStr,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(70.dp),
-                    )
-                    Text(
-                        text = entry.event,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- Phone Connection ---
-        SectionHeader("Phone Connection")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "How the phone connects to the bridge.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        listOf(
-            "wireless" to "Wireless" to "Phone connects via WiFi (needs WiFi module on SBC).",
-            "usb" to "USB Wired" to "Phone plugs into SBC USB host port.",
-        ).forEach { (pair, desc) ->
-            val (key, label) = pair
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .clickable { viewModel.updatePhoneMode(key) }
-                    .padding(vertical = 10.dp)
-                    .testTag("phoneMode_$key"),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = uiState.phoneMode == key,
-                    onClick = { viewModel.updatePhoneMode(key) }
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (uiState.phoneMode == key) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                    Text(
-                        text = desc,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // --- Wireless Settings (only when wireless mode) ---
-        if (uiState.phoneMode == "wireless") {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            SectionHeader("Wireless Settings")
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "WiFi hotspot configuration on the bridge. " +
-                        "The phone connects to this network for Android Auto.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
-            // WiFi Band
-            Text(
-                text = "WiFi Band",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-
-            listOf("5ghz" to "5 GHz (Lower latency)", "24ghz" to "2.4 GHz (Better range)").forEach { (key, label) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .clickable { viewModel.updateWifiBand(key) }
-                        .padding(vertical = 6.dp)
-                        .testTag("wifiBand_$key"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = uiState.wifiBand == key,
-                        onClick = { viewModel.updateWifiBand(key) }
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (uiState.wifiBand == key) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Country Code
-            var countryInput by remember(uiState.wifiCountry) {
-                mutableStateOf(uiState.wifiCountry)
-            }
-            OutlinedTextField(
-                value = countryInput,
-                onValueChange = {
-                    val filtered = it.uppercase().take(2)
-                    countryInput = filtered
-                    if (filtered.length == 2) viewModel.updateWifiCountry(filtered)
-                },
-                label = { Text("Country Code") },
-                placeholder = { Text("US") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth(0.3f)
-                    .testTag("wifiCountryInput"),
-            )
-
-            Text(
-                text = "2-letter country code for WiFi regulatory domain (e.g., US, GB, DE).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // WiFi SSID
-            var ssidInput by remember(uiState.wifiSsid) {
-                mutableStateOf(uiState.wifiSsid)
-            }
-            OutlinedTextField(
-                value = ssidInput,
-                onValueChange = {
-                    ssidInput = it
-                    viewModel.updateWifiSsid(it)
-                },
-                label = { Text("WiFi Name (SSID)") },
-                placeholder = { Text("Auto-generated from MAC if empty") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .testTag("wifiSsidInput"),
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // WiFi Password
-            var passwordInput by remember(uiState.wifiPassword) {
-                mutableStateOf(uiState.wifiPassword)
-            }
-            var passwordVisible by remember { mutableStateOf(false) }
-            OutlinedTextField(
-                value = passwordInput,
-                onValueChange = {
-                    passwordInput = it
-                    viewModel.updateWifiPassword(it)
-                },
-                label = { Text("WiFi Password") },
-                placeholder = { Text("Auto-generated if empty") },
-                singleLine = true,
-                visualTransformation = if (passwordVisible) VisualTransformation.None
-                    else PasswordVisualTransformation(),
-                trailingIcon = {
-                    FilledTonalIconButton(
-                        onClick = { passwordVisible = !passwordVisible },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff
-                                else Icons.Default.Visibility,
-                            contentDescription = if (passwordVisible) "Hide" else "Show",
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .testTag("wifiPasswordInput"),
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- Identity ---
-        SectionHeader("Identity")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "How the bridge identifies itself during Android Auto pairing.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        var headUnitInput by remember(uiState.headUnitName) {
-            mutableStateOf(uiState.headUnitName)
-        }
-        OutlinedTextField(
-            value = headUnitInput,
-            onValueChange = {
-                headUnitInput = it
-                viewModel.updateHeadUnitName(it)
-            },
-            label = { Text("Head Unit Name") },
-            placeholder = { Text("OpenAutoLink") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth(0.5f)
-                .testTag("headUnitNameInput"),
-        )
-
-        Text(
-            text = "Display name shown to the phone during Android Auto pairing.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        var btMacInput by remember(uiState.btMac) {
-            mutableStateOf(uiState.btMac)
-        }
-        OutlinedTextField(
-            value = btMacInput,
-            onValueChange = {
-                btMacInput = it.uppercase()
-                viewModel.updateBtMac(it.uppercase())
-            },
-            label = { Text("Bluetooth MAC Override") },
-            placeholder = { Text("XX:XX:XX:XX:XX:XX (empty = auto-detect)") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth(0.5f)
-                .testTag("btMacInput"),
-        )
-
-        Text(
-            text = "Manual Bluetooth MAC address override. Leave empty for auto-detection. " +
-                    "Set this if auto-detect fails on your SBC.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.5f))
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Bridge settings are sent to the SBC automatically. Press below to restart the bridge " +
-                    "and force the phone to renegotiate (required after codec, resolution, or WiFi changes).",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-
-        FilledTonalButton(
-            onClick = { viewModel.saveAndRestart(restartWireless = true, restartBluetooth = true) },
-            modifier = Modifier.testTag("fullRestartButton"),
-        ) {
-            Text("Restart Bridge Services")
-        }
     }
 }
 

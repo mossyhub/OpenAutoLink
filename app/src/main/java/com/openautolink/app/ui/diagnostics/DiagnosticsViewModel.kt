@@ -80,9 +80,20 @@ enum class LogSeverity { DEBUG, INFO, WARN, ERROR }
 
 data class CarInfo(
     val isActive: Boolean = false,
+    // Vehicle identity (static)
+    val carMake: String? = null,
+    val carModel: String? = null,
+    val carYear: String? = null,
+    val fuelTypes: List<Int>? = null,
+    val evConnectorTypes: List<Int>? = null,
+    val exteriorDimensions: List<Int>? = null,
+    // Live signals
     val speedKmh: Float? = null,
+    val displaySpeedMs: Float? = null,
     val gear: String? = null,
+    val currentGear: Int? = null,
     val parkingBrake: Boolean? = null,
+    val parkingBrakeAuto: Boolean? = null,
     val nightMode: Boolean? = null,
     val batteryPct: Int? = null,
     val fuelLevelPct: Int? = null,
@@ -256,9 +267,6 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
                     is ControlMessage.Error -> {
                         com.openautolink.app.diagnostics.DiagnosticLog.e("Bridge", "Error ${msg.code}: ${msg.message}")
                     }
-                    is ControlMessage.Hello -> {
-                        com.openautolink.app.diagnostics.DiagnosticLog.i("Bridge", "Hello from ${msg.name} v${msg.version}")
-                    }
                     is ControlMessage.PhoneConnected -> {
                         com.openautolink.app.diagnostics.DiagnosticLog.i("Session", "Phone connected: ${msg.phoneName}")
                     }
@@ -299,9 +307,18 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
             forwarder.latestVehicleData.collect { vd ->
                 _car.value = CarInfo(
                     isActive = forwarder.isActive,
+                    carMake = vd.carMake,
+                    carModel = vd.carModel,
+                    carYear = vd.carYear,
+                    fuelTypes = vd.fuelTypes,
+                    evConnectorTypes = vd.evConnectorTypes,
+                    exteriorDimensions = vd.exteriorDimensions,
                     speedKmh = vd.speedKmh,
+                    displaySpeedMs = vd.displaySpeedMs,
                     gear = vd.gear,
+                    currentGear = vd.currentGear,
                     parkingBrake = vd.parkingBrake,
+                    parkingBrakeAuto = vd.parkingBrakeAuto,
                     nightMode = vd.nightMode,
                     batteryPct = vd.batteryPct,
                     fuelLevelPct = vd.fuelLevelPct,

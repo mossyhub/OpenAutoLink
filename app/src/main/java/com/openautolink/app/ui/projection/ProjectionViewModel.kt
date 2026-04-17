@@ -78,7 +78,8 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
     private val trackedTransportNetworks = mutableSetOf<Long>()
 
     private val touchForwarder: TouchForwarder = TouchForwarderImpl { touchMessage ->
-        viewModelScope.launch {
+        // Called from OAL-touch executor thread — dispatch to IO, not Main
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             sessionManager.sendControlMessage(touchMessage)
         }
     }
@@ -170,7 +171,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             statusMessage = values[1] as String,
             bridgeName = info?.name,
             bridgeVersion = info?.version,
-            bridgeVersionStr = info?.bridgeVersion,
+            bridgeVersionStr = null,
             phoneName = values[3] as? String,
             bridgeHost = values[4] as String,
             videoStats = values[5] as VideoStats,
@@ -245,7 +246,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             sessionManager.sessionState.collect { state ->
                 // Attach pending surface when decoder becomes available
-                if (state == SessionState.BRIDGE_CONNECTED ||
+                if (state == SessionState.LISTENING ||
                     state == SessionState.PHONE_CONNECTED ||
                     state == SessionState.STREAMING) {
                     attachPendingSurface()
@@ -285,7 +286,8 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val host = preferences.bridgeHost.first()
             val port = preferences.bridgePort.first()
-            val codec = preferences.videoCodec.first()
+            val autoNeg = preferences.videoAutoNegotiate.first()
+            val codec = if (autoNeg) "auto" else preferences.videoCodec.first()
             val micSrc = preferences.micSource.first()
             val ifaceName = preferences.networkInterface.first()
             val diagEnabled = preferences.remoteDiagnosticsEnabled.first()
@@ -305,6 +307,41 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
     fun reconnect() {
         hasConnected = false
         connect()
+    }
+
+    /**
+     * Apply changed settings to the transport and restart bridge BT.
+     * Does NOT tear down the session — the phone disconnects naturally when
+     * the bridge restarts BT, then the transport auto-reconnects with the
+     * updated SDR parameters (new codec, resolution, DPI, etc.).
+     */
+    fun applySettingsAndRestart() {
+        viewModelScope.launch {
+            // Update transport properties from current prefs so the next
+            // aasdk session uses the new values in its SDR.
+            sessionManager.updateTransportParams()
+            android.util.Log.i("ProjectionViewModel", "Save & Restart: params updated, sending RestartServices")
+
+            // Send restart_services to the bridge. If the control socket is
+            // alive, this makes the bridge restart BT → phone disconnects →
+            // phone reconnects → new AA session with updated params.
+            try {
+                sessionManager.sendControlMessage(
+                    com.openautolink.app.transport.ControlMessage.RestartServices(bluetooth = true)
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("ProjectionViewModel", "RestartServices send failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Tell bridge to restart BT so phone reconnects with new AA settings. */
+    fun restartBridgeServices() {
+        viewModelScope.launch {
+            sessionManager.sendControlMessage(
+                com.openautolink.app.transport.ControlMessage.RestartServices(bluetooth = true)
+            )
+        }
     }
 
     fun disconnect() {
@@ -387,7 +424,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         if (!_showPhoneSwitcher.value) {
             // Request fresh list when opening
             viewModelScope.launch {
-                com.openautolink.app.transport.ConfigUpdateSender.sendControlMessage(
+                sessionManager.sendControlMessage(
                     com.openautolink.app.transport.ControlMessage.ListPairedPhones
                 )
             }
@@ -397,7 +434,7 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun switchPhone(mac: String) {
         viewModelScope.launch {
-            com.openautolink.app.transport.ConfigUpdateSender.sendControlMessage(
+            sessionManager.sendControlMessage(
                 com.openautolink.app.transport.ControlMessage.SwitchPhone(mac)
             )
         }

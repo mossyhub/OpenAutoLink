@@ -4,7 +4,7 @@ description: "Use when working on audio playback, AudioTrack configuration, micr
 # Audio Pipeline Knowledge
 
 ## 5-Purpose Routing (Proven Pattern)
-Audio from the bridge carries a `purpose` field. Each purpose gets its own pre-allocated AudioTrack:
+Audio from aasdk JNI carries a `purpose` field. Each purpose gets its own pre-allocated AudioTrack:
 
 | Purpose | AudioAttributes Usage | Sample Rate | Channels | When Active |
 |---------|----------------------|-------------|----------|-------------|
@@ -34,10 +34,10 @@ Audio from the bridge carries a `purpose` field. Each purpose gets its own pre-a
 
 ## Microphone Capture
 - Timer-based sampling at 40ms intervals (~25 Hz)
-- Sample rate: 8000 Hz for Siri, 16000 Hz for calls (bridge tells app via control message)
+- Sample rate: 8000 Hz for Siri, 16000 Hz for calls (aasdk tells app via control message)
 - 512-sample circular buffer
 - Send on audio TCP channel (direction=1 in header)
-- Start on bridge `mic_start` control message, stop on `mic_stop`
+- Start on aasdk `mic_start` control message, stop on `mic_stop`
 - RECORD_AUDIO permission required — handle denial gracefully
 
 ## Audio Rules

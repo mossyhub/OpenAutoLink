@@ -1,35 +1,45 @@
 # Bridge
 
-The C++ headless binary that bridges a phone's Android Auto session to the car app over TCP, using the OAL protocol.
+The bridge relay (`openautolink-relay`) is a thin C++ binary that splices TCP sockets
+between the phone and the car app. It does **zero** AA protocol processing -- all
+Android Auto handling (TLS, protobuf, video, audio) runs inside the AAOS app via
+aasdk NDK/JNI.
 
 ## Architecture
 
-- **OAL Protocol**: 3 TCP channels — control (5288, JSON lines), audio (5289, binary), video (5290, binary)
-- **aasdk v1.6**: Phone ↔ bridge communication via Android Auto protocol
-- **SCO Audio**: BT HFP phone call audio via Bluetooth SCO sockets
-
-### Key Source Files
-- `headless/include/openautolink/oal_protocol.hpp` — OAL wire format (video/audio headers)
-- `headless/include/openautolink/oal_session.hpp` — OAL session state machine
-- `headless/include/openautolink/tcp_car_transport.hpp` — TCP server for car app
-- `headless/src/live_session.cpp` — aasdk integration, service handlers
-- `headless/src/main.cpp` — CLI entry point
-- `scripts/aa_bt_all.py` — BT/WiFi pairing service
-
-## Display Safe-Area Insets
-
-Android Auto renders a fixed-resolution video frame, but physical car displays often have non-rectangular bezels — curved edges, tapered corners, or cutouts that obscure content near the edges. The bridge can tell the phone where interactive UI (buttons, cards, text) should be placed within that frame, while still allowing background content (maps, album art) to fill the entire frame.
-
-This is configured via **stable insets** in `/etc/openautolink.env`:
-
-```bash
-# Format: top,bottom,left,right (in video-coordinate pixels)
-OAL_AA_INIT_STABLE_INSETS=0,0,0,110
+```
+Phone:5277 <-- raw bytes --> App:5291   (relay splice)
+App:5288   <-- JSON lines --> control   (signaling + diagnostics)
 ```
 
-**Stable insets** = "render background content (maps) here, but keep interactive UI in the safe area."
-**Content insets** = "don't render anything here at all" (hard black cutoff).
+- **Relay binary**: `relay/src/main.cpp` -- ~340 lines, zero external dependencies, 67KB stripped
+- **BT/WiFi pairing**: `scripts/aa_bt_all.py` -- BLE advertising, BT pairing, HSP, RFCOMM WiFi credential exchange
+- **SBC deployment**: `sbc/` -- systemd services, env config, install script
 
-The default `right=110` is tuned for the **2024 Chevrolet Blazer EV**, which has a curved/tapered right bezel that clips ~150 physical pixels. Adjust for your vehicle's display, or set to blank to disable.
+### TCP Ports
 
-See the comments in [sbc/openautolink.env](sbc/openautolink.env) for all available knobs.
+| Port | Purpose |
+|------|---------|
+| 5288 | Control channel: JSON lines signaling (`hello`, `relay_ready`, `relay_disconnected`, `paired_phones`, diagnostics) |
+| 5291 | Relay: raw byte splice between app and phone |
+| 5277 | Phone listener: accepts phone's AA TCP connection |
+
+### Key Directories
+
+| Path | Purpose |
+|------|---------|
+| `openautolink/relay/` | Relay binary source (C++) |
+| `openautolink/scripts/` | BT/WiFi pairing service (Python) |
+| `sbc/` | Systemd services, env config, install script, build guide |
+
+## Build
+
+See [sbc/BUILD.md](sbc/BUILD.md) for build and deployment instructions.
+
+## Configuration
+
+All settings in `/etc/openautolink.env`. The relay needs no AA configuration -- all
+AA settings (resolution, codec, DPI) are owned by the car app.
+
+The env file configures network, WiFi AP, Bluetooth, and SSH access.
+See [sbc/openautolink.env](sbc/openautolink.env) for all available settings.

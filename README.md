@@ -14,6 +14,12 @@ OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units.
   <em>Android Auto streaming wirelessly on a 2024 Chevrolet Blazer EV</em>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/AA-EV-Battery-Maps.jpg" alt="EV battery percentage showing in Google Maps via Android Auto" width="720">
+  <br>
+  <em>EV battery percentage (92%) and estimated arrival charge in Google Maps — a first for any Android Auto bridge</em>
+</p>
+
 > This is a hobby project under active development. Core features are implemented and working on real hardware, but the project is not yet polished or broadly validated across vehicles.
 
 > **Discuss on XDA:** [OpenAutoLink — Wireless Android Auto bridge for AAOS (GM EVs)](https://xdaforums.com/t/open-source-openautolink-wireless-android-auto-bridge-for-aaos-gm-evs.4785192/) — questions, feedback, and build reports welcome.
@@ -49,13 +55,13 @@ The current design is purpose-built for this setup:
 
 - Wireless Android Auto over Bluetooth + WiFi, no phone cable required
 - Up to 1080p60 by default, with 1440p and 4K available through AA Developer Mode and supported codecs
+- **EV battery percentage in Google Maps** — forwards VHAL battery data through the AA sensor channel so Maps shows current charge and estimated arrival battery. First AA bridge (OEM or aftermarket) to support this
 - Automatic display adaptation for wide and irregular AAOS displays
 - Audio forwarding for media, navigation, phone calls, and voice assistant
 - Touch input, steering wheel controls, and microphone forwarding
 - Instrument-cluster integration for turn-by-turn and media metadata
 - Multi-phone pairing and one-tap switching
 - Automatic reconnect after car sleep / power loss
-- Bridge auto-update from GitHub Releases
 - Fully open-source app, bridge, protocol, and deployment scripts
 
 <details>
@@ -66,8 +72,8 @@ The current design is purpose-built for this setup:
   <a href="docs/screenshots/02-settings-connection-tab-top.png"><img src="docs/screenshots/02-settings-connection-tab-top.png" alt="Settings — Connection" width="400"></a>
 </p>
 <p>
-  <a href="docs/screenshots/03-settings-phones-tab.png"><img src="docs/screenshots/03-settings-phones-tab.png" alt="Settings — Phones" width="400"></a>
-  <a href="docs/screenshots/04-settings-bridge-tab-top.png"><img src="docs/screenshots/04-settings-bridge-tab-top.png" alt="Settings — Bridge" width="400"></a>
+  <a href="docs/screenshots/03-settings-phones-tab.png"><img src="docs/screenshots/03-settings-phones-tab.png" alt="Settings -- Phones" width="400"></a>
+  <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Settings -- Display" width="400"></a>
 </p>
 <p>
   <a href="docs/screenshots/05-settings-display-tab-top.png"><img src="docs/screenshots/05-settings-display-tab-top.png" alt="Settings — Display" width="400"></a>
@@ -84,16 +90,16 @@ The current design is purpose-built for this setup:
 An SBC bridges the phone's Android Auto session to the car over WiFi + Ethernet. The car runs the OpenAutoLink app and the SBC runs the bridge. [DietPi](https://dietpi.com/) is the recommended OS — it is lightweight, boots quickly from eMMC, and supports a wide range of ARM64 boards out of the box.
 
 ```
-Android Phone ──WiFi TCP:5277──▶                    ┌── Control :5288 (JSON lines)
-                  BT pairing    ▶ SBC Bridge ──Eth──▶├── Video   :5290 (binary frames)
-                                                    └── Audio   :5289 (binary frames)
+Android Phone ──WiFi TCP:5277──▶                    ┌── Control :5288 (JSON signaling)
+                  BT pairing    ▶ SBC Relay  ──Eth──▶└── Relay   :5291 (raw byte splice)
                                                           ▼
                                                   Car Head Unit App (AAOS)
-                                                    Renders video/audio
-                                                    Forwards touch/GNSS/VHAL
+                                                    aasdk via NDK/JNI
+                                                    TLS + protobuf + AA protocol
+                                                    MediaCodec + AudioTrack
 ```
 
-The short version is simple: the phone talks Android Auto to the SBC, and the SBC talks OpenAutoLink's TCP protocol to the AAOS app.
+The bridge is a thin TCP relay -- it does **zero** AA protocol processing. aasdk runs inside the AAOS app via NDK/JNI, handling TLS, protobuf, video, and audio directly. The relay just splices raw bytes between the phone's inbound connection and the app's outbound connection.
 
 ## Why Not a USB Adapter?
 
@@ -305,7 +311,8 @@ Because this is an AAOS app rather than a normal phone app, installation on the 
 | Component | Language | Location |
 |-----------|----------|----------|
 | **Car App** | Kotlin / Compose | `app/` |
-| **Bridge** | C++20 | `bridge/openautolink/headless/` |
+| **App NDK/JNI (aasdk)** | C++ | `app/src/main/cpp/` |
+| **Bridge Relay** | C++20 | `bridge/openautolink/relay/` |
 | **BT/WiFi Services** | Python | `bridge/openautolink/scripts/` |
 | **SBC Deployment** | Bash / systemd | `bridge/sbc/` |
 | **aasdk fork** | C++ | `external/opencardev-aasdk/` |
@@ -360,7 +367,6 @@ Active development. Core features are implemented and working on real hardware o
 - **Occasional audio jitter / cutout:** intermittent and still under investigation.
 - **"Unsupported device" popup on GM EVs:** the USB Ethernet adapter can trigger a brief cosmetic warning even though networking still works.
 - **USB gadget networking does not work:** presenting the SBC directly as a USB network gadget has not worked in testing; the external USB Ethernet adapter remains the working approach.
-- **The Android Auto stream green** UI may start out blocky and green, but will self recover in 10-20 seconds. Still fighting this one...
 
 ## Compatibility
 

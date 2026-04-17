@@ -36,27 +36,11 @@ fi
 echo ">>> [1/8] Installing system packages..."
 apt-get update -qq
 
-# Release binaries are dynamically linked against protobuf. Package names vary
-# slightly between Debian/Ubuntu releases, so resolve the runtime package here.
-PROTOBUF_RUNTIME_PKG=""
-for pkg in libprotobuf32t64 libprotobuf32; do
-    if apt-cache show "$pkg" >/dev/null 2>&1; then
-        PROTOBUF_RUNTIME_PKG="$pkg"
-        break
-    fi
-done
-if [ -z "$PROTOBUF_RUNTIME_PKG" ]; then
-    echo "WARNING: Could not find a protobuf runtime package; falling back to libprotobuf-dev" >&2
-    PROTOBUF_RUNTIME_PKG="libprotobuf-dev"
-fi
-
 apt-get install -y -qq \
     hostapd dnsmasq \
-    bluez libbluetooth-dev python3-dbus python3-gi \
+    bluez python3-dbus python3-gi \
     avahi-daemon avahi-utils \
-    curl jq \
-    "$PROTOBUF_RUNTIME_PKG"
-echo "  Protobuf runtime: ${PROTOBUF_RUNTIME_PKG}"
+    curl jq
 echo ""
 
 # ── 2. Download latest release from GitHub ────────────────────────────
@@ -75,11 +59,11 @@ echo "  Latest release: ${LATEST_TAG}"
 RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${LATEST_TAG}"
 RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${LATEST_TAG}"
 
-# Download the bridge binary
-echo "  Downloading bridge binary..."
-if ! curl -fsSL -o "${TMP_DIR}/openautolink-headless" \
-    "${RELEASE_URL}/openautolink-headless"; then
-    echo "ERROR: Failed to download bridge binary." >&2
+# Download the relay binary
+echo "  Downloading relay binary..."
+if ! curl -fsSL -o "${TMP_DIR}/openautolink-relay" \
+    "${RELEASE_URL}/openautolink-relay"; then
+    echo "ERROR: Failed to download relay binary." >&2
     echo "  The release may not have finished building yet." >&2
     echo "  Check: https://github.com/${GITHUB_REPO}/releases/tag/${LATEST_TAG}" >&2
     exit 1
@@ -99,8 +83,7 @@ declare -A SBC_FILES=(
     ["start-wireless.sh"]="bridge/sbc/start-wireless.sh"
     ["stop-wireless.sh"]="bridge/sbc/stop-wireless.sh"
     ["aa_bt_all.py"]="bridge/openautolink/scripts/aa_bt_all.py"
-    ["apply-bridge-update.sh"]="bridge/sbc/apply-bridge-update.sh"
-    ["avahi-openautolink.service"]="bridge/openautolink/headless/avahi/openautolink.service"
+
 )
 
 echo "  Downloading configuration files..."
@@ -114,9 +97,9 @@ echo ">>> [3/8] Installing to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}/bin" "${INSTALL_DIR}/scripts"
 
 # Binary
-cp "${TMP_DIR}/openautolink-headless" "${INSTALL_DIR}/bin/"
-chmod +x "${INSTALL_DIR}/bin/openautolink-headless"
-echo "  Installed openautolink-headless binary"
+cp "${TMP_DIR}/openautolink-relay" "${INSTALL_DIR}/bin/"
+chmod +x "${INSTALL_DIR}/bin/openautolink-relay"
+echo "  Installed openautolink-relay binary"
 
 # Scripts
 for script in run-openautolink.sh setup-network.sh \
@@ -124,11 +107,6 @@ for script in run-openautolink.sh setup-network.sh \
     [ -f "${TMP_DIR}/${script}" ] && cp "${TMP_DIR}/${script}" "${INSTALL_DIR}/"
 done
 chmod +x "${INSTALL_DIR}"/*.sh 2>/dev/null || true
-
-# Update apply script goes in bin/ (called by the bridge binary)
-[ -f "${TMP_DIR}/apply-bridge-update.sh" ] && \
-    cp "${TMP_DIR}/apply-bridge-update.sh" "${INSTALL_DIR}/bin/"
-chmod +x "${INSTALL_DIR}/bin/apply-bridge-update.sh" 2>/dev/null || true
 
 # BT script
 [ -f "${TMP_DIR}/aa_bt_all.py" ] && \
@@ -142,21 +120,91 @@ else
     echo "  /etc/openautolink.env exists — not overwriting"
 fi
 
-# mDNS discovery is published dynamically by openautolink-headless via
-# avahi-publish-service. A static Avahi service file causes a duplicate
-# advertisement and "Local name collision" warnings at runtime.
-if [ -d /etc/avahi/services ]; then
+# ── Clean up old headless architecture (pre-direct-AA) ────────────────
+# The old architecture ran aasdk on the bridge ("openautolink-headless").
+# The new architecture runs aasdk in the car app; the bridge is just a relay.
+# Remove all traces of the old setup so nothing conflicts.
+OLD_CLEANED=0
+
+# Old binary + auto-update script
+for f in "${INSTALL_DIR}/bin/openautolink-headless" \
+         "${INSTALL_DIR}/bin/openautolink-headless.bak" \
+         "${INSTALL_DIR}/bin/apply-bridge-update.sh"; do
+    [ -f "$f" ] && { rm -f "$f"; OLD_CLEANED=1; }
+done
+
+# Old Avahi mDNS service (headless published this; relay uses avahi-daemon directly)
+if [ -f /etc/avahi/services/openautolink.service ]; then
     rm -f /etc/avahi/services/openautolink.service
-    echo "  Removed stale static Avahi mDNS service (dynamic publish only)"
+    OLD_CLEANED=1
 fi
 
-# SSL certificates for Android Auto TLS handshake
-# aasdk has embedded certs (JVC Kenwood AA cert) that work with all phones.
-# Do NOT generate custom certs — they cause SSL handshake failures.
-# If /etc/aasdk/ exists with custom certs from a previous install, remove them.
-if [ -d "/etc/aasdk" ]; then
-    echo "  Removing custom certs (aasdk uses embedded certs)"
-    rm -rf "/etc/aasdk"
+# Old aasdk cert directory (aasdk now runs in-app with embedded certs)
+if [ -d /etc/aasdk ]; then
+    rm -rf /etc/aasdk
+    OLD_CLEANED=1
+fi
+
+# Old systemd services from earlier iterations
+for svc in openautolink-car-net openautolink-eth-ssh; do
+    if systemctl list-unit-files "$svc.service" &>/dev/null; then
+        systemctl disable --now "$svc" 2>/dev/null || true
+        rm -f "/etc/systemd/system/${svc}.service"
+        OLD_CLEANED=1
+    fi
+done
+
+# Strip old headless-only env vars from /etc/openautolink.env if present.
+# These were used by the headless binary and are now in the car app's settings.
+if [ -f /etc/openautolink.env ]; then
+    OLD_VARS=(
+        OAL_BRIDGE_UPDATE_MODE
+        OAL_PHONE_PROTOCOL
+        OAL_CAR_TCP_PORT
+        OAL_PHONE_TCP_PORT
+        OAL_VIDEO_WIDTH
+        OAL_VIDEO_HEIGHT
+        OAL_AA_DPI
+        OAL_AA_RESOLUTION
+        OAL_AA_FPS
+        OAL_AA_CODEC
+        OAL_AA_WIDTH_MARGIN
+        OAL_AA_HEIGHT_MARGIN
+        OAL_AA_PIXEL_ASPECT_E4
+        OAL_AA_REAL_DENSITY
+        OAL_AA_VIEWING_DISTANCE
+        OAL_AA_DECODER_ADDITIONAL_DEPTH
+        OAL_AA_INIT_MARGINS
+        OAL_AA_INIT_CONTENT_INSETS
+        OAL_AA_INIT_STABLE_INSETS
+        OAL_AA_RUNTIME_DELAY_MS
+        OAL_AA_RUNTIME_MARGINS
+        OAL_AA_RUNTIME_CONTENT_INSETS
+        OAL_AA_RUNTIME_STABLE_INSETS
+        OAL_HEAD_UNIT_NAME
+        OAL_CAR_MAKE
+        OAL_CAR_MODEL
+        OAL_CAR_YEAR
+        OAL_FUEL_TYPES
+        OAL_EV_CONNECTOR_TYPES
+        OAL_AA_HIDE_CLOCK
+        OAL_AA_HIDE_PHONE_SIGNAL
+        OAL_AA_HIDE_BATTERY
+    )
+    for var in "${OLD_VARS[@]}"; do
+        if grep -q "^${var}=" /etc/openautolink.env 2>/dev/null; then
+            sed -i "/^${var}=/d" /etc/openautolink.env
+            OLD_CLEANED=1
+        fi
+    done
+    # Also remove comment-only lines that referenced old settings
+    sed -i '/^#.*OAL protocol:.*control.*audio.*video/d' /etc/openautolink.env 2>/dev/null || true
+fi
+
+if [ "$OLD_CLEANED" = "1" ]; then
+    echo "  Cleaned up old headless-era files and config"
+else
+    echo "  No old headless files found (clean install)"
 fi
 echo ""
 
@@ -215,9 +263,6 @@ for svc in openautolink.service openautolink-network.service \
     fi
 done
 
-# Disable legacy services if they exist from a previous install
-systemctl disable openautolink-car-net openautolink-eth-ssh 2>/dev/null || true
-
 # We launch hostapd/dnsmasq directly from the OpenAutoLink scripts. Leaving the
 # distro package units enabled causes boot-time failures and a degraded system.
 systemctl disable --now dnsmasq hostapd 2>/dev/null || true
@@ -255,26 +300,17 @@ rm -rf "$TMP_DIR"
 echo ">>> [8/8] Applying network configuration..."
 echo ""
 
-# Detect the onboard NIC (not USB — check sysfs bus path)
+# Detect the onboard NIC — scan sysfs for the first non-virtual,
+# non-USB, non-wireless interface. Most SBCs have exactly one.
 ONBOARD_NIC=""
-for name in eth0 end0; do
-    if [ -d "/sys/class/net/$name" ]; then
-        devpath=$(readlink -f "/sys/class/net/$name/device" 2>/dev/null)
-        case "$devpath" in */usb*) continue ;; esac
-        ONBOARD_NIC="$name"
-        break
-    fi
+for path in /sys/class/net/*; do
+    iface=$(basename "$path")
+    case "$iface" in lo|usb*|wlan*|wlp*|enx*) continue ;; esac
+    devpath=$(readlink -f "/sys/class/net/$iface/device" 2>/dev/null)
+    case "$devpath" in */usb*) continue ;; esac
+    ONBOARD_NIC="$iface"
+    break
 done
-if [ -z "$ONBOARD_NIC" ]; then
-    for path in /sys/class/net/*; do
-        iface=$(basename "$path")
-        case "$iface" in lo|usb*|wlan*|enx*) continue ;; esac
-        devpath=$(readlink -f "/sys/class/net/$iface/device" 2>/dev/null)
-        case "$devpath" in */usb*) continue ;; esac
-        ONBOARD_NIC="$iface"
-        break
-    done
-fi
 
 source /etc/openautolink.env 2>/dev/null || true
 CAR_IP="${OAL_CAR_NET_IP:-192.168.222.222}"
@@ -285,7 +321,7 @@ systemctl start openautolink-network 2>/dev/null || true
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "  Binary:   ${INSTALL_DIR}/bin/openautolink-headless"
+echo "  Binary:   ${INSTALL_DIR}/bin/openautolink-relay"
 echo "  Config:   /etc/openautolink.env"
 echo "  Hostname: openautolink"
 echo "  SSH user: openautolink (passwordless sudo)"
@@ -302,8 +338,8 @@ echo "    - It picks up DHCP automatically from your network"
 echo "    - Or connect to the OpenAutoLink WiFi, SSH to 192.168.43.1"
 echo ""
 echo "  Updates:"
-echo "    The bridge auto-updates via the car app. No manual action needed."
-echo "    To disable: Set OAL_BRIDGE_UPDATE_MODE=disabled in /etc/openautolink.env"
+echo "    Deploy new bridge: scripts/deploy-bridge.ps1 from the dev PC"
+echo "    Or manually: scp openautolink-relay openautolink:/opt/openautolink/bin/"
 echo ""
 echo "  Reboot to start all services: sudo reboot"
 echo ""

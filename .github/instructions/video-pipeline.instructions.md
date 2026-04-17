@@ -24,8 +24,8 @@ description: "Use when working on video decoding, MediaCodec configuration, Surf
 - Both OMX and C2 (Codec2) variants available. Prefer C2
 
 ## Frame Handling
-- Video frames are OAL protocol: 16-byte header + raw codec data
-- Header: `[payload_length:u32le][width:u16le][height:u16le][pts_ms:u32le][flags:u16le][reserved:u16le]`
+- Video frames arrive from aasdk via JNI callback (`AasdkJni.onVideoFrame`)
+- Each frame contains: width, height, pts, flags, and raw codec payload (ByteArray)
 - Flags bit 0: keyframe (IDR). Flags bit 1: codec config (SPS/PPS/VPS)
 - First frame MUST be codec config (SPS/PPS for H.264, VPS/SPS/PPS for H.265)
 - Drop frames until first IDR received — P-frames without reference corrupt display
@@ -46,5 +46,5 @@ description: "Use when working on video decoding, MediaCodec configuration, Surf
 ## Video Rules (Non-Negotiable)
 - Projection is LIVE UI STATE, not video playback
 - Late frames: DROP. Never queue, never buffer
-- Corruption: RESET codec immediately, request IDR from bridge
+- Corruption: RESET codec immediately (aasdk handles keyframe requests internally)
 - Video may drop. Audio may buffer. Neither may block the other

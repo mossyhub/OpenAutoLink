@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenAutoLink AA Bridge (TCP)
+Description=OpenAutoLink Relay (TCP)
 After=network.target openautolink-network.service
 Wants=openautolink-network.service
 

@@ -25,6 +25,8 @@ This script:
 3. Uses saved DPAPI credentials from `secrets/signing-credentials.xml` if available
 4. Falls back to interactive password prompts if no saved credentials
 5. Builds a signed release AAB via Gradle `bundleRelease`
+   - The AAB includes `liboal_jni.so` for arm64-v8a (full aasdk) and x86_64 (stub mode)
+   - NDK build runs automatically via `externalNativeBuild` in `app/build.gradle.kts`
 
 ### Flags
 - `-NoIncrement` — skip version bump (rebuild same version)

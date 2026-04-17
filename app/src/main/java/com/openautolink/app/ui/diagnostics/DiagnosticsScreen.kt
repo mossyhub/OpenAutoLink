@@ -325,8 +325,22 @@ private fun CarTab(car: CarInfo) {
             DiagRow("Status", "Unavailable", valueColor = Color(0xFF808080))
             DiagRow("", "VHAL not connected — requires AAOS vehicle")
         } else {
+            // Vehicle Identity (static properties, sent once)
+            if (car.carMake != null || car.carModel != null || car.carYear != null) {
+                SectionHeader("Vehicle Identity")
+                car.carMake?.let { DiagRow("Make", it) }
+                car.carModel?.let { DiagRow("Model", it) }
+                car.carYear?.let { DiagRow("Year", it) }
+                car.fuelTypes?.let { DiagRow("Fuel Type", it.joinToString(", ") { t -> fuelTypeToString(t) }) }
+                car.evConnectorTypes?.let { DiagRow("EV Connectors", it.joinToString(", ") { c -> evConnectorToString(c) }) }
+                car.evBatteryCapacityWh?.let { DiagRow("Battery Capacity", "${"%.1f".format(it)} Wh (${"%.1f".format(it / 1000f)} kWh)") }
+                car.exteriorDimensions?.let { DiagRow("Exterior Dims", it.joinToString(", ") { d -> "${d}mm" }) }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             SectionHeader("Powertrain")
             DiagRow("Speed", car.speedKmh?.let { "${"%.1f".format(it)} km/h" } ?: "—")
+            car.displaySpeedMs?.let { DiagRow("Display Speed", "${"%.1f".format(it)} m/s") }
             DiagRow("Gear", car.gear ?: "—",
                 valueColor = when (car.gear) {
                     "P" -> Color(0xFF4CAF50)
@@ -334,8 +348,10 @@ private fun CarTab(car: CarInfo) {
                     "D", "1", "2", "3", "4" -> Color(0xFF2196F3)
                     else -> Color.White
                 })
+            car.currentGear?.let { DiagRow("Current Gear", gearToDisplayString(it)) }
             DiagRow("Parking Brake", car.parkingBrake?.let { if (it) "ON" else "OFF" } ?: "—",
                 valueColor = if (car.parkingBrake == true) Color(0xFFFF9800) else Color(0xFF4CAF50))
+            car.parkingBrakeAuto?.let { DiagRow("Auto Parking Brake", if (it) "ON" else "OFF") }
             car.rpmE3?.let {
                 DiagRow("RPM", "${"%.0f".format(it / 1000f)}")
             }
@@ -349,16 +365,18 @@ private fun CarTab(car: CarInfo) {
                     else -> Color(0xFFFF5722)
                 }) }
             car.evBatteryLevelWh?.let {
-                val capStr = car.evBatteryCapacityWh?.let { c -> " / ${"%.0f".format(c)}" } ?: ""
-                DiagRow("Battery Energy", "${"%.0f".format(it)}$capStr Wh")
+                DiagRow("Battery Level", "${"%.1f".format(it)} Wh")
+            }
+            car.evBatteryCapacityWh?.let {
+                DiagRow("Battery Capacity", "${"%.1f".format(it)} Wh")
             }
             car.evCurrentBatteryCapacityWh?.let {
-                DiagRow("Usable Capacity", "${"%.0f".format(it)} Wh")
+                DiagRow("Usable Capacity", "${"%.1f".format(it)} Wh")
             }
             car.evBatteryTempC?.let {
                 DiagRow("Battery Temp", "${"%.1f".format(it)} °C")
             }
-            car.evChargeRateW?.let { DiagRow("Charge Rate", "${"%.0f".format(it)} W",
+            car.evChargeRateW?.let { DiagRow("Charge Rate", "${"%.1f".format(it)} W",
                 valueColor = if (it > 0) Color(0xFF4CAF50) else Color.White) }
             car.evChargeState?.let { DiagRow("Charge State", evChargeStateToString(it),
                 valueColor = when (it) {
@@ -373,15 +391,21 @@ private fun CarTab(car: CarInfo) {
                 DiagRow("Charge Time Left", display)
             }
             car.evChargePercentLimit?.let { DiagRow("Charge Limit", "${"%.0f".format(it)}%") }
-            car.evChargeCurrentDrawLimitA?.let { DiagRow("AC Draw Limit", "${"%.0f".format(it)} A") }
+            car.evChargeCurrentDrawLimitA?.let { DiagRow("AC Draw Limit", "${"%.1f".format(it)} A") }
             car.chargePortOpen?.let { DiagRow("Charge Port", if (it) "Open" else "Closed",
                 valueColor = if (it) Color(0xFF64B5F6) else Color.White) }
             car.chargePortConnected?.let { DiagRow("Charger", if (it) "Connected" else "—",
                 valueColor = if (it) Color(0xFF4CAF50) else Color.White) }
+            car.rangeKm?.let { DiagRow("Range Remaining", "${"%.1f".format(it)} km (${"%.0f".format(it * 1000)} m)") }
             car.fuelLevelPct?.let { DiagRow("Fuel Level", "$it%") }
-            car.rangeKm?.let { DiagRow("Range", "${"%.1f".format(it)} km") }
             car.lowFuel?.let { DiagRow("Low Fuel", if (it) "YES" else "No",
                 valueColor = if (it) Color(0xFFFF5722) else Color(0xFF4CAF50)) }
+            // Derived consumption for diagnostics
+            if (car.evBatteryLevelWh != null && car.rangeKm != null && car.rangeKm > 0) {
+                val whPerKm = car.evBatteryLevelWh / car.rangeKm
+                DiagRow("Est. Consumption", "${"%.1f".format(whPerKm)} Wh/km",
+                    valueColor = Color(0xFF90CAF9))
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
             SectionHeader("EV Driving")
@@ -476,6 +500,53 @@ private fun distanceUnitsToString(units: Int): String = when (units) {
     0x23 -> "Kilometers"
     0x24 -> "Miles"
     else -> "Unknown (0x${units.toString(16)})"
+}
+
+private fun gearToDisplayString(gear: Int): String = when (gear) {
+    0 -> "GEAR_UNKNOWN"
+    1 -> "GEAR_NEUTRAL"
+    2 -> "GEAR_REVERSE"
+    4 -> "GEAR_PARK"
+    8 -> "GEAR_DRIVE"
+    16 -> "GEAR_1"
+    32 -> "GEAR_2"
+    64 -> "GEAR_3"
+    128 -> "GEAR_4"
+    else -> "GEAR_$gear"
+}
+
+private fun fuelTypeToString(type: Int): String = when (type) {
+    0 -> "Unknown"
+    1 -> "Unleaded"
+    2 -> "Leaded"
+    3 -> "Diesel 1"
+    4 -> "Diesel 2"
+    5 -> "Biodiesel"
+    6 -> "E85"
+    7 -> "LPG"
+    8 -> "CNG"
+    9 -> "LNG"
+    10 -> "Electric"
+    11 -> "Hydrogen"
+    12 -> "Other"
+    else -> "Unknown ($type)"
+}
+
+private fun evConnectorToString(type: Int): String = when (type) {
+    0 -> "Unknown"
+    1 -> "J1772"
+    2 -> "Mennekes"
+    3 -> "CHAdeMO"
+    4 -> "CCS1 (Combo 1)"
+    5 -> "CCS2 (Combo 2)"
+    6 -> "Tesla Roadster"
+    7 -> "Tesla HPWC"
+    8 -> "Tesla Supercharger"
+    9 -> "GBT AC"
+    10 -> "GBT DC"
+    11 -> "NACS"
+    101 -> "Other"
+    else -> "Unknown ($type)"
 }
 
 // --- Logs Tab ---
@@ -630,7 +701,7 @@ private fun DiagRow(
 private fun sessionStateColor(state: com.openautolink.app.session.SessionState): Color = when (state) {
     com.openautolink.app.session.SessionState.STREAMING -> Color(0xFF4CAF50)
     com.openautolink.app.session.SessionState.PHONE_CONNECTED,
-    com.openautolink.app.session.SessionState.BRIDGE_CONNECTED -> Color(0xFFFFC107)
+    com.openautolink.app.session.SessionState.LISTENING -> Color(0xFFFFC107)
     com.openautolink.app.session.SessionState.CONNECTING -> Color(0xFF2196F3)
     com.openautolink.app.session.SessionState.IDLE -> Color(0xFF808080)
     com.openautolink.app.session.SessionState.ERROR -> Color(0xFFFF5722)
