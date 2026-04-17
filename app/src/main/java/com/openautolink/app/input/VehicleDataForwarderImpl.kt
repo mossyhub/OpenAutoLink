@@ -46,6 +46,7 @@ class VehicleDataForwarderImpl(
             "GEAR_SELECTION" to 0x11400400,
             "CURRENT_GEAR" to 0x11400401,
             "PARKING_BRAKE_ON" to 0x11200402,
+            "PARKING_BRAKE_AUTO_APPLY" to 0x11200403,
             "NIGHT_MODE" to 0x11200407,
             "IGNITION_STATE" to 0x11400409,
             "EV_BATTERY_LEVEL" to 0x11600309,
@@ -72,6 +73,11 @@ class VehicleDataForwarderImpl(
             "INFO_MAKE" to 0x11100101,
             "INFO_MODEL" to 0x11100102,
             "INFO_MODEL_YEAR" to 0x11400103,
+            "INFO_EXTERIOR_DIMENSIONS" to 0x11410104,
+            "HEADLIGHTS_STATE" to 0x11400E00,
+            "HIGH_BEAM_LIGHTS_STATE" to 0x11400E01,
+            "TURN_SIGNAL_STATE" to 0x11400E02,
+            "TIRE_PRESSURE" to 0x11600306,
         )
     }
 
@@ -101,6 +107,7 @@ class VehicleDataForwarderImpl(
     private var carYear: String? = null
     private var fuelTypes: List<Int>? = null
     private var evConnectorTypes: List<Int>? = null
+    private var exteriorDimensions: List<Int>? = null
 
     private val _latestVehicleData = MutableStateFlow(ControlMessage.VehicleData())
     override val latestVehicleData: StateFlow<ControlMessage.VehicleData> = _latestVehicleData.asStateFlow()
@@ -258,6 +265,7 @@ class VehicleDataForwarderImpl(
 
         fuelTypes = readIntArrayProp("INFO_FUEL_TYPE")
         evConnectorTypes = readIntArrayProp("INFO_EV_CONNECTOR_TYPE")
+        exteriorDimensions = readIntArrayProp("INFO_EXTERIOR_DIMENSIONS")
 
         if (carMake != null || carModel != null) {
             DiagnosticLog.i("vhal", "Vehicle identity: $carMake $carModel $carYear fuel=$fuelTypes ev_conn=$evConnectorTypes")
@@ -292,8 +300,11 @@ class VehicleDataForwarderImpl(
         data class PropDef(val fieldName: String, val permission: String?, val rateField: String = "SENSOR_RATE_ONCHANGE")
         val properties = listOf(
             PropDef("PERF_VEHICLE_SPEED", "android.car.permission.CAR_SPEED", "SENSOR_RATE_FAST"),
+            PropDef("PERF_VEHICLE_SPEED_DISPLAY", "android.car.permission.CAR_SPEED", "SENSOR_RATE_FAST"),
             PropDef("GEAR_SELECTION", "android.car.permission.CAR_POWERTRAIN"),
+            PropDef("CURRENT_GEAR", "android.car.permission.CAR_POWERTRAIN"),
             PropDef("PARKING_BRAKE_ON", "android.car.permission.CAR_POWERTRAIN"),
+            PropDef("PARKING_BRAKE_AUTO_APPLY", "android.car.permission.CAR_POWERTRAIN"),
             PropDef("NIGHT_MODE", null),
             PropDef("EV_BATTERY_LEVEL", "android.car.permission.CAR_ENERGY"),
             PropDef("INFO_EV_BATTERY_CAPACITY", "android.car.permission.CAR_INFO"),
@@ -301,6 +312,8 @@ class VehicleDataForwarderImpl(
             PropDef("EV_BATTERY_INSTANTANEOUS_CHARGE_RATE", "android.car.permission.CAR_ENERGY"),
             PropDef("RANGE_REMAINING", "android.car.permission.CAR_ENERGY"),
             PropDef("PERF_ENGINE_RPM", "android.car.permission.CAR_SPEED"),
+            PropDef("PERF_ODOMETER", "android.car.permission.CAR_MILEAGE"),
+            PropDef("PERF_STEERING_ANGLE", "android.car.permission.READ_CAR_STEERING_3P"),
             PropDef("EV_CHARGE_PORT_OPEN", "android.car.permission.CAR_ENERGY_PORTS"),
             PropDef("EV_CHARGE_PORT_CONNECTED", "android.car.permission.CAR_ENERGY_PORTS"),
             PropDef("IGNITION_STATE", "android.car.permission.CAR_POWERTRAIN"),
@@ -314,6 +327,12 @@ class VehicleDataForwarderImpl(
             PropDef("EV_CHARGE_CURRENT_DRAW_LIMIT", "android.car.permission.CAR_ENERGY"),
             PropDef("EV_BRAKE_REGENERATION_LEVEL", "android.car.permission.CAR_POWERTRAIN"),
             PropDef("EV_STOPPING_MODE", "android.car.permission.CAR_POWERTRAIN"),
+            // Lights / exterior — permission-gated, may not be available
+            PropDef("HEADLIGHTS_STATE", "android.car.permission.READ_CAR_EXTERIOR_LIGHTS"),
+            PropDef("HIGH_BEAM_LIGHTS_STATE", "android.car.permission.READ_CAR_EXTERIOR_LIGHTS"),
+            PropDef("TURN_SIGNAL_STATE", "android.car.permission.READ_CAR_EXTERIOR_LIGHTS"),
+            // Tire pressure
+            PropDef("TIRE_PRESSURE", "android.car.permission.CAR_TIRES_3P"),
         )
 
         var subscribed = 0
@@ -347,6 +366,9 @@ class VehicleDataForwarderImpl(
                 continue
             }
 
+            // Track this property before initial read (handleChangeEvent checks trackedPropertyIds)
+            trackedPropertyIds.add(propId)
+
             // Read initial value
             try {
                 val pv = pmClass.getMethod("getProperty", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
@@ -359,7 +381,6 @@ class VehicleDataForwarderImpl(
             }
 
             // Subscribe using shared callback (app_v1's subscribe pattern)
-            trackedPropertyIds.add(propId)
             val ok = subscribe(pm, callbackInterface, callbackProxy!!, propId, prop.rateField)
             if (ok) {
                 subscribed++
@@ -514,8 +535,11 @@ class VehicleDataForwarderImpl(
         fun propId(name: String): Int? = resolveIntConstant("android.car.VehiclePropertyIds", name)
 
         val speedId = propId("PERF_VEHICLE_SPEED")
+        val displaySpeedId = propId("PERF_VEHICLE_SPEED_DISPLAY")
         val gearId = propId("GEAR_SELECTION")
+        val currentGearId = propId("CURRENT_GEAR")
         val parkBrakeId = propId("PARKING_BRAKE_ON")
+        val parkBrakeAutoId = propId("PARKING_BRAKE_AUTO_APPLY")
         val nightId = propId("NIGHT_MODE")
         val evBatteryId = propId("EV_BATTERY_LEVEL")
         val evCapId = propId("INFO_EV_BATTERY_CAPACITY")
@@ -523,6 +547,8 @@ class VehicleDataForwarderImpl(
         val chargeRateId = propId("EV_BATTERY_INSTANTANEOUS_CHARGE_RATE")
         val rangeId = propId("RANGE_REMAINING")
         val rpmId = propId("PERF_ENGINE_RPM")
+        val odomId = propId("PERF_ODOMETER")
+        val steerAngleId = propId("PERF_STEERING_ANGLE")
         val portOpenId = propId("EV_CHARGE_PORT_OPEN")
         val portConnId = propId("EV_CHARGE_PORT_CONNECTED")
         val ignitionId = propId("IGNITION_STATE")
@@ -538,9 +564,12 @@ class VehicleDataForwarderImpl(
         val stopModeId = propId("EV_STOPPING_MODE")
 
         val speed = speedId?.let { (currentValues[it] as? Float)?.let { v -> v * 3.6f } } // m/s → km/h
+        val displaySpeed = displaySpeedId?.let { currentValues[it] as? Float } // m/s
         val gearInt = gearId?.let { currentValues[it] as? Int }
         val gear = gearInt?.let { gearToString(it) }
+        val currentGearInt = currentGearId?.let { currentValues[it] as? Int }
         val parkingBrake = parkBrakeId?.let { currentValues[it] as? Boolean }
+        val parkingBrakeAuto = parkBrakeAutoId?.let { currentValues[it] as? Boolean }
         val nightMode = nightId?.let { currentValues[it] as? Boolean }
 
         // EV battery: compute real % from level/capacity (both in Wh)
@@ -555,6 +584,8 @@ class VehicleDataForwarderImpl(
         val rangeRemaining = rangeId?.let { (currentValues[it] as? Float)?.let { v -> v / 1000f } } // m → km
         val rpmRaw = rpmId?.let { currentValues[it] as? Float }
         val rpmE3 = rpmRaw?.let { (it * 1000).toInt() }
+        val odometerKm = odomId?.let { currentValues[it] as? Float }
+        val steeringAngle = steerAngleId?.let { currentValues[it] as? Float }
 
         val chargePortOpen = portOpenId?.let { currentValues[it] as? Boolean }
         val chargePortConnected = portConnId?.let { currentValues[it] as? Boolean }
@@ -576,18 +607,21 @@ class VehicleDataForwarderImpl(
 
         return ControlMessage.VehicleData(
             speedKmh = speed,
+            displaySpeedMs = displaySpeed,
             gear = gear,
             gearRaw = gearInt,
+            currentGear = currentGearInt,
             batteryPct = batteryPct,
             turnSignal = null,
             parkingBrake = parkingBrake,
+            parkingBrakeAuto = parkingBrakeAuto,
             nightMode = nightMode,
             fuelLevelPct = null,
             rangeKm = rangeRemaining,
             lowFuel = null,
-            odometerKm = null,
+            odometerKm = odometerKm,
             ambientTempC = ambientTemp,
-            steeringAngleDeg = null,
+            steeringAngleDeg = steeringAngle,
             headlight = null,
             hazardLights = null,
             rpmE3 = rpmE3,
@@ -611,7 +645,8 @@ class VehicleDataForwarderImpl(
             carModel = carModel,
             carYear = carYear,
             fuelTypes = fuelTypes,
-            evConnectorTypes = evConnectorTypes
+            evConnectorTypes = evConnectorTypes,
+            exteriorDimensions = exteriorDimensions
         )
     }
 

@@ -33,6 +33,7 @@ namespace oal {
     void stopSession();
     void sendTouch(int action, float x, float y, int pointerId);
     void sendSensorData(int type, const uint8_t* data, size_t len);
+    void sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM);
     void sendMicAudio(const uint8_t* pcm, size_t len);
     void sendButton(int keycode, bool down);
     void requestVideoFocus();
@@ -300,6 +301,13 @@ Java_com_openautolink_app_transport_AasdkJni_sendSensorData(
                             static_cast<size_t>(len));
         env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
     }
+}
+
+JNIEXPORT void JNICALL
+Java_com_openautolink_app_transport_AasdkJni_sendVehicleEnergyModel(
+        JNIEnv* /*env*/, jobject /*thiz*/,
+        jint capacityWh, jint currentWh, jint rangeM) {
+    oal::sendVehicleEnergyModel(capacityWh, currentWh, rangeM);
 }
 
 JNIEXPORT void JNICALL

@@ -98,6 +98,7 @@ class DirectAaTransport(private val scope: CoroutineScope) {
 
     private var currentNetwork: Network? = null
     private var currentNetworkResolver: NetworkResolver? = null
+    private var lastVemSendTime: Long = 0L
 
     /**
      * Start the relay connection loop. Connects to bridge, waits for phone,
@@ -198,6 +199,18 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                 if (message.driving != null || message.nightMode != null || message.gear != null) {
                     // aasdk sensor handler processes these internally via the entity
                     // Full protobuf vehicle sensor encoding is handled by aa_session.cpp
+                }
+                // Send Vehicle Energy Model for EV routing (sensor type 23)
+                // Throttled to once per 30s — energy model doesn't change rapidly
+                val cap = message.evBatteryCapacityWh?.toInt()
+                val level = message.evBatteryLevelWh?.toInt()
+                val rangeM = message.rangeKm?.let { (it * 1000).toInt() }
+                if (cap != null && cap > 0 && level != null && level > 0 && rangeM != null && rangeM > 0) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastVemSendTime > 30_000L) {
+                        lastVemSendTime = now
+                        AasdkJni.sendVehicleEnergyModel(cap, level, rangeM)
+                    }
                 }
             }
             // Messages that go through the relay control channel (bridge-side)

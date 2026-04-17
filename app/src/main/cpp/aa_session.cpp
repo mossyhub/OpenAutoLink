@@ -79,6 +79,7 @@
 #include <aap_protobuf/service/sensorsource/message/SensorRequest.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorStartResponseMessage.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorBatch.pb.h>
+#include <aap_protobuf/service/sensorsource/message/VehicleEnergyModel.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorType.pb.h>
 #include <aap_protobuf/service/sensorsource/message/FuelType.pb.h>
 #include <aap_protobuf/service/sensorsource/message/EvConnectorType.pb.h>
@@ -736,6 +737,53 @@ public:
         channel_->sendSensorEventIndication(batch, std::move(p));
     }
 
+    // Send Vehicle Energy Model (sensor type 23) for EV routing
+    // capacityWh: total battery capacity from INFO_EV_BATTERY_CAPACITY
+    // currentWh: current battery level from EV_BATTERY_LEVEL
+    // rangeM: range remaining in meters from RANGE_REMAINING
+    void sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM) {
+        if (capacityWh <= 0 || currentWh <= 0 || rangeM <= 0) return;
+
+        // Build VehicleEnergyModel protobuf
+        aap_protobuf::service::sensorsource::message::VehicleEnergyModel vem;
+
+        // Battery config
+        auto* batt = vem.mutable_battery();
+        batt->set_config_id(1);
+        batt->mutable_max_capacity()->set_watt_hours(capacityWh);
+        // Min usable = 95% of total (reasonable estimate for usable vs gross)
+        batt->mutable_min_usable_capacity()->set_watt_hours(static_cast<int>(capacityWh * 0.95));
+        // Reserve = 5% of capacity
+        batt->mutable_reserve_energy()->set_watt_hours(static_cast<int>(capacityWh * 0.05));
+        batt->set_regen_braking_capable(true);
+
+        // Energy consumption derived from car's own range estimate
+        // consumption = currentEnergy / rangeRemaining (Wh/m) * 1000 (Wh/km)
+        auto* cons = vem.mutable_consumption();
+        float whPerKm = (static_cast<float>(currentWh) / static_cast<float>(rangeM)) * 1000.0f;
+        cons->mutable_driving()->set_rate(whPerKm);
+        cons->mutable_auxiliary()->set_rate(2.0f);  // typical aux consumption
+
+        // Charging prefs
+        auto* prefs = vem.mutable_charging_prefs();
+        prefs->set_mode(1);  // standard
+
+        // Serialize VEM and add to SensorBatch field 23 as a message.
+        // On the phone side, wrc is an empty pass-through message — our VEM proto
+        // fields become "unknown fields" that wrc preserves and re-serializes to GMS.
+        // This works because proto2 message and bytes share wire type 2 (length-delimited).
+        aap_protobuf::service::sensorsource::message::SensorBatch batch;
+        auto* vemMsg = batch.add_vehicle_energy_model_data();
+        // Copy VEM fields into the batch's VehicleEnergyModel message
+        *vemMsg = vem;
+
+        auto p = aasdk::channel::SendPromise::defer(strand_);
+        p->then([](){}, [](auto){});
+        channel_->sendSensorEventIndication(batch, std::move(p));
+        LOGI("sensor: sent VehicleEnergyModel (capacity=%dWh, current=%dWh, range=%dm, consumption=%.1fWh/km)",
+             capacityWh, currentWh, rangeM, whPerKm);
+    }
+
 private:
     void onChannelOpenRequest(const aap_protobuf::service::control::message::ChannelOpenRequest&) override {
         LOGI("sensor: channel open");
@@ -749,6 +797,10 @@ private:
 
     void onSensorStartRequest(const aap_protobuf::service::sensorsource::message::SensorRequest& req) override {
         LOGI("sensor: start request type=%d", req.type());
+        if (req.type() == 23 || req.type() == 25) {
+            vemRequested_ = true;
+            LOGI("sensor: phone requested VEM — will send when VHAL data available");
+        }
         aap_protobuf::service::sensorsource::message::SensorStartResponseMessage resp;
         resp.set_status(aap_protobuf::shared::STATUS_SUCCESS);
         auto p = aasdk::channel::SendPromise::defer(strand_);
@@ -766,6 +818,10 @@ private:
 
     boost::asio::io_service::strand strand_;
     std::shared_ptr<aasdk::channel::sensorsource::SensorSourceService> channel_;
+    bool vemRequested_ = false;
+
+public:
+    bool isVemRequested() const { return vemRequested_; }
 };
 
 // ─── Input (Touch + Keys) ───────────────────────────────────────
@@ -1471,6 +1527,9 @@ void JniAutoEntity::onServiceDiscoveryRequest(
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_COMPASS);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GPS_SATELLITE_DATA);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_VEHICLE_ENERGY_MODEL);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RAW_VEHICLE_ENERGY_MODEL);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RAW_EV_TRIP_SETTINGS);
       // GPS + accel + gyro + compass + speed sensor fusion
       ss->set_location_characterization(256 | 4 | 2 | 8 | 64);
       // EV vehicle type
@@ -1894,6 +1953,21 @@ void sendSensorData(int type, const uint8_t* data, size_t len) {
     }
 }
 
+void sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM) {
+    if (!g_running.load()) return;
+    std::lock_guard<std::mutex> lock(g_sessionMutex);
+    if (!g_running.load() || !g_io || !g_entity || !g_entity->sensorHandler()) return;
+    // Only send if phone requested sensor type 23 during this session
+    if (!g_entity->sensorHandler()->isVemRequested()) return;
+    auto io = g_io.get();
+    auto entity = g_entity;
+    io->post([entity, capacityWh, currentWh, rangeM]() {
+        if (entity && entity->sensorHandler()) {
+            entity->sensorHandler()->sendVehicleEnergyModel(capacityWh, currentWh, rangeM);
+        }
+    });
+}
+
 void sendMicAudio(const uint8_t* pcm, size_t len) {
     if (!g_running.load()) return;
     std::lock_guard<std::mutex> lock(g_sessionMutex);
@@ -1972,6 +2046,7 @@ bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
 void stopSession() { g_running = false; }
 void sendTouch(int, float, float, int) {}
 void sendSensorData(int, const uint8_t*, size_t) {}
+void sendVehicleEnergyModel(int, int, int) {}
 void sendMicAudio(const uint8_t*, size_t) {}
 void sendButton(int, bool) {}
 void requestVideoFocus() {}

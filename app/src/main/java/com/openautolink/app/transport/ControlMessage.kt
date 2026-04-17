@@ -113,11 +113,14 @@ sealed class ControlMessage {
 
     data class VehicleData(
         val speedKmh: Float? = null,
+        val displaySpeedMs: Float? = null,
         val gear: String? = null,
         val gearRaw: Int? = null,
+        val currentGear: Int? = null,
         val batteryPct: Int? = null,
         val turnSignal: String? = null,
         val parkingBrake: Boolean? = null,
+        val parkingBrakeAuto: Boolean? = null,
         val nightMode: Boolean? = null,
         val fuelLevelPct: Int? = null,
         val rangeKm: Float? = null,
@@ -151,6 +154,7 @@ sealed class ControlMessage {
         val carYear: String? = null,
         val fuelTypes: List<Int>? = null,          // INFO_FUEL_TYPE — e.g. [10] = ELECTRIC
         val evConnectorTypes: List<Int>? = null,   // INFO_EV_CONNECTOR_TYPE — e.g. [1,5] = J1772+COMBO_1
+        val exteriorDimensions: List<Int>? = null,  // INFO_EXTERIOR_DIMENSIONS — mm values
         // P5: IMU sensors
         val accelXe3: Int? = null,
         val accelYe3: Int? = null,

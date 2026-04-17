@@ -80,6 +80,15 @@ object AasdkJni {
     /** Send sensor data (GNSS NMEA, vehicle data protobuf, etc.) */
     external fun sendSensorData(type: Int, data: ByteArray)
 
+    /**
+     * Send Vehicle Energy Model to phone for EV routing.
+     * Maps will use this to compute battery-on-arrival estimates.
+     * @param capacityWh total battery capacity from INFO_EV_BATTERY_CAPACITY
+     * @param currentWh current battery level from EV_BATTERY_LEVEL
+     * @param rangeM range remaining in meters from RANGE_REMAINING
+     */
+    external fun sendVehicleEnergyModel(capacityWh: Int, currentWh: Int, rangeM: Int)
+
     /** Send microphone PCM audio to the phone. */
     external fun sendMicAudio(pcm: ByteArray)
 
