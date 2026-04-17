@@ -224,6 +224,12 @@ class SessionManager(
             t.sessionContentLeft = kotlinx.coroutines.runBlocking { prefs.contentInsetLeft.first() }
             t.sessionContentRight = kotlinx.coroutines.runBlocking { prefs.contentInsetRight.first() }
             t.sessionHeadUnitName = kotlinx.coroutines.runBlocking { prefs.headUnitName.first() }
+            t.sessionVideoCodec = when (codecPreference) {
+                "h265", "hevc" -> 1
+                "vp9" -> 2
+                "auto" -> 3  // offer all codecs, phone picks best
+                else -> 0 // h264
+            }
         }
 
         // Create mic capture manager -- sends PCM via aasdk JNI

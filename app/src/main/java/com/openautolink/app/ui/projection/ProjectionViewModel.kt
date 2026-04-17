@@ -285,7 +285,8 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val host = preferences.bridgeHost.first()
             val port = preferences.bridgePort.first()
-            val codec = preferences.videoCodec.first()
+            val autoNeg = preferences.videoAutoNegotiate.first()
+            val codec = if (autoNeg) "auto" else preferences.videoCodec.first()
             val micSrc = preferences.micSource.first()
             val ifaceName = preferences.networkInterface.first()
             val diagEnabled = preferences.remoteDiagnosticsEnabled.first()

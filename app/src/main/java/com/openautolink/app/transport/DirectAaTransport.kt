@@ -94,6 +94,7 @@ class DirectAaTransport(private val scope: CoroutineScope) {
     var sessionHeadUnitName: String = "OpenAutoLink"
     var sessionConfig: Int = 0       // bitmask: bit0=hideClock, bit1=hideSignal, bit2=hideBattery
     var sessionBtMac: String = "00:00:00:00:00:00"
+    var sessionVideoCodec: Int = 0   // 0=h264, 1=h265, 2=vp9
 
     private var currentNetwork: Network? = null
     private var currentNetworkResolver: NetworkResolver? = null
@@ -359,7 +360,8 @@ class DirectAaTransport(private val scope: CoroutineScope) {
                 sessionMarginW, sessionMarginH, sessionPixelAspect, sessionDriverPos,
                 sessionSafeTop, sessionSafeBottom, sessionSafeLeft, sessionSafeRight,
                 sessionContentTop, sessionContentBottom, sessionContentLeft, sessionContentRight,
-                sessionHeadUnitName, sessionConfig, sessionBtMac
+                sessionHeadUnitName, sessionConfig, sessionBtMac,
+                sessionVideoCodec
             )
 
             // Wait for session to end (onPhoneDisconnected fires sessionDone)

@@ -28,7 +28,8 @@ namespace oal {
                             int marginW, int marginH, int pixelAspect, int driverPos,
                             int safeT, int safeB, int safeL, int safeR,
                             int contentT, int contentB, int contentL, int contentR,
-                            const char* headUnitName, int sessionConfig, const char* btMac);
+                            const char* headUnitName, int sessionConfig, const char* btMac,
+                            int videoCodec);
     void stopSession();
     void sendTouch(int action, float x, float y, int pointerId);
     void sendSensorData(int type, const uint8_t* data, size_t len);
@@ -258,16 +259,17 @@ Java_com_openautolink_app_transport_AasdkJni_startSessionWithFd(
         jint marginW, jint marginH, jint pixelAspect, jint driverPos,
         jint safeT, jint safeB, jint safeL, jint safeR,
         jint contentT, jint contentB, jint contentL, jint contentR,
-        jstring headUnitName, jint sessionConfig, jstring btMac) {
+        jstring headUnitName, jint sessionConfig, jstring btMac,
+        jint videoCodec) {
     const char* name = env->GetStringUTFChars(headUnitName, nullptr);
     const char* mac = env->GetStringUTFChars(btMac, nullptr);
-    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d",
-         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig);
+    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d codec=%d",
+         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig, videoCodec);
     oal::startSessionWithFd(socketFd, width, height, fps, dpi,
                             marginW, marginH, pixelAspect, driverPos,
                             safeT, safeB, safeL, safeR,
                             contentT, contentB, contentL, contentR,
-                            name, sessionConfig, mac);
+                            name, sessionConfig, mac, videoCodec);
     env->ReleaseStringUTFChars(headUnitName, name);
     env->ReleaseStringUTFChars(btMac, mac);
 }

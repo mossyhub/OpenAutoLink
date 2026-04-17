@@ -67,7 +67,8 @@ object AasdkJni {
         marginW: Int, marginH: Int, pixelAspect: Int, driverPos: Int,
         safeTop: Int, safeBottom: Int, safeLeft: Int, safeRight: Int,
         contentTop: Int, contentBottom: Int, contentLeft: Int, contentRight: Int,
-        headUnitName: String, sessionConfig: Int, btMac: String
+        headUnitName: String, sessionConfig: Int, btMac: String,
+        videoCodec: Int
     )
 
     /** Stop the running AA session and close the TCP listener. */

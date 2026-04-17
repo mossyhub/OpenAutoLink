@@ -161,6 +161,8 @@ struct SessionConfig {
     int sessionConfiguration = 0; // bit0=hideClock, bit1=hideSignal, bit2=hideBattery
     // Phase 9: Bluetooth MAC for BT service in SDR
     std::string btMac = "00:00:00:00:00:00";
+    // Video codec preference: 0=h264, 1=h265, 2=vp9
+    int videoCodec = 0;
 };
 
 int widthToTier(int w) {
@@ -303,10 +305,11 @@ class JniVideoHandler
 public:
     JniVideoHandler(boost::asio::io_service& io,
                     aasdk::messenger::IMessenger::Pointer messenger,
-                    int width, int height, int fps, int dpi)
+                    int width, int height, int fps, int dpi, int videoCodec)
         : strand_(io)
         , channel_(std::make_shared<aasdk::channel::mediasink::video::channel::VideoChannel>(strand_, messenger))
-        , width_(width), height_(height), fps_(fps), dpi_(dpi) {}
+        , width_(width), height_(height), fps_(fps), dpi_(dpi)
+        , videoCodec_(videoCodec) {}
 
     void start() { strand_.dispatch([this, self = shared_from_this()]() { channel_->receive(self); }); }
     void stop() {}
@@ -358,45 +361,60 @@ private:
                                         const aasdk::common::DataConstBuffer& buf) override {
         frameCount_++;
         int flags = 0;
+        bool isVp9 = (videoCodec_ == 2);
 
-        // Detect keyframes for H.264, H.265, and VP9
-        if (buf.size >= 5) {
-            // Check for NAL unit start codes (4-byte 0x00000001 and 3-byte 0x000001)
+        // Auto mode (3): detect codec from first frame's NAL types
+        if (videoCodec_ == 3 && buf.size >= 5) {
+            // Look for H.265 VPS (type 32) — unambiguous marker
+            for (size_t i = 0; i + 5 < buf.size; ++i) {
+                bool sc4 = (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
+                            buf.cdata[i+2] == 0 && buf.cdata[i+3] == 1);
+                if (sc4) {
+                    uint8_t h265Type = (buf.cdata[i+4] >> 1) & 0x3f;
+                    if (h265Type == 32) { // VPS — definitely H.265
+                        videoCodec_ = 1;
+                        LOGI("video: auto-detected H.265 from VPS NAL");
+                        break;
+                    }
+                    uint8_t h264Type = buf.cdata[i+4] & 0x1f;
+                    if (h264Type == 7) { // SPS — definitely H.264
+                        videoCodec_ = 0;
+                        LOGI("video: auto-detected H.264 from SPS NAL");
+                        break;
+                    }
+                }
+            }
+        }
+
+        bool isH265 = (videoCodec_ == 1);
+
+        if (isVp9) {
+            // VP9: keyframe detection from frame header (no NAL start codes)
+            // Bit 2 of first byte is frame_type: 0 = key, 1 = inter
+            if (buf.size >= 1 && !(buf.cdata[0] & 0x04)) {
+                flags |= 1; // VP9 keyframe
+                flags |= 2; // VP9 keyframes are self-contained (no separate SPS/PPS)
+            }
+        } else if (buf.size >= 5) {
+            // H.264 or H.265: scan for Annex B start codes + NAL type
             for (size_t i = 0; i + 4 < buf.size; ++i) {
                 bool fourByte = (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
                                  buf.cdata[i+2] == 0 && buf.cdata[i+3] == 1);
-                bool threeByte = (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
+                bool threeByte = !fourByte && (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
                                   buf.cdata[i+2] == 1);
-                if (fourByte && i + 4 < buf.size) {
-                    uint8_t nalByte = buf.cdata[i + 4];
-                    // H.264: NAL type in bits [4:0]
-                    uint8_t h264Type = nalByte & 0x1f;
-                    if (h264Type == 5) flags |= 1; // IDR = KEYFRAME
-                    if (h264Type == 7 || h264Type == 8) flags |= 2; // SPS/PPS = CODEC_CONFIG
-
-                    // H.265: NAL type in bits [6:1] of first byte
-                    // H.265 NAL header is 2 bytes; forbidden_zero_bit=0, type in [6:1]
-                    // Distinguish from H.264 by checking forbidden_zero_bit pattern:
-                    // H.265 always has nal_unit_header with 2 bytes, type 32-34 = VPS/SPS/PPS, 19-20 = IDR
-                    uint8_t h265Type = (nalByte >> 1) & 0x3f;
-                    if (h265Type == 19 || h265Type == 20) flags |= 1; // IDR_W_RADL, IDR_N_LP = KEYFRAME
-                    if (h265Type >= 32 && h265Type <= 34) flags |= 2; // VPS/SPS/PPS = CODEC_CONFIG
-                } else if (threeByte && i + 3 < buf.size) {
-                    uint8_t nalByte = buf.cdata[i + 3];
-                    uint8_t h264Type = nalByte & 0x1f;
-                    if (h264Type == 5) flags |= 1;
-                    if (h264Type == 7 || h264Type == 8) flags |= 2;
-
-                    uint8_t h265Type = (nalByte >> 1) & 0x3f;
-                    if (h265Type == 19 || h265Type == 20) flags |= 1;
-                    if (h265Type >= 32 && h265Type <= 34) flags |= 2;
+                size_t nalOffset = fourByte ? i + 4 : (threeByte ? i + 3 : 0);
+                if (nalOffset > 0 && nalOffset < buf.size) {
+                    uint8_t nalByte = buf.cdata[nalOffset];
+                    if (isH265) {
+                        uint8_t nalType = (nalByte >> 1) & 0x3f;
+                        if (nalType == 19 || nalType == 20) flags |= 1; // IDR_W_RADL, IDR_N_LP
+                        if (nalType >= 32 && nalType <= 34) flags |= 2; // VPS/SPS/PPS
+                    } else {
+                        uint8_t nalType = nalByte & 0x1f;
+                        if (nalType == 5) flags |= 1; // IDR
+                        if (nalType == 7 || nalType == 8) flags |= 2; // SPS/PPS
+                    }
                 }
-            }
-
-            // VP9 keyframe detection: bit 2 of first byte is show_existing_frame/frame_type
-            // If bit 2 is 0, it's a key frame
-            if (flags == 0 && buf.size >= 1 && !(buf.cdata[0] & 0x04)) {
-                flags |= 1; // VP9 keyframe
             }
         }
 
@@ -429,6 +447,7 @@ private:
     boost::asio::io_service::strand strand_;
     std::shared_ptr<aasdk::channel::mediasink::video::channel::VideoChannel> channel_;
     int width_, height_, fps_, dpi_;
+    int videoCodec_; // 0=h264, 1=h265, 2=vp9
     int32_t session_ = -1;
     uint32_t frameCount_ = 0;
 };
@@ -1154,7 +1173,7 @@ JniAutoEntity::JniAutoEntity(
     int aaW, aaH;
     tierToDimensions(config_.resolutionTier, aaW, aaH);
 
-    videoHandler_ = std::make_shared<JniVideoHandler>(io_, messenger_, aaW, aaH, config_.fps, config_.dpi);
+    videoHandler_ = std::make_shared<JniVideoHandler>(io_, messenger_, aaW, aaH, config_.fps, config_.dpi, config_.videoCodec);
     mediaAudioHandler_ = std::make_shared<JniAudioHandler>(io_, messenger_, JniAudioHandler::Type::Media);
     speechAudioHandler_ = std::make_shared<JniAudioHandler>(io_, messenger_, JniAudioHandler::Type::Speech);
     systemAudioHandler_ = std::make_shared<JniAudioHandler>(io_, messenger_, JniAudioHandler::Type::System);
@@ -1344,16 +1363,43 @@ void JniAutoEntity::onServiceDiscoveryRequest(
       ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
       ms->set_available_while_in_call(true);
 
-      // H.265 configs at tiers 5 down to 1 (best first)
-      for (int t : {5, 4, 3, 2, 1}) {
-          if (t <= config_.resolutionTier) {
-              addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+      // Video configs: offer the user's preferred codec first, then fallback.
+      // Phone picks the first codec+resolution it supports.
+      if (config_.videoCodec == 1) {
+          // H.265 preferred: offer H.265 at all tiers first, then H.264 fallback
+          for (int t : {5, 4, 3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
           }
-      }
-      // H.264 fallback at tiers 3 down to 1
-      for (int t : {3, 2, 1}) {
-          if (t <= config_.resolutionTier) {
-              addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          for (int t : {3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          }
+      } else if (config_.videoCodec == 2) {
+          // VP9 preferred: offer VP9 at all tiers first, then H.264 fallback
+          for (int t : {5, 4, 3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_VP9);
+          }
+          for (int t : {3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          }
+      } else if (config_.videoCodec == 3) {
+          // Auto: offer all codecs — H.265 first (best quality), H.264 fallback
+          for (int t : {5, 4, 3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+          }
+          for (int t : {3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          }
+      } else {
+          // H.264 preferred (default): offer H.264 only
+          for (int t : {3, 2, 1}) {
+              if (t <= config_.resolutionTier)
+                  addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
           }
       }
     }
@@ -1701,14 +1747,15 @@ bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
                         int marginW, int marginH, int pixelAspect, int driverPos,
                         int safeT, int safeB, int safeL, int safeR,
                         int contentT, int contentB, int contentL, int contentR,
-                        const char* headUnitName, int sessionConfig, const char* btMac) {
+                        const char* headUnitName, int sessionConfig, const char* btMac,
+                        int videoCodec) {
     if (g_running.exchange(true)) {
         LOGW("startSessionWithFd: already running");
         return false;
     }
 
-    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d",
-         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig);
+    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d codec=%d",
+         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig, videoCodec);
 
     g_config.port = 0;
     g_config.width = width;
@@ -1731,6 +1778,7 @@ bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
     if (headUnitName && headUnitName[0]) g_config.headUnitName = headUnitName;
     g_config.sessionConfiguration = sessionConfig;
     if (btMac && btMac[0]) g_config.btMac = btMac;
+    g_config.videoCodec = videoCodec;
 
     g_io = std::make_unique<boost::asio::io_service>();
     g_work = std::make_unique<boost::asio::io_service::work>(*g_io);
@@ -1848,7 +1896,7 @@ bool startSession(int port, int width, int height, int fps, int dpi) {
 
 bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
                         int, int, int, int, int, int, int, int, int, int, int, int,
-                        const char*, int, const char*) {
+                        const char*, int, const char*, int) {
     if (g_running.exchange(true)) { LOGW("already running"); return false; }
     LOGI("startSessionWithFd STUB: fd=%d %dx%d @%dfps dpi=%d", socketFd, width, height, fps, dpi);
     g_running = false;
