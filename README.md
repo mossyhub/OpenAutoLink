@@ -14,6 +14,12 @@ OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units.
   <em>Android Auto streaming wirelessly on a 2024 Chevrolet Blazer EV</em>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/AA-EV-Battery-Maps.jpg" alt="EV battery percentage showing in Google Maps via Android Auto" width="720">
+  <br>
+  <em>EV battery percentage (92%) and estimated arrival charge in Google Maps — a first for any Android Auto bridge</em>
+</p>
+
 > This is a hobby project under active development. Core features are implemented and working on real hardware, but the project is not yet polished or broadly validated across vehicles.
 
 > **Discuss on XDA:** [OpenAutoLink — Wireless Android Auto bridge for AAOS (GM EVs)](https://xdaforums.com/t/open-source-openautolink-wireless-android-auto-bridge-for-aaos-gm-evs.4785192/) — questions, feedback, and build reports welcome.
@@ -49,6 +55,7 @@ The current design is purpose-built for this setup:
 
 - Wireless Android Auto over Bluetooth + WiFi, no phone cable required
 - Up to 1080p60 by default, with 1440p and 4K available through AA Developer Mode and supported codecs
+- **EV battery percentage in Google Maps** — forwards VHAL battery data through the AA sensor channel so Maps shows current charge and estimated arrival battery. First AA bridge (OEM or aftermarket) to support this
 - Automatic display adaptation for wide and irregular AAOS displays
 - Audio forwarding for media, navigation, phone calls, and voice assistant
 - Touch input, steering wheel controls, and microphone forwarding
