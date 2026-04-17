@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml/badge.svg)](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml)
 
-OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units. An SBC handles the phone's Android Auto session over WiFi, then streams video, audio, and control data to an app on the car's display over Ethernet. The goal is to restore a native-feeling Android Auto experience on vehicles that ship with AAOS but without built-in Android Auto support.
+OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units. An SBC handles Bluetooth/WiFi pairing and raw relay transport between phone and car, while the AAOS app terminates the Android Auto session (aasdk via NDK/JNI) and renders audio/video on the head unit. The goal is to restore a native-feeling Android Auto experience on vehicles that ship with AAOS but without built-in Android Auto support.
 
 <p align="center">
   <img src="docs/screenshots/AA-Streaming-Screenshot.jpg" alt="Android Auto streaming on a 2024 Blazer EV via OpenAutoLink" width="720">
@@ -48,7 +48,7 @@ Starting with the 2024 model year, GM dropped Apple CarPlay and Android Auto fro
 The current design is purpose-built for this setup:
 
 - The phone connects wirelessly to the SBC over Bluetooth and WiFi.
-- The SBC runs the Android Auto session and relays it over TCP.
+- The SBC runs a thin TCP relay and pairing services (no AA protocol handling).
 - The AAOS app renders video and audio, forwards touch and car data, and manages reconnection.
 
 ## What It Does
@@ -128,7 +128,7 @@ The CPC200-CCPA and similar USB adapters proved that Android Auto on AAOS was po
 
 ### Video Modes
 
-By default, OpenAutoLink uses auto-negotiation. The bridge offers supported codec and resolution tiers in the Android Auto service discovery response, and the phone picks the best combination it supports.
+By default, OpenAutoLink uses auto-negotiation. The app's in-process aasdk session offers supported codec and resolution tiers in the Android Auto service discovery response, and the phone picks the best combination it supports.
 
 | Resolution | Codec | Notes |
 |-----------|-------|-------|
@@ -382,7 +382,7 @@ OpenAutoLink is built from scratch, but it draws heavily on prior open-source An
 
 ### Core Dependency
 
-- **[opencardev/aasdk](https://github.com/opencardev/aasdk)** by [Michal Szwaj (f1x)](https://github.com/nickel110) is the Android Auto protocol library underneath the bridge. OpenAutoLink maintains a [fork](https://github.com/mossyhub/aasdk) with NavigationStatus extensions.
+- **[opencardev/aasdk](https://github.com/opencardev/aasdk)** by [Michal Szwaj (f1x)](https://github.com/nickel110) is the Android Auto protocol library underneath OpenAutoLink's in-app AA session implementation. OpenAutoLink maintains a [fork](https://github.com/mossyhub/aasdk) with NavigationStatus extensions.
 
 ### Projects I Learned From
 
