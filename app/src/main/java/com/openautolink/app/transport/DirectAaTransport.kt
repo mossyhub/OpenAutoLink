@@ -344,6 +344,48 @@ class DirectAaTransport(private val scope: CoroutineScope) {
             }
         }
 
+        // Monitor relay control channel — if the relay sends relay_disconnected
+        // or the control socket closes, the phone is gone. Complete sessionDone
+        // to break the wait, since aasdk may not detect the dead socket through
+        // the portproxy chain.
+        val relayMonitorJob = scope.launch(Dispatchers.IO) {
+            try {
+                while (true) {
+                    val line = controlReader?.readLine() ?: break  // EOF = relay gone
+                    try {
+                        val json = Json.parseToJsonElement(line) as? JsonObject ?: continue
+                        val type = json["type"]?.jsonPrimitive?.content ?: continue
+                        when (type) {
+                            "relay_disconnected" -> {
+                                Log.i(TAG, "Relay disconnected during session — ending")
+                                DiagnosticLog.i("transport", "Relay disconnected during session")
+                                sessionDone.complete(Unit)
+                                break
+                            }
+                            "paired_phones" -> {
+                                try {
+                                    val phonesArr = json["phones"] as? kotlinx.serialization.json.JsonArray
+                                    val phones = phonesArr?.mapNotNull { el ->
+                                        val obj = el as? JsonObject ?: return@mapNotNull null
+                                        ControlMessage.PairedPhone(
+                                            mac = obj["mac"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                                            name = obj["name"]?.jsonPrimitive?.content ?: "unknown",
+                                            connected = obj["connected"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+                                        )
+                                    } ?: emptyList()
+                                    AasdkJni.emitControlMessage(ControlMessage.PairedPhones(phones))
+                                } catch (_: Exception) {}
+                            }
+                            else -> Log.d(TAG, "Control during session: $type")
+                        }
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+            // Control channel closed — relay is gone, end session
+            Log.i(TAG, "Control channel closed — ending session")
+            sessionDone.complete(Unit)
+        }
+
         // Also monitor video frames for STREAMING state transition
         val videoMonitorJob = scope.launch {
             AasdkJni.videoFrames.collect {
@@ -369,6 +411,7 @@ class DirectAaTransport(private val scope: CoroutineScope) {
         } finally {
             controlMonitorJob.cancel()
             videoMonitorJob.cancel()
+            relayMonitorJob.cancel()
             // Stop the native aasdk session so the next startSessionWithFd can proceed.
             // This must happen after sessionDone (phone disconnected) to avoid
             // blocking the JNI thread while aasdk callbacks are still firing.
