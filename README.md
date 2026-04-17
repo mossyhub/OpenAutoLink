@@ -304,7 +304,8 @@ Because this is an AAOS app rather than a normal phone app, installation on the 
 | Component | Language | Location |
 |-----------|----------|----------|
 | **Car App** | Kotlin / Compose | `app/` |
-| **Bridge** | C++20 | `bridge/openautolink/headless/` |
+| **App NDK/JNI (aasdk)** | C++ | `app/src/main/cpp/` |
+| **Bridge Relay** | C++20 | `bridge/openautolink/relay/` |
 | **BT/WiFi Services** | Python | `bridge/openautolink/scripts/` |
 | **SBC Deployment** | Bash / systemd | `bridge/sbc/` |
 | **aasdk fork** | C++ | `external/opencardev-aasdk/` |
@@ -359,7 +360,6 @@ Active development. Core features are implemented and working on real hardware o
 - **Occasional audio jitter / cutout:** intermittent and still under investigation.
 - **"Unsupported device" popup on GM EVs:** the USB Ethernet adapter can trigger a brief cosmetic warning even though networking still works.
 - **USB gadget networking does not work:** presenting the SBC directly as a USB network gadget has not worked in testing; the external USB Ethernet adapter remains the working approach.
-- **The Android Auto stream green** UI may start out blocky and green, but will self recover in 10-20 seconds. Still fighting this one...
 
 ## Compatibility
 
