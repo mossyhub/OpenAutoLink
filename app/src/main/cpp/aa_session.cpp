@@ -1871,9 +1871,16 @@ void sendTouch(int action, float x, float y, int pointerId) {
     if (!g_running.load()) return;
     std::lock_guard<std::mutex> lock(g_sessionMutex);
     if (!g_running.load() || !g_io || !g_entity || !g_entity->inputHandler()) return;
-    try {
-        g_entity->inputHandler()->sendTouch(action, x, y, pointerId);
-    } catch (...) {}
+    // Post to io_service — never call strand_.dispatch() from external threads.
+    // The strand_impl can become invalid between our check and the dispatch call
+    // if stopSession runs concurrently on another thread.
+    auto io = g_io.get();
+    auto entity = g_entity;
+    io->post([entity, action, x, y, pointerId]() {
+        if (entity && entity->inputHandler()) {
+            entity->inputHandler()->sendTouch(action, x, y, pointerId);
+        }
+    });
 }
 
 void sendSensorData(int type, const uint8_t* data, size_t len) {
@@ -1900,9 +1907,13 @@ void sendButton(int keycode, bool down) {
     if (!g_running.load()) return;
     std::lock_guard<std::mutex> lock(g_sessionMutex);
     if (!g_running.load() || !g_io || !g_entity || !g_entity->inputHandler()) return;
-    try {
-        g_entity->inputHandler()->sendButton(keycode, down);
-    } catch (...) {}
+    auto io = g_io.get();
+    auto entity = g_entity;
+    io->post([entity, keycode, down]() {
+        if (entity && entity->inputHandler()) {
+            entity->inputHandler()->sendButton(keycode, down);
+        }
+    });
 }
 
 void requestVideoFocus() {
