@@ -67,7 +67,7 @@ object AasdkJni {
         marginW: Int, marginH: Int, pixelAspect: Int, driverPos: Int,
         safeTop: Int, safeBottom: Int, safeLeft: Int, safeRight: Int,
         contentTop: Int, contentBottom: Int, contentLeft: Int, contentRight: Int,
-        headUnitName: String
+        headUnitName: String, sessionConfig: Int, btMac: String
     )
 
     /** Stop the running AA session and close the TCP listener. */
@@ -134,16 +134,51 @@ object AasdkJni {
         _controlMessages.tryEmit(ControlMessage.PhoneDisconnected(reason))
     }
 
-    /** Called from native with navigation state updates. */
+    /** Called from native with navigation state updates (extended — Phase 9). */
     @JvmStatic
-    fun onNavState(maneuver: String?, distanceMeters: Int, road: String?, etaSeconds: Int) {
+    fun onNavState(
+        maneuver: String?, distanceMeters: Int, road: String?, etaSeconds: Int,
+        cue: String?, roundaboutExitNumber: Int, roundaboutExitAngle: Int,
+        displayDistance: String?, displayDistanceUnit: String?,
+        currentRoad: String?, destination: String?,
+        etaFormatted: String?, timeToArrivalSeconds: Long
+    ) {
         _controlMessages.tryEmit(
             ControlMessage.NavState(
-                maneuver = maneuver,
+                maneuver = maneuver?.ifEmpty { null },
                 distanceMeters = distanceMeters,
-                road = road,
-                etaSeconds = etaSeconds
+                road = road?.ifEmpty { null },
+                etaSeconds = etaSeconds,
+                cue = cue?.ifEmpty { null },
+                roundaboutExitNumber = if (roundaboutExitNumber != 0) roundaboutExitNumber else null,
+                roundaboutExitAngle = if (roundaboutExitAngle != 0) roundaboutExitAngle else null,
+                displayDistance = displayDistance?.ifEmpty { null },
+                displayDistanceUnit = displayDistanceUnit?.ifEmpty { null },
+                currentRoad = currentRoad?.ifEmpty { null },
+                destination = destination?.ifEmpty { null },
+                etaFormatted = etaFormatted?.ifEmpty { null },
+                timeToArrivalSeconds = if (timeToArrivalSeconds != 0L) timeToArrivalSeconds else null
             )
+        )
+    }
+
+    /** Called from native when navigation becomes inactive. */
+    @JvmStatic
+    fun onNavStateClear() {
+        _controlMessages.tryEmit(ControlMessage.NavStateClear)
+    }
+
+    /** Called from native when voice session starts or stops. */
+    @JvmStatic
+    fun onVoiceSession(started: Boolean) {
+        _controlMessages.tryEmit(ControlMessage.VoiceSession(started))
+    }
+
+    /** Called from native with phone battery status. */
+    @JvmStatic
+    fun onPhoneBattery(level: Int, timeRemainingSeconds: Int, critical: Boolean) {
+        _controlMessages.tryEmit(
+            ControlMessage.PhoneBattery(level, timeRemainingSeconds, critical)
         )
     }
 

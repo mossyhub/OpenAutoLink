@@ -79,11 +79,29 @@
 #include <aap_protobuf/service/sensorsource/message/SensorStartResponseMessage.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorBatch.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorType.pb.h>
+#include <aap_protobuf/service/sensorsource/message/FuelType.pb.h>
+#include <aap_protobuf/service/sensorsource/message/EvConnectorType.pb.h>
 #include <aap_protobuf/service/inputsource/message/InputReport.pb.h>
 #include <aap_protobuf/service/inputsource/message/PointerAction.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothPairingRequest.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothPairingResponse.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothPairingMethod.pb.h>
+#include <aap_protobuf/service/control/message/ByeByeRequest.pb.h>
+#include <aap_protobuf/service/control/message/ByeByeResponse.pb.h>
+#include <aap_protobuf/service/control/message/ByeByeReason.pb.h>
+#include <aap_protobuf/service/control/message/VoiceSessionNotification.pb.h>
+#include <aap_protobuf/service/control/message/BatteryStatusNotification.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationState.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationCurrentPosition.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationStep.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationManeuver.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationDistance.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationRoad.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationCue.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationLane.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationDestination.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationStepDistance.pb.h>
+#include <aap_protobuf/service/navigationstatus/message/NavigationDestinationDistance.pb.h>
 #include <aap_protobuf/shared/MessageStatus.pb.h>
 
 #define LOG_TAG "aa_session"
@@ -100,6 +118,15 @@ namespace oal { namespace jni {
                           const uint8_t* data, size_t len);
     void notifyPhoneConnected(const std::string& name, const std::string& type);
     void notifyPhoneDisconnected(const std::string& reason);
+    void notifyVoiceSession(bool started);
+    void notifyPhoneBattery(int level, int timeRemaining, bool critical);
+    void notifyNavState(const std::string& maneuver, int distanceMeters,
+                        const std::string& road, int etaSeconds,
+                        const std::string& cue, int roundaboutExit, int roundaboutAngle,
+                        const std::string& displayDistance, const std::string& displayDistanceUnit,
+                        const std::string& currentRoad, const std::string& destination,
+                        const std::string& etaFormatted, int64_t timeToArrivalSeconds);
+    void notifyNavStateClear();
 }}
 
 // ════════════════════════════════════════════════════════════════════
@@ -130,6 +157,10 @@ struct SessionConfig {
     int contentLeft = 0;
     int contentRight = 0;
     std::string headUnitName = "OpenAutoLink";
+    // Phase 9: session configuration bitmask (hide clock/signal/battery on AA projection)
+    int sessionConfiguration = 0; // bit0=hideClock, bit1=hideSignal, bit2=hideBattery
+    // Phase 9: Bluetooth MAC for BT service in SDR
+    std::string btMac = "00:00:00:00:00:00";
 };
 
 int widthToTier(int w) {
@@ -210,8 +241,20 @@ private:
     void onByeByeRequest(const aap_protobuf::service::control::message::ByeByeRequest& req) override;
     void onByeByeResponse(const aap_protobuf::service::control::message::ByeByeResponse& resp) override;
     void onNavigationFocusRequest(const aap_protobuf::service::control::message::NavFocusRequestNotification& req) override;
-    void onBatteryStatusNotification(const aap_protobuf::service::control::message::BatteryStatusNotification&) override {}
-    void onVoiceSessionRequest(const aap_protobuf::service::control::message::VoiceSessionNotification&) override {}
+    void onBatteryStatusNotification(const aap_protobuf::service::control::message::BatteryStatusNotification& notif) override {
+        int level = notif.has_battery_level() ? static_cast<int>(notif.battery_level()) : 0;
+        int timeRemaining = notif.has_time_remaining_s() ? static_cast<int>(notif.time_remaining_s()) : 0;
+        bool critical = notif.has_critical_battery() && notif.critical_battery();
+        LOGI("entity: battery level=%d%% remaining=%ds critical=%d", level, timeRemaining, critical);
+        oal::jni::notifyPhoneBattery(level, timeRemaining, critical);
+        controlChannel_->receive(shared_from_this());
+    }
+    void onVoiceSessionRequest(const aap_protobuf::service::control::message::VoiceSessionNotification& notif) override {
+        bool started = (notif.status() == aap_protobuf::service::control::message::VOICE_SESSION_START);
+        LOGI("entity: voice session %s", started ? "START" : "END");
+        oal::jni::notifyVoiceSession(started);
+        controlChannel_->receive(shared_from_this());
+    }
     void onPingRequest(const aap_protobuf::service::control::message::PingRequest& req) override;
     void onPingResponse(const aap_protobuf::service::control::message::PingResponse&) override;
     void onChannelError(const aasdk::error::Error& e) override;
@@ -316,15 +359,44 @@ private:
         frameCount_++;
         int flags = 0;
 
-        // Detect keyframes (H.264 NAL type 5 = IDR, type 7/8 = SPS/PPS)
+        // Detect keyframes for H.264, H.265, and VP9
         if (buf.size >= 5) {
+            // Check for NAL unit start codes (4-byte 0x00000001 and 3-byte 0x000001)
             for (size_t i = 0; i + 4 < buf.size; ++i) {
-                if (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
-                    buf.cdata[i+2] == 0 && buf.cdata[i+3] == 1 && i+4 < buf.size) {
-                    uint8_t nalType = buf.cdata[i+4] & 0x1f;
-                    if (nalType == 5) flags |= 1; // KEYFRAME
-                    if (nalType == 7 || nalType == 8) flags |= 2; // CODEC_CONFIG
+                bool fourByte = (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
+                                 buf.cdata[i+2] == 0 && buf.cdata[i+3] == 1);
+                bool threeByte = (buf.cdata[i] == 0 && buf.cdata[i+1] == 0 &&
+                                  buf.cdata[i+2] == 1);
+                if (fourByte && i + 4 < buf.size) {
+                    uint8_t nalByte = buf.cdata[i + 4];
+                    // H.264: NAL type in bits [4:0]
+                    uint8_t h264Type = nalByte & 0x1f;
+                    if (h264Type == 5) flags |= 1; // IDR = KEYFRAME
+                    if (h264Type == 7 || h264Type == 8) flags |= 2; // SPS/PPS = CODEC_CONFIG
+
+                    // H.265: NAL type in bits [6:1] of first byte
+                    // H.265 NAL header is 2 bytes; forbidden_zero_bit=0, type in [6:1]
+                    // Distinguish from H.264 by checking forbidden_zero_bit pattern:
+                    // H.265 always has nal_unit_header with 2 bytes, type 32-34 = VPS/SPS/PPS, 19-20 = IDR
+                    uint8_t h265Type = (nalByte >> 1) & 0x3f;
+                    if (h265Type == 19 || h265Type == 20) flags |= 1; // IDR_W_RADL, IDR_N_LP = KEYFRAME
+                    if (h265Type >= 32 && h265Type <= 34) flags |= 2; // VPS/SPS/PPS = CODEC_CONFIG
+                } else if (threeByte && i + 3 < buf.size) {
+                    uint8_t nalByte = buf.cdata[i + 3];
+                    uint8_t h264Type = nalByte & 0x1f;
+                    if (h264Type == 5) flags |= 1;
+                    if (h264Type == 7 || h264Type == 8) flags |= 2;
+
+                    uint8_t h265Type = (nalByte >> 1) & 0x3f;
+                    if (h265Type == 19 || h265Type == 20) flags |= 1;
+                    if (h265Type >= 32 && h265Type <= 34) flags |= 2;
                 }
+            }
+
+            // VP9 keyframe detection: bit 2 of first byte is show_existing_frame/frame_type
+            // If bit 2 is 0, it's a key frame
+            if (flags == 0 && buf.size >= 1 && !(buf.cdata[0] & 0x04)) {
+                flags |= 1; // VP9 keyframe
             }
         }
 
@@ -483,14 +555,20 @@ public:
     JniAudioInputHandler(boost::asio::io_service& io,
                          aasdk::messenger::IMessenger::Pointer messenger)
         : strand_(io)
+        , silenceTimer_(io)
         , channel_(std::make_shared<aasdk::channel::mediasource::MediaSourceService>(
               strand_, messenger, aasdk::messenger::ChannelId::MEDIA_SOURCE_MICROPHONE)) {}
 
     void start() { strand_.dispatch([this, self = shared_from_this()]() { channel_->receive(self); }); }
-    void stop() { open_ = false; }
+    void stop() {
+        open_ = false;
+        gotRealData_ = true; // stop silence pump
+        silenceTimer_.cancel();
+    }
 
     void feedAudio(const uint8_t* data, size_t size) {
         if (!open_.load() || size == 0) return;
+        gotRealData_ = true; // stop silence pump — real data arrived
         aasdk::common::Data audioData(data, data + size);
         auto ts = static_cast<aasdk::messenger::Timestamp::ValueType>(
             std::chrono::duration_cast<std::chrono::microseconds>(
@@ -526,9 +604,18 @@ private:
     }
 
     void onMediaSourceOpenRequest(const aap_protobuf::service::media::source::message::MicrophoneRequest&) override {
-        LOGI("mic: open request — microphone active");
+        LOGI("mic: open request — microphone active, starting silence pump");
         open_ = true;
+        gotRealData_ = false;
+        startSilencePump();
         channel_->receive(shared_from_this());
+    }
+
+    void onMediaSourceCloseRequest() {
+        LOGI("mic: close request");
+        open_ = false;
+        gotRealData_ = true;
+        silenceTimer_.cancel();
     }
 
     void onMediaChannelAckIndication(const aap_protobuf::service::media::source::message::Ack&) override {
@@ -538,11 +625,42 @@ private:
     void onChannelError(const aasdk::error::Error& e) override {
         LOGE("mic: channel error: %s", e.what());
         open_ = false;
+        gotRealData_ = true;
+        silenceTimer_.cancel();
+    }
+
+    // Silence pump: send 640-byte zero PCM frames at 20ms intervals
+    // until real mic data arrives, preventing phone voice assistant timeout
+    void startSilencePump() {
+        pumpSilenceFrame();
+    }
+
+    void pumpSilenceFrame() {
+        if (gotRealData_.load() || !open_.load()) return;
+
+        // 640 bytes = 320 samples @ 16kHz 16-bit mono = 20ms of audio
+        static const aasdk::common::Data silence(640, 0);
+        auto ts = static_cast<aasdk::messenger::Timestamp::ValueType>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+        auto p = aasdk::channel::SendPromise::defer(strand_);
+        p->then([](){}, [](auto){});
+        channel_->sendMediaSourceWithTimestampIndication(ts, silence, std::move(p));
+
+        // Schedule next silence frame in 20ms
+        silenceTimer_.expires_from_now(boost::posix_time::milliseconds(20));
+        silenceTimer_.async_wait([this, self = shared_from_this()](const boost::system::error_code& ec) {
+            if (!ec && !gotRealData_.load() && open_.load()) {
+                pumpSilenceFrame();
+            }
+        });
     }
 
     boost::asio::io_service::strand strand_;
+    boost::asio::deadline_timer silenceTimer_;
     std::shared_ptr<aasdk::channel::mediasource::MediaSourceService> channel_;
     std::atomic<bool> open_{false};
+    std::atomic<bool> gotRealData_{false};
 };
 
 // ─── Sensor ─────────────────────────────────────────────────────
@@ -780,15 +898,143 @@ private:
         channel_->receive(shared_from_this());
     }
 
-    void onStatusUpdate(const aap_protobuf::service::navigationstatus::message::NavigationStatus&) override {
+    void onStatusUpdate(const aap_protobuf::service::navigationstatus::message::NavigationStatus& status) override {
+        auto s = status.status();
+        LOGI("nav: status update = %d", s);
+        if (s == aap_protobuf::service::navigationstatus::message::NavigationStatus::INACTIVE ||
+            s == aap_protobuf::service::navigationstatus::message::NavigationStatus::UNAVAILABLE) {
+            oal::jni::notifyNavStateClear();
+        }
         channel_->receive(shared_from_this());
     }
 
-    void onTurnEvent(const aap_protobuf::service::navigationstatus::message::NavigationNextTurnEvent&) override {
+    // Deprecated turn event — still handle for older phones
+    void onTurnEvent(const aap_protobuf::service::navigationstatus::message::NavigationNextTurnEvent& evt) override {
+        std::string maneuver = std::to_string(evt.event());
+        std::string road = evt.has_road() ? evt.road() : "";
+        int roundaboutExit = evt.has_turn_number() ? evt.turn_number() : 0;
+        int roundaboutAngle = evt.has_turn_angle() ? evt.turn_angle() : 0;
+
+        // Cache turn event — will be combined with distance event
+        lastManeuver_ = maneuver;
+        lastRoad_ = road;
+        lastRoundaboutExit_ = roundaboutExit;
+        lastRoundaboutAngle_ = roundaboutAngle;
+
+        LOGI("nav: turn event=%s road='%s'", maneuver.c_str(), road.c_str());
         channel_->receive(shared_from_this());
     }
 
-    void onDistanceEvent(const aap_protobuf::service::navigationstatus::message::NavigationNextTurnDistanceEvent&) override {
+    // Deprecated distance event — combine with last turn event
+    void onDistanceEvent(const aap_protobuf::service::navigationstatus::message::NavigationNextTurnDistanceEvent& evt) override {
+        int distance = evt.has_distance_meters() ? evt.distance_meters() : 0;
+        int timeSec = evt.has_time_to_turn_seconds() ? evt.time_to_turn_seconds() : 0;
+        std::string displayDist = evt.has_display_distance_e3() ?
+            std::to_string(evt.display_distance_e3() / 1000.0) : "";
+        std::string displayUnit;
+        if (evt.has_display_distance_unit()) {
+            switch (evt.display_distance_unit()) {
+                case 1: displayUnit = "m"; break;
+                case 2: displayUnit = "km"; break;
+                case 3: displayUnit = "mi"; break;
+                case 4: displayUnit = "ft"; break;
+                case 5: displayUnit = "yd"; break;
+                default: displayUnit = ""; break;
+            }
+        }
+
+        oal::jni::notifyNavState(lastManeuver_, distance, lastRoad_, timeSec,
+                                  "", lastRoundaboutExit_, lastRoundaboutAngle_,
+                                  displayDist, displayUnit, "", "", "", 0);
+
+        LOGI("nav: distance=%dm eta=%ds", distance, timeSec);
+        channel_->receive(shared_from_this());
+    }
+
+    // Newer NavigationState API (msg 32774) — richer data with steps, lanes, cues
+    void onNavigationState(const aap_protobuf::service::navigationstatus::message::NavigationState& state) override {
+        if (state.steps_size() > 0) {
+            const auto& step = state.steps(0);
+            std::string maneuver;
+            int roundaboutExit = 0, roundaboutAngle = 0;
+            if (step.has_maneuver()) {
+                maneuver = std::to_string(step.maneuver().type());
+                if (step.maneuver().has_roundabout_exit_number())
+                    roundaboutExit = step.maneuver().roundabout_exit_number();
+                if (step.maneuver().has_roundabout_exit_angle())
+                    roundaboutAngle = step.maneuver().roundabout_exit_angle();
+            }
+            std::string road = step.has_road() ? step.road().name() : "";
+            std::string cue;
+            if (step.has_cue() && step.cue().alternate_text_size() > 0)
+                cue = step.cue().alternate_text(0);
+
+            // Cache for combining with currentPosition
+            lastManeuver_ = maneuver;
+            lastRoad_ = road;
+            lastCue_ = cue;
+            lastRoundaboutExit_ = roundaboutExit;
+            lastRoundaboutAngle_ = roundaboutAngle;
+
+            LOGI("nav: state maneuver=%s road='%s' cue='%s'", maneuver.c_str(), road.c_str(), cue.c_str());
+        }
+
+        std::string destination;
+        if (state.destinations_size() > 0 && state.destinations(0).has_address())
+            destination = state.destinations(0).address();
+
+        lastDestination_ = destination;
+
+        channel_->receive(shared_from_this());
+    }
+
+    // Current position updates (msg 32775) — distance, ETA, current road
+    void onCurrentPosition(const aap_protobuf::service::navigationstatus::message::NavigationCurrentPosition& pos) override {
+        int distanceMeters = 0;
+        std::string displayDist, displayUnit;
+        int64_t timeSec = 0;
+
+        if (pos.has_step_distance()) {
+            const auto& sd = pos.step_distance();
+            if (sd.has_distance()) {
+                distanceMeters = sd.distance().meters();
+                if (sd.distance().has_display_value())
+                    displayDist = sd.distance().display_value();
+                if (sd.distance().has_display_units()) {
+                    switch (sd.distance().display_units()) {
+                        case 1: displayUnit = "m"; break;
+                        case 2: displayUnit = "km"; break;
+                        case 3: displayUnit = "mi"; break;
+                        case 4: displayUnit = "ft"; break;
+                        case 5: displayUnit = "yd"; break;
+                        default: displayUnit = ""; break;
+                    }
+                }
+            }
+            if (sd.has_time_to_step_seconds())
+                timeSec = sd.time_to_step_seconds();
+        }
+
+        std::string currentRoad;
+        if (pos.has_current_road())
+            currentRoad = pos.current_road().name();
+
+        std::string etaFormatted;
+        int64_t timeToArrival = 0;
+        if (pos.destination_distances_size() > 0) {
+            const auto& dd = pos.destination_distances(0);
+            if (dd.has_estimated_time_at_arrival())
+                etaFormatted = dd.estimated_time_at_arrival();
+            if (dd.has_time_to_arrival_seconds())
+                timeToArrival = dd.time_to_arrival_seconds();
+        }
+
+        oal::jni::notifyNavState(lastManeuver_, distanceMeters, lastRoad_,
+                                  static_cast<int>(timeSec), lastCue_,
+                                  lastRoundaboutExit_, lastRoundaboutAngle_,
+                                  displayDist, displayUnit, currentRoad,
+                                  lastDestination_, etaFormatted, timeToArrival);
+
         channel_->receive(shared_from_this());
     }
 
@@ -798,6 +1044,14 @@ private:
 
     boost::asio::io_service::strand strand_;
     std::shared_ptr<aasdk::channel::navigationstatus::NavigationStatusService> channel_;
+
+    // Cached state from turn/state events to combine with distance/position events
+    std::string lastManeuver_;
+    std::string lastRoad_;
+    std::string lastCue_;
+    std::string lastDestination_;
+    int lastRoundaboutExit_ = 0;
+    int lastRoundaboutAngle_ = 0;
 };
 
 // ─── Media Playback Status ──────────────────────────────────────
@@ -925,6 +1179,19 @@ void JniAutoEntity::start() {
 
 void JniAutoEntity::stop() {
     strand_.dispatch([this, self = shared_from_this()]() {
+        if (active_) {
+            // 9l: Send ByeByeRequest to phone for graceful shutdown
+            try {
+                aap_protobuf::service::control::message::ByeByeRequest bye;
+                bye.set_reason(aap_protobuf::service::control::message::USER_SELECTION);
+                auto p = aasdk::channel::SendPromise::defer(strand_);
+                p->then([](){}, [](auto){});
+                controlChannel_->sendShutdownRequest(bye, std::move(p));
+                LOGI("entity: sent ByeByeRequest");
+            } catch (...) {
+                LOGW("entity: failed to send ByeByeRequest");
+            }
+        }
         active_ = false;
         pingTimer_.cancel();
         videoHandler_->stop();
@@ -1000,6 +1267,19 @@ void JniAutoEntity::onServiceDiscoveryRequest(
         ? aap_protobuf::service::control::message::DRIVER_POSITION_RIGHT
         : aap_protobuf::service::control::message::DRIVER_POSITION_LEFT);
 
+    // 9b: Session configuration bitmask (hide clock/signal/battery on AA projection)
+    if (config_.sessionConfiguration != 0) {
+        resp.set_session_configuration(config_.sessionConfiguration);
+    }
+
+    // 9c: Connection configuration (ping timeout, interval, high-latency threshold)
+    auto* connConfig = resp.mutable_connection_configuration();
+    auto* pingConfig = connConfig->mutable_ping_configuration();
+    pingConfig->set_timeout_ms(5000);
+    pingConfig->set_interval_ms(1500);
+    pingConfig->set_high_latency_threshold_ms(500);
+    pingConfig->set_tracked_ping_count(5);
+
     // Pixel aspect ratio is set per-video-config in UiConfig, not at the SDR level
 
     int aaW, aaH;
@@ -1015,38 +1295,66 @@ void JniAutoEntity::onServiceDiscoveryRequest(
         ? aap_protobuf::service::media::sink::message::VIDEO_FPS_60
         : aap_protobuf::service::media::sink::message::VIDEO_FPS_30;
 
-    // Video
+    // Helper lambda to add a video config with insets and pixel aspect
+    auto addVideoConfig = [&](auto* ms, int tier, aap_protobuf::service::media::shared::message::MediaCodecType codecType) {
+        int tw, th;
+        tierToDimensions(tier, tw, th);
+        int vw = tw - config_.marginWidth;
+        int vh = th - config_.marginHeight;
+        if (vw < 320) vw = tw;
+        if (vh < 240) vh = th;
+
+        auto* vc = ms->add_video_configs();
+        vc->set_codec_resolution(static_cast<aap_protobuf::service::media::sink::message::VideoCodecResolutionType>(tier));
+        vc->set_frame_rate(fps);
+        vc->set_density(config_.dpi);
+        vc->set_decoder_additional_depth(2);
+        vc->set_video_codec_type(codecType);
+        if (config_.pixelAspect > 0) {
+            vc->set_pixel_aspect_ratio_e4(config_.pixelAspect);
+        }
+        if (config_.marginWidth > 0) vc->set_width_margin(config_.marginWidth);
+        if (config_.marginHeight > 0) vc->set_height_margin(config_.marginHeight);
+
+        // UI config: insets for display-aware AA layout
+        auto* ui = vc->mutable_ui_config();
+        if (config_.safeTop > 0 || config_.safeBottom > 0 ||
+            config_.safeLeft > 0 || config_.safeRight > 0) {
+            auto* si = ui->mutable_stable_content_insets();
+            si->set_top(config_.safeTop);
+            si->set_bottom(config_.safeBottom);
+            si->set_left(config_.safeLeft);
+            si->set_right(config_.safeRight);
+        }
+        if (config_.contentTop > 0 || config_.contentBottom > 0 ||
+            config_.contentLeft > 0 || config_.contentRight > 0) {
+            auto* ci = ui->mutable_content_insets();
+            ci->set_top(config_.contentTop);
+            ci->set_bottom(config_.contentBottom);
+            ci->set_left(config_.contentLeft);
+            ci->set_right(config_.contentRight);
+        }
+    };
+
+    // 9a: Multi-codec video — H.265 at all tiers (5→1), H.264 fallback at tiers 3→1
+    // Phone picks the best codec+resolution combo it supports
     { auto* svc = resp.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_VIDEO));
       auto* ms = svc->mutable_media_sink_service();
       ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
       ms->set_available_while_in_call(true);
-      auto* vc = ms->add_video_configs();
-      vc->set_codec_resolution(static_cast<aap_protobuf::service::media::sink::message::VideoCodecResolutionType>(config_.resolutionTier));
-      vc->set_frame_rate(fps);
-      vc->set_density(config_.dpi);
-      if (config_.pixelAspect > 0) {
-          vc->set_pixel_aspect_ratio_e4(config_.pixelAspect);
+
+      // H.265 configs at tiers 5 down to 1 (best first)
+      for (int t : {5, 4, 3, 2, 1}) {
+          if (t <= config_.resolutionTier) {
+              addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+          }
       }
-      if (config_.marginWidth > 0) vc->set_width_margin(config_.marginWidth);
-      if (config_.marginHeight > 0) vc->set_height_margin(config_.marginHeight);
-      // UI config: insets for display-aware AA layout
-      auto* ui = vc->mutable_ui_config();
-      if (config_.safeTop > 0 || config_.safeBottom > 0 ||
-          config_.safeLeft > 0 || config_.safeRight > 0) {
-          auto* si = ui->mutable_stable_content_insets();
-          si->set_top(config_.safeTop);
-          si->set_bottom(config_.safeBottom);
-          si->set_left(config_.safeLeft);
-          si->set_right(config_.safeRight);
-      }
-      if (config_.contentTop > 0 || config_.contentBottom > 0 ||
-          config_.contentLeft > 0 || config_.contentRight > 0) {
-          auto* ci = ui->mutable_content_insets();
-          ci->set_top(config_.contentTop);
-          ci->set_bottom(config_.contentBottom);
-          ci->set_left(config_.contentLeft);
-          ci->set_right(config_.contentRight);
+      // H.264 fallback at tiers 3 down to 1
+      for (int t : {3, 2, 1}) {
+          if (t <= config_.resolutionTier) {
+              addVideoConfig(ms, t, aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          }
       }
     }
 
@@ -1088,32 +1396,56 @@ void JniAutoEntity::onServiceDiscoveryRequest(
       auto* ac = msrc->mutable_audio_config();
       ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1); }
 
-    // Sensor
+    // 9d: Full sensor declaration — all sensor types supported
     { auto* svc = resp.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::SENSOR));
       auto* ss = svc->mutable_sensor_source_service();
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_DRIVING_STATUS_DATA);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_LOCATION);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_NIGHT_MODE);
-      ss->set_location_characterization(256); }
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_SPEED);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GEAR);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_PARKING_BRAKE);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_FUEL);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_ODOMETER);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_ENVIRONMENT_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_DOOR_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_LIGHT_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_TIRE_PRESSURE_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_HVAC_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_ACCELEROMETER_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GYROSCOPE_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_COMPASS);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GPS_SATELLITE_DATA);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM);
+      // GPS + accel + gyro + compass + speed sensor fusion
+      ss->set_location_characterization(256 | 4 | 2 | 8 | 64);
+      // EV vehicle type
+      ss->add_supported_fuel_types(aap_protobuf::service::sensorsource::message::FUEL_TYPE_ELECTRIC);
+      ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_J1772);
+      ss->add_supported_ev_connector_types(aap_protobuf::service::sensorsource::message::EV_CONNECTOR_TYPE_COMBO_1);
+    }
 
-    // Input — touch w×h = AA video dimensions
+    // 9f: Input — touch w×h = AA video dimensions + extended keycodes
     { auto* svc = resp.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::INPUT_SOURCE));
       auto* is = svc->mutable_input_source_service();
-      for (int kc : {84, 85, 86, 87, 88, 126, 127})
+      // Standard media keycodes + REWIND (89) and FAST_FORWARD (90)
+      for (int kc : {84, 85, 86, 87, 88, 89, 90, 126, 127})
           is->add_keycodes_supported(kc);
       auto* ts = is->add_touchscreen();
       ts->set_width(videoW); ts->set_height(videoH);
       ts->set_type(aap_protobuf::service::inputsource::message::CAPACITIVE);
     }
 
-    // Bluetooth
+    // 9e: Bluetooth — configurable BT MAC + numeric comparison pairing
     { auto* svc = resp.add_channels();
       svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::BLUETOOTH));
       auto* bs = svc->mutable_bluetooth_service();
-      bs->set_car_address("00:00:00:00:00:00");
-      bs->add_supported_pairing_methods(aap_protobuf::service::bluetooth::message::BLUETOOTH_PAIRING_PIN); }
+      bs->set_car_address(config_.btMac);
+      bs->add_supported_pairing_methods(aap_protobuf::service::bluetooth::message::BLUETOOTH_PAIRING_PIN);
+      bs->add_supported_pairing_methods(aap_protobuf::service::bluetooth::message::BLUETOOTH_PAIRING_NUMERIC_COMPARISON);
+    }
 
     // Navigation Status
     { auto* svc = resp.add_channels();
@@ -1369,14 +1701,14 @@ bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
                         int marginW, int marginH, int pixelAspect, int driverPos,
                         int safeT, int safeB, int safeL, int safeR,
                         int contentT, int contentB, int contentL, int contentR,
-                        const char* headUnitName) {
+                        const char* headUnitName, int sessionConfig, const char* btMac) {
     if (g_running.exchange(true)) {
         LOGW("startSessionWithFd: already running");
         return false;
     }
 
-    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d",
-         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect);
+    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d",
+         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig);
 
     g_config.port = 0;
     g_config.width = width;
@@ -1397,6 +1729,8 @@ bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
     g_config.contentLeft = contentL;
     g_config.contentRight = contentR;
     if (headUnitName && headUnitName[0]) g_config.headUnitName = headUnitName;
+    g_config.sessionConfiguration = sessionConfig;
+    if (btMac && btMac[0]) g_config.btMac = btMac;
 
     g_io = std::make_unique<boost::asio::io_service>();
     g_work = std::make_unique<boost::asio::io_service::work>(*g_io);
@@ -1514,7 +1848,7 @@ bool startSession(int port, int width, int height, int fps, int dpi) {
 
 bool startSessionWithFd(int socketFd, int width, int height, int fps, int dpi,
                         int, int, int, int, int, int, int, int, int, int, int, int,
-                        const char*) {
+                        const char*, int, const char*) {
     if (g_running.exchange(true)) { LOGW("already running"); return false; }
     LOGI("startSessionWithFd STUB: fd=%d %dx%d @%dfps dpi=%d", socketFd, width, height, fps, dpi);
     g_running = false;

@@ -28,7 +28,7 @@ namespace oal {
                             int marginW, int marginH, int pixelAspect, int driverPos,
                             int safeT, int safeB, int safeL, int safeR,
                             int contentT, int contentB, int contentL, int contentR,
-                            const char* headUnitName);
+                            const char* headUnitName, int sessionConfig, const char* btMac);
     void stopSession();
     void sendTouch(int action, float x, float y, int pointerId);
     void sendSensorData(int type, const uint8_t* data, size_t len);
@@ -45,6 +45,10 @@ static jmethodID g_onVideoFrame = nullptr;
 static jmethodID g_onAudioFrame = nullptr;
 static jmethodID g_onPhoneConnected = nullptr;
 static jmethodID g_onPhoneDisconnected = nullptr;
+static jmethodID g_onVoiceSession = nullptr;
+static jmethodID g_onPhoneBattery = nullptr;
+static jmethodID g_onNavState = nullptr;
+static jmethodID g_onNavStateClear = nullptr;
 
 jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     g_jvm = vm;
@@ -73,8 +77,19 @@ jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     g_onPhoneDisconnected = env->GetStaticMethodID(g_aasdkJniClass,
         "onPhoneDisconnected", "(Ljava/lang/String;)V");
 
+    g_onVoiceSession = env->GetStaticMethodID(g_aasdkJniClass,
+        "onVoiceSession", "(Z)V");
+    g_onPhoneBattery = env->GetStaticMethodID(g_aasdkJniClass,
+        "onPhoneBattery", "(IIZ)V");
+    g_onNavState = env->GetStaticMethodID(g_aasdkJniClass,
+        "onNavState", "(Ljava/lang/String;ILjava/lang/String;ILjava/lang/String;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V");
+    g_onNavStateClear = env->GetStaticMethodID(g_aasdkJniClass,
+        "onNavStateClear", "()V");
+
     if (!g_onVideoFrame || !g_onAudioFrame ||
-        !g_onPhoneConnected || !g_onPhoneDisconnected) {
+        !g_onPhoneConnected || !g_onPhoneDisconnected ||
+        !g_onVoiceSession || !g_onPhoneBattery ||
+        !g_onNavState || !g_onNavStateClear) {
         LOGE("JNI_OnLoad: Failed to find callback methods");
         return JNI_ERR;
     }
@@ -164,6 +179,64 @@ void notifyPhoneDisconnected(const std::string& reason) {
     env->DeleteLocalRef(jReason);
 }
 
+void notifyVoiceSession(bool started) {
+    JNIEnv* env = getEnv();
+    if (!env || !g_onVoiceSession) return;
+    env->CallStaticVoidMethod(g_aasdkJniClass, g_onVoiceSession, static_cast<jboolean>(started));
+}
+
+void notifyPhoneBattery(int level, int timeRemaining, bool critical) {
+    JNIEnv* env = getEnv();
+    if (!env || !g_onPhoneBattery) return;
+    env->CallStaticVoidMethod(g_aasdkJniClass, g_onPhoneBattery,
+                              static_cast<jint>(level),
+                              static_cast<jint>(timeRemaining),
+                              static_cast<jboolean>(critical));
+}
+
+void notifyNavState(const std::string& maneuver, int distanceMeters,
+                    const std::string& road, int etaSeconds,
+                    const std::string& cue, int roundaboutExit, int roundaboutAngle,
+                    const std::string& displayDistance, const std::string& displayDistanceUnit,
+                    const std::string& currentRoad, const std::string& destination,
+                    const std::string& etaFormatted, int64_t timeToArrivalSeconds) {
+    JNIEnv* env = getEnv();
+    if (!env || !g_onNavState) return;
+
+    jstring jManeuver = env->NewStringUTF(maneuver.c_str());
+    jstring jRoad = env->NewStringUTF(road.c_str());
+    jstring jCue = env->NewStringUTF(cue.c_str());
+    jstring jDisplayDist = env->NewStringUTF(displayDistance.c_str());
+    jstring jDisplayUnit = env->NewStringUTF(displayDistanceUnit.c_str());
+    jstring jCurrentRoad = env->NewStringUTF(currentRoad.c_str());
+    jstring jDestination = env->NewStringUTF(destination.c_str());
+    jstring jEtaFormatted = env->NewStringUTF(etaFormatted.c_str());
+
+    env->CallStaticVoidMethod(g_aasdkJniClass, g_onNavState,
+                              jManeuver, static_cast<jint>(distanceMeters),
+                              jRoad, static_cast<jint>(etaSeconds),
+                              jCue, static_cast<jint>(roundaboutExit),
+                              static_cast<jint>(roundaboutAngle),
+                              jDisplayDist, jDisplayUnit,
+                              jCurrentRoad, jDestination,
+                              jEtaFormatted, static_cast<jlong>(timeToArrivalSeconds));
+
+    env->DeleteLocalRef(jManeuver);
+    env->DeleteLocalRef(jRoad);
+    env->DeleteLocalRef(jCue);
+    env->DeleteLocalRef(jDisplayDist);
+    env->DeleteLocalRef(jDisplayUnit);
+    env->DeleteLocalRef(jCurrentRoad);
+    env->DeleteLocalRef(jDestination);
+    env->DeleteLocalRef(jEtaFormatted);
+}
+
+void notifyNavStateClear() {
+    JNIEnv* env = getEnv();
+    if (!env || !g_onNavStateClear) return;
+    env->CallStaticVoidMethod(g_aasdkJniClass, g_onNavStateClear);
+}
+
 }} // namespace oal::jni
 
 // ─── Kotlin → Native JNI functions ──────────────────────────────
@@ -185,16 +258,18 @@ Java_com_openautolink_app_transport_AasdkJni_startSessionWithFd(
         jint marginW, jint marginH, jint pixelAspect, jint driverPos,
         jint safeT, jint safeB, jint safeL, jint safeR,
         jint contentT, jint contentB, jint contentL, jint contentR,
-        jstring headUnitName) {
+        jstring headUnitName, jint sessionConfig, jstring btMac) {
     const char* name = env->GetStringUTFChars(headUnitName, nullptr);
-    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d",
-         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect);
+    const char* mac = env->GetStringUTFChars(btMac, nullptr);
+    LOGI("startSessionWithFd: fd=%d %dx%d @%dfps dpi=%d margin=%dx%d pa=%d sessionCfg=%d",
+         socketFd, width, height, fps, dpi, marginW, marginH, pixelAspect, sessionConfig);
     oal::startSessionWithFd(socketFd, width, height, fps, dpi,
                             marginW, marginH, pixelAspect, driverPos,
                             safeT, safeB, safeL, safeR,
                             contentT, contentB, contentL, contentR,
-                            name);
+                            name, sessionConfig, mac);
     env->ReleaseStringUTFChars(headUnitName, name);
+    env->ReleaseStringUTFChars(btMac, mac);
 }
 
 JNIEXPORT void JNICALL
