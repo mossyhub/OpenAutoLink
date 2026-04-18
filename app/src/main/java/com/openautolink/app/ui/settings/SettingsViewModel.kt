@@ -68,11 +68,6 @@ data class SettingsUiState(
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
     val safeAreaLeft: Int = AppPreferences.DEFAULT_SAFE_AREA_LEFT,
     val safeAreaRight: Int = AppPreferences.DEFAULT_SAFE_AREA_RIGHT,
-    // AA content insets
-    val contentInsetTop: Int = AppPreferences.DEFAULT_CONTENT_INSET_TOP,
-    val contentInsetBottom: Int = AppPreferences.DEFAULT_CONTENT_INSET_BOTTOM,
-    val contentInsetLeft: Int = AppPreferences.DEFAULT_CONTENT_INSET_LEFT,
-    val contentInsetRight: Int = AppPreferences.DEFAULT_CONTENT_INSET_RIGHT,
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,10 +131,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
         preferences.safeAreaRight,
-        preferences.contentInsetTop,
-        preferences.contentInsetBottom,
-        preferences.contentInsetLeft,
-        preferences.contentInsetRight,
     ) { values: Array<Any> ->
         SettingsUiState(
             bridgeHost = values[0] as String,
@@ -186,10 +177,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             safeAreaBottom = values[41] as Int,
             safeAreaLeft = values[42] as Int,
             safeAreaRight = values[43] as Int,
-            contentInsetTop = values[44] as Int,
-            contentInsetBottom = values[45] as Int,
-            contentInsetLeft = values[46] as Int,
-            contentInsetRight = values[47] as Int,
         )
     }.stateIn(
         viewModelScope,
@@ -409,15 +396,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             preferences.setSafeAreaBottom(bottom)
             preferences.setSafeAreaLeft(left)
             preferences.setSafeAreaRight(right)
-        }
-    }
-
-    fun updateContentInsets(top: Int, bottom: Int, left: Int, right: Int) {
-        viewModelScope.launch {
-            preferences.setContentInsetTop(top)
-            preferences.setContentInsetBottom(bottom)
-            preferences.setContentInsetLeft(left)
-            preferences.setContentInsetRight(right)
         }
     }
 

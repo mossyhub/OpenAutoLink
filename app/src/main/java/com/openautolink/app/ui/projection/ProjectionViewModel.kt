@@ -56,10 +56,6 @@ data class ProjectionUiState(
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
     val safeAreaLeft: Int = AppPreferences.DEFAULT_SAFE_AREA_LEFT,
     val safeAreaRight: Int = AppPreferences.DEFAULT_SAFE_AREA_RIGHT,
-    val contentInsetTop: Int = AppPreferences.DEFAULT_CONTENT_INSET_TOP,
-    val contentInsetBottom: Int = AppPreferences.DEFAULT_CONTENT_INSET_BOTTOM,
-    val contentInsetLeft: Int = AppPreferences.DEFAULT_CONTENT_INSET_LEFT,
-    val contentInsetRight: Int = AppPreferences.DEFAULT_CONTENT_INSET_RIGHT,
     val videoScalingMode: String = AppPreferences.DEFAULT_VIDEO_SCALING_MODE,
 )
 
@@ -155,10 +151,6 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
         preferences.safeAreaRight,
-        preferences.contentInsetTop,
-        preferences.contentInsetBottom,
-        preferences.contentInsetLeft,
-        preferences.contentInsetRight,
         sessionManager.phoneSignalStrength,
         _bridgeUptimeSeconds,
         preferences.videoScalingMode,
@@ -186,13 +178,9 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             safeAreaBottom = values[15] as Int,
             safeAreaLeft = values[16] as Int,
             safeAreaRight = values[17] as Int,
-            contentInsetTop = values[18] as Int,
-            contentInsetBottom = values[19] as Int,
-            contentInsetLeft = values[20] as Int,
-            contentInsetRight = values[21] as Int,
-            phoneSignalStrength = values[22] as? Int,
-            bridgeUptimeSeconds = values[23] as Long,
-            videoScalingMode = values[24] as String,
+            phoneSignalStrength = values[18] as? Int,
+            bridgeUptimeSeconds = values[19] as Long,
+            videoScalingMode = values[20] as String,
         )
     }.stateIn(
         viewModelScope,

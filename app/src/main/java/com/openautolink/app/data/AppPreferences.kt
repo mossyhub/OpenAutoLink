@@ -84,12 +84,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val SAFE_AREA_LEFT = intPreferencesKey("safe_area_left")
         val SAFE_AREA_RIGHT = intPreferencesKey("safe_area_right")
 
-        // AA content insets — hard cutoff, nothing renders outside
-        val CONTENT_INSET_TOP = intPreferencesKey("content_inset_top")
-        val CONTENT_INSET_BOTTOM = intPreferencesKey("content_inset_bottom")
-        val CONTENT_INSET_LEFT = intPreferencesKey("content_inset_left")
-        val CONTENT_INSET_RIGHT = intPreferencesKey("content_inset_right")
-
         // Custom viewport
         val CUSTOM_VIEWPORT_WIDTH = intPreferencesKey("custom_viewport_width")
         val CUSTOM_VIEWPORT_HEIGHT = intPreferencesKey("custom_viewport_height")
@@ -141,10 +135,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_SAFE_AREA_BOTTOM = 0
         const val DEFAULT_SAFE_AREA_LEFT = 0
         const val DEFAULT_SAFE_AREA_RIGHT = 0
-        const val DEFAULT_CONTENT_INSET_TOP = 0
-        const val DEFAULT_CONTENT_INSET_BOTTOM = 0
-        const val DEFAULT_CONTENT_INSET_LEFT = 0
-        const val DEFAULT_CONTENT_INSET_RIGHT = 0
         const val DEFAULT_CUSTOM_VIEWPORT_WIDTH = 0 // 0 = use full usable width
         const val DEFAULT_CUSTOM_VIEWPORT_HEIGHT = 0 // 0 = use full usable height
         const val DEFAULT_VIEWPORT_ASPECT_RATIO_LOCKED = true
@@ -332,22 +322,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     val safeAreaRight: Flow<Int> = dataStore.data.map { prefs ->
         prefs[SAFE_AREA_RIGHT] ?: DEFAULT_SAFE_AREA_RIGHT
-    }
-
-    val contentInsetTop: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[CONTENT_INSET_TOP] ?: DEFAULT_CONTENT_INSET_TOP
-    }
-
-    val contentInsetBottom: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[CONTENT_INSET_BOTTOM] ?: DEFAULT_CONTENT_INSET_BOTTOM
-    }
-
-    val contentInsetLeft: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[CONTENT_INSET_LEFT] ?: DEFAULT_CONTENT_INSET_LEFT
-    }
-
-    val contentInsetRight: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[CONTENT_INSET_RIGHT] ?: DEFAULT_CONTENT_INSET_RIGHT
     }
 
     val customViewportWidth: Flow<Int> = dataStore.data.map { prefs ->
@@ -538,22 +512,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         dataStore.edit { it[SAFE_AREA_RIGHT] = value }
     }
 
-    suspend fun setContentInsetTop(value: Int) {
-        dataStore.edit { it[CONTENT_INSET_TOP] = value }
-    }
-
-    suspend fun setContentInsetBottom(value: Int) {
-        dataStore.edit { it[CONTENT_INSET_BOTTOM] = value }
-    }
-
-    suspend fun setContentInsetLeft(value: Int) {
-        dataStore.edit { it[CONTENT_INSET_LEFT] = value }
-    }
-
-    suspend fun setContentInsetRight(value: Int) {
-        dataStore.edit { it[CONTENT_INSET_RIGHT] = value }
-    }
-
     suspend fun setCustomViewportWidth(width: Int) {
         dataStore.edit { it[CUSTOM_VIEWPORT_WIDTH] = width }
     }
@@ -609,11 +567,8 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val safeLeft = prefs[SAFE_AREA_LEFT] ?: DEFAULT_SAFE_AREA_LEFT
         val safeRight = prefs[SAFE_AREA_RIGHT] ?: DEFAULT_SAFE_AREA_RIGHT
         config["aa_stable_insets"] = "$safeTop,$safeBottom,$safeLeft,$safeRight"
-        val contentTop = prefs[CONTENT_INSET_TOP] ?: DEFAULT_CONTENT_INSET_TOP
-        val contentBottom = prefs[CONTENT_INSET_BOTTOM] ?: DEFAULT_CONTENT_INSET_BOTTOM
-        val contentLeft = prefs[CONTENT_INSET_LEFT] ?: DEFAULT_CONTENT_INSET_LEFT
-        val contentRight = prefs[CONTENT_INSET_RIGHT] ?: DEFAULT_CONTENT_INSET_RIGHT
-        config["aa_content_insets"] = "$contentTop,$contentBottom,$contentLeft,$contentRight"
+        // Content insets consolidated into stable insets — send same values
+        config["aa_content_insets"] = "$safeTop,$safeBottom,$safeLeft,$safeRight"
         return config
     }
 
@@ -643,8 +598,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
             config["hide_phone_signal"]?.let { prefs[HIDE_PHONE_SIGNAL] = it.toBooleanStrictOrNull() ?: false }
             config["hide_battery_level"]?.let { prefs[HIDE_BATTERY_LEVEL] = it.toBooleanStrictOrNull() ?: false }
             // aa_stable_insets and aa_content_insets NOT synced from config_echo.
-            // stable_insets are auto-computed by the bridge from display cutout.
-            // content_insets are user-configured via the editor.
+            // These are user-configured via the Display Insets editor.
         }
     }
 }

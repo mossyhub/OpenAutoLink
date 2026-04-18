@@ -14,6 +14,7 @@ import com.openautolink.app.audio.MicCaptureManager
 import com.openautolink.app.cluster.ClusterNavigationState
 import com.openautolink.app.data.AppPreferences
 import com.openautolink.app.diagnostics.DiagnosticLevel
+import com.openautolink.app.diagnostics.DiagnosticLog
 import com.openautolink.app.diagnostics.RemoteDiagnostics
 import com.openautolink.app.diagnostics.RemoteDiagnosticsImpl
 import com.openautolink.app.diagnostics.TelemetryCollector
@@ -845,6 +846,7 @@ class SessionManager(
                 _audioPlayer?.stopPurpose(message.purpose)
             }
             is ControlMessage.MicStart -> {
+                DiagnosticLog.i("mic", "MicStart received: rate=${message.sampleRate}, source=$micSource")
                 if (micSource == "car") {
                     _micCaptureManager?.start(message.sampleRate)
                 } else {
@@ -852,6 +854,7 @@ class SessionManager(
                 }
             }
             is ControlMessage.MicStop -> {
+                DiagnosticLog.i("mic", "MicStop received")
                 _micCaptureManager?.stop()
             }
             is ControlMessage.Error -> {

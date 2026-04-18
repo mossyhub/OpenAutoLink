@@ -21,7 +21,6 @@ object AppDestinations {
     const val SETTINGS = "settings"
     const val DIAGNOSTICS = "diagnostics"
     const val SAFE_AREA_EDITOR = "safe_area_editor"
-    const val CONTENT_INSET_EDITOR = "content_inset_editor"
 }
 
 @Composable
@@ -65,9 +64,6 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 onNavigateToSafeAreaEditor = {
                     navController.navigate(AppDestinations.SAFE_AREA_EDITOR)
                 },
-                onNavigateToContentInsetEditor = {
-                    navController.navigate(AppDestinations.CONTENT_INSET_EDITOR)
-                },
             )
         }
         composable(AppDestinations.DIAGNOSTICS) {
@@ -85,21 +81,6 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 displayMode = uiState.displayMode,
                 onDone = { top, bottom, left, right ->
                     settingsViewModel.updateSafeAreaInsets(top, bottom, left, right)
-                    navController.popBackStack()
-                },
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable(AppDestinations.CONTENT_INSET_EDITOR) {
-            val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-            SafeAreaEditorScreen(
-                initialTop = uiState.contentInsetTop,
-                initialBottom = uiState.contentInsetBottom,
-                initialLeft = uiState.contentInsetLeft,
-                initialRight = uiState.contentInsetRight,
-                displayMode = uiState.displayMode,
-                onDone = { top, bottom, left, right ->
-                    settingsViewModel.updateContentInsets(top, bottom, left, right)
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },

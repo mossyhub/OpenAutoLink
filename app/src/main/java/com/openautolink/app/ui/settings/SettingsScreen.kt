@@ -116,7 +116,6 @@ fun SettingsScreen(
     onBack: () -> Unit = {},
     onNavigateToDiagnostics: () -> Unit = {},
     onNavigateToSafeAreaEditor: () -> Unit = {},
-    onNavigateToContentInsetEditor: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(SettingsTab.CONNECTION) }
@@ -210,7 +209,6 @@ fun SettingsScreen(
                         SettingsTab.DISPLAY -> DisplayTab(
                             viewModel, uiState,
                             onNavigateToSafeAreaEditor,
-                            onNavigateToContentInsetEditor,
                         )
                         SettingsTab.VIDEO -> VideoTab(viewModel, uiState)
                         SettingsTab.AUDIO -> AudioTab(viewModel, uiState)
@@ -786,7 +784,6 @@ private fun DisplayTab(
     viewModel: SettingsViewModel,
     uiState: SettingsUiState,
     onNavigateToSafeAreaEditor: () -> Unit,
-    onNavigateToContentInsetEditor: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -842,14 +839,13 @@ private fun DisplayTab(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- AA Safe Area ---
-        SectionHeader("AA Safe Area")
+        // --- AA Display Insets ---
+        SectionHeader("AA Display Insets")
 
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Tells Android Auto where to keep interactive UI (buttons, cards, text). " +
-                    "Maps and backgrounds still render edge-to-edge.",
+            text = "Insets the AA projection from the display edges.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -866,80 +862,20 @@ private fun DisplayTab(
                 onClick = onNavigateToSafeAreaEditor,
                 modifier = Modifier.testTag("editSafeAreaButton"),
             ) {
-                Text("Edit Safe Area")
+                Text("Edit Display Insets")
             }
 
-            val hasStable = uiState.safeAreaTop > 0 || uiState.safeAreaBottom > 0 ||
-                    uiState.safeAreaLeft > 0 || uiState.safeAreaRight > 0
-            if (hasStable) {
-                Text(
-                    text = formatInsetLabel(
-                        uiState.safeAreaTop, uiState.safeAreaBottom,
-                        uiState.safeAreaLeft, uiState.safeAreaRight
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Text(
-                    text = "Not set",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- AA Content Insets ---
-        SectionHeader("AA Content Insets")
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "Hard cutoff — nothing renders outside these boundaries (maps stop too). " +
-                    "Use only if you need a black gap, not just a safe area.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(bottom = 12.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(0.7f),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalButton(
-                onClick = onNavigateToContentInsetEditor,
-                modifier = Modifier.testTag("editContentInsetButton"),
-            ) {
-                Text("Edit Content Insets")
-            }
-
-            val hasContent = uiState.contentInsetTop > 0 || uiState.contentInsetBottom > 0 ||
-                    uiState.contentInsetLeft > 0 || uiState.contentInsetRight > 0
-            if (hasContent) {
-                Text(
-                    text = formatInsetLabel(
-                        uiState.contentInsetTop, uiState.contentInsetBottom,
-                        uiState.contentInsetLeft, uiState.contentInsetRight
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else {
-                Text(
-                    text = "Not set",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = formatInsetLabel(
+                    uiState.safeAreaTop, uiState.safeAreaBottom,
+                    uiState.safeAreaLeft, uiState.safeAreaRight
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (uiState.safeAreaTop > 0 || uiState.safeAreaBottom > 0 ||
+                    uiState.safeAreaLeft > 0 || uiState.safeAreaRight > 0)
+                    MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
