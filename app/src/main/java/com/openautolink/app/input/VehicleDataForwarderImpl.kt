@@ -378,8 +378,11 @@ class VehicleDataForwarderImpl(
         Log.i(TAG, "Subscribed to $subscribed/${properties.size} vehicle properties")
         DiagnosticLog.i("vhal", "Subscribed to $subscribed/${properties.size} vehicle properties")
 
-        // Fire initial data if any values were read
+        // Fire initial data with all values populated from initial reads.
+        // Reset lastSendTime to bypass throttle — earlier throttled sends during
+        // subscription may have sent incomplete data (missing EV battery values).
         if (currentValues.isNotEmpty()) {
+            lastSendTime = 0L  // force send regardless of throttle
             val data = buildVehicleData()
             _latestVehicleData.value = data
             sendMessage(data)

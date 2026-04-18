@@ -1552,15 +1552,30 @@ void LiveAasdkSession::parse_and_forward_vehicle_data(const std::string& json) {
     auto ev_level_wh = extract_float("ev_battery_level_wh");
     auto range_m_val = extract_int("range_m");
 
-    if (ev_cap_wh && *ev_cap_wh > 0 && ev_level_wh && *ev_level_wh > 0 && range_m_val && *range_m_val > 0) {
+    // Cache EV values — they persist across phone reconnects so VEM can be
+    // sent immediately when the phone requests sensor 23 on next session
+    if (ev_cap_wh && *ev_cap_wh > 0)
+        cached_ev_cap_wh_ = static_cast<int>(*ev_cap_wh);
+    if (ev_level_wh && *ev_level_wh > 0)
+        cached_ev_level_wh_ = static_cast<int>(*ev_level_wh);
+    if (range_m_val && *range_m_val > 0)
+        cached_range_m_ = *range_m_val;
+
+    // Also cache on the sensor handler so it can send immediately on sensor 23 request
+    if (sh && cached_ev_cap_wh_ > 0 && cached_ev_level_wh_ > 0 && cached_range_m_ > 0) {
+        sh->cacheEvValues(cached_ev_cap_wh_, cached_ev_level_wh_, cached_range_m_);
+    }
+
+    // Send VEM if we have all three values (from this message or cache)
+    if (cached_ev_cap_wh_ > 0 && cached_ev_level_wh_ > 0 && cached_range_m_ > 0) {
         auto now = std::chrono::steady_clock::now();
         bool should_send = false;
 
         if (!vem_ever_sent_) {
             // First send: immediate (bypass throttle)
             should_send = true;
-        } else if (now - last_vem_send_time_ > std::chrono::seconds(30)) {
-            // Subsequent sends: at most once every 30 seconds
+        } else if (now - last_vem_send_time_ > std::chrono::seconds(10)) {
+            // Subsequent sends: at most once every 10 seconds
             should_send = true;
         }
 
@@ -1568,9 +1583,9 @@ void LiveAasdkSession::parse_and_forward_vehicle_data(const std::string& json) {
             last_vem_send_time_ = now;
             vem_ever_sent_ = true;
             sh->sendVehicleEnergyModel(
-                static_cast<int>(*ev_cap_wh),
-                static_cast<int>(*ev_level_wh),
-                *range_m_val
+                cached_ev_cap_wh_,
+                cached_ev_level_wh_,
+                cached_range_m_
             );
         }
     }
@@ -3179,6 +3194,13 @@ void HeadlessSensorHandler::onSensorStartRequest(
     if (request.type() == 23 || request.type() == 25) {
         vemRequested_ = true;
         std::cerr << "[aasdk] sensor: phone requested VEM — will send when VHAL data available" << std::endl;
+        // If we have cached values, send immediately
+        if (cached_ev_cap_wh_ > 0 && cached_ev_level_wh_ > 0 && cached_range_m_ > 0) {
+            std::cerr << "[aasdk] sensor: sending cached VEM immediately (cap="
+                      << cached_ev_cap_wh_ << " level=" << cached_ev_level_wh_
+                      << " range=" << cached_range_m_ << ")" << std::endl;
+            sendVehicleEnergyModel(cached_ev_cap_wh_, cached_ev_level_wh_, cached_range_m_);
+        }
     }
 
     aap_protobuf::service::sensorsource::message::SensorStartResponseMessage response;

@@ -290,9 +290,13 @@ private:
     bool gnss_first_fix_logged_ = false;
     double last_gps_alt_ = 0.0;
 
-    // VEM (Vehicle Energy Model) throttle state
+    // VEM (Vehicle Energy Model) throttle state + cached values
     bool vem_ever_sent_ = false;
     std::chrono::steady_clock::time_point last_vem_send_time_{};
+    // Cached EV battery values from vehicle_data — persists across phone reconnects
+    int cached_ev_cap_wh_ = 0;
+    int cached_ev_level_wh_ = 0;
+    int cached_range_m_ = 0;
 
     // Raw SSL for TCP wireless (TLS at socket level, not in aasdk cryptor)
     void* ssl_ = nullptr;      // SSL*
@@ -495,6 +499,13 @@ public:
     void sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM);
     bool isVemRequested() const { return vemRequested_; }
 
+    // Cache EV values so VEM can be sent immediately when phone requests sensor 23
+    void cacheEvValues(int capWh, int levelWh, int rangeM) {
+        cached_ev_cap_wh_ = capWh;
+        cached_ev_level_wh_ = levelWh;
+        cached_range_m_ = rangeM;
+    }
+
 private:
     void onChannelOpenRequest(const aap_protobuf::service::control::message::ChannelOpenRequest& request) override;
     void onSensorStartRequest(const aap_protobuf::service::sensorsource::message::SensorRequest& request) override;
@@ -504,6 +515,9 @@ private:
     std::shared_ptr<aasdk::channel::sensorsource::SensorSourceService> channel_;
     ThreadSafeOutputSink& output_;
     bool vemRequested_ = false;
+    int cached_ev_cap_wh_ = 0;
+    int cached_ev_level_wh_ = 0;
+    int cached_range_m_ = 0;
 };
 
 class HeadlessInputHandler
