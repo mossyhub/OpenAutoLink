@@ -3138,9 +3138,11 @@ void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh
     auto* batt = vem.mutable_battery();
     batt->set_config_id(1);
     batt->mutable_max_capacity()->set_watt_hours(capacityWh);
-    // Min usable = 95% of total (reasonable estimate for usable vs gross)
-    batt->mutable_min_usable_capacity()->set_watt_hours(static_cast<int>(capacityWh * 0.95));
-    // Reserve = 5% of capacity
+    // CRITICAL: Maps reads min_usable_capacity as the CURRENT battery level (Wh)!
+    // From AAOS Maps decompile (rah.m33791O): it takes min_usable_capacity.watt_hours
+    // as batteryLevelWh and max_capacity.watt_hours as batteryCapacityWh.
+    batt->mutable_min_usable_capacity()->set_watt_hours(currentWh);
+    // Reserve = small buffer below which Maps warns "low battery"
     batt->mutable_reserve_energy()->set_watt_hours(static_cast<int>(capacityWh * 0.05));
     batt->set_regen_braking_capable(true);
 
