@@ -127,7 +127,7 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_OVERLAY_STATS_BUTTON = true
         const val DEFAULT_OVERLAY_PHONE_SWITCH_BUTTON = true
         const val DEFAULT_DEFAULT_PHONE_MAC = ""
-        const val DEFAULT_BRIDGE_AUTO_UPDATE = true
+        const val DEFAULT_BRIDGE_AUTO_UPDATE = false
         const val DEFAULT_BRIDGE_AUTO_APPLY = true
         const val DEFAULT_GITHUB_REPO_OWNER = "mossyhub"
         const val DEFAULT_GITHUB_REPO_NAME = "openautolink"
