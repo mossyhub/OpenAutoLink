@@ -347,6 +347,11 @@ class VehicleDataForwarderImpl(
                 continue
             }
 
+            // Add to tracked set BEFORE initial read so handleChangeEvent doesn't discard it.
+            // Static properties (e.g., INFO_EV_BATTERY_CAPACITY) never get callback updates,
+            // so the initial read is their only chance to populate currentValues.
+            trackedPropertyIds.add(propId)
+
             // Read initial value
             try {
                 val pv = pmClass.getMethod("getProperty", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
@@ -359,7 +364,6 @@ class VehicleDataForwarderImpl(
             }
 
             // Subscribe using shared callback (app_v1's subscribe pattern)
-            trackedPropertyIds.add(propId)
             val ok = subscribe(pm, callbackInterface, callbackProxy!!, propId, prop.rateField)
             if (ok) {
                 subscribed++

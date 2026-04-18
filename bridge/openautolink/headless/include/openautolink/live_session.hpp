@@ -257,6 +257,9 @@ private:
     void create_entity_no_ssl(aasdk::transport::ITransport::Pointer transport);
     void run_io_thread();
 
+    // Shared vehicle data parsing — used by both CPC and OAL paths.
+    void parse_and_forward_vehicle_data(const std::string& json);
+
     ThreadSafeOutputSink output_;
     std::string phone_name_;
     HeadlessConfig config_;
@@ -286,6 +289,10 @@ private:
     // P3: GNSS parsing state
     bool gnss_first_fix_logged_ = false;
     double last_gps_alt_ = 0.0;
+
+    // VEM (Vehicle Energy Model) throttle state
+    bool vem_ever_sent_ = false;
+    std::chrono::steady_clock::time_point last_vem_send_time_{};
 
     // Raw SSL for TCP wireless (TLS at socket level, not in aasdk cryptor)
     void* ssl_ = nullptr;      // SSL*
@@ -484,6 +491,10 @@ public:
     // P6: RPM
     void sendRpm(int rpm_e3);
 
+    // EV energy model (sensor type 23) — built from VHAL data sent by app
+    void sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM);
+    bool isVemRequested() const { return vemRequested_; }
+
 private:
     void onChannelOpenRequest(const aap_protobuf::service::control::message::ChannelOpenRequest& request) override;
     void onSensorStartRequest(const aap_protobuf::service::sensorsource::message::SensorRequest& request) override;
@@ -492,6 +503,7 @@ private:
     boost::asio::io_service::strand strand_;
     std::shared_ptr<aasdk::channel::sensorsource::SensorSourceService> channel_;
     ThreadSafeOutputSink& output_;
+    bool vemRequested_ = false;
 };
 
 class HeadlessInputHandler

@@ -56,6 +56,7 @@
 #include <aap_protobuf/service/sensorsource/message/SensorRequest.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorStartResponseMessage.pb.h>
 #include <aap_protobuf/service/sensorsource/message/SensorBatch.pb.h>
+#include <aap_protobuf/service/sensorsource/message/VehicleEnergyModel.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothPairingRequest.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothPairingResponse.pb.h>
 #include <aap_protobuf/service/bluetooth/message/BluetoothAuthenticationData.pb.h>
@@ -655,6 +656,10 @@ void HeadlessAutoEntity::onServiceDiscoveryRequest(
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_COMPASS);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_GPS_SATELLITE_DATA);
       ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RPM);
+      // EV energy model sensor types — triggers phone to request sensor 23 for battery routing
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_VEHICLE_ENERGY_MODEL);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RAW_VEHICLE_ENERGY_MODEL);
+      ss->add_sensors()->set_sensor_type(aap_protobuf::service::sensorsource::message::SENSOR_RAW_EV_TRIP_SETTINGS);
       // Declare fuel types and EV connectors for Google Maps EV range display.
       // Populated dynamically from app VHAL reads (INFO_FUEL_TYPE, INFO_EV_CONNECTOR_TYPE).
       // Falls back to ELECTRIC + J1772/COMBO_1 if app hasn't connected yet.
@@ -1173,6 +1178,7 @@ void LiveAasdkSession::on_host_disconnect() {
     output_.emit(json_event("phone_disconnected"));
     state_.connected = false;
     state_.session_active = false;
+    vem_ever_sent_ = false;  // Reset VEM throttle for next session
 }
 
 void LiveAasdkSession::on_heartbeat() {
@@ -1257,10 +1263,10 @@ void LiveAasdkSession::on_vehicle_data(const ParsedInputMessage& message) {
     if (!message.payload_b64.has_value()) return;
     auto decoded = base64_decode(*message.payload_b64);
     if (decoded.empty()) return;
+    parse_and_forward_vehicle_data(decoded);
+}
 
-    // payload is a JSON object with sensor fields
-    // Simple inline JSON field extraction (no external JSON library)
-    const std::string& json = decoded;
+void LiveAasdkSession::parse_and_forward_vehicle_data(const std::string& json) {
 
     auto extract_int = [&](std::string_view key) -> std::optional<int> {
         auto needle = "\"" + std::string(key) + "\":";
@@ -1531,6 +1537,44 @@ void LiveAasdkSession::on_vehicle_data(const ParsedInputMessage& message) {
         (void)system(cmd.c_str());
     }
 
+    // EV battery data for Vehicle Energy Model (VEM) — sensor type 23
+    // Extract float values from JSON for Wh fields
+    auto extract_float = [&](std::string_view key) -> std::optional<float> {
+        auto needle = "\"" + std::string(key) + "\":";
+        auto pos = json.find(needle);
+        if (pos == std::string::npos) return std::nullopt;
+        pos += needle.size();
+        while (pos < json.size() && json[pos] == ' ') ++pos;
+        try { return std::stof(json.substr(pos)); } catch (...) { return std::nullopt; }
+    };
+
+    auto ev_cap_wh = extract_float("ev_battery_capacity_wh");
+    auto ev_level_wh = extract_float("ev_battery_level_wh");
+    auto range_m_val = extract_int("range_m");
+
+    if (ev_cap_wh && *ev_cap_wh > 0 && ev_level_wh && *ev_level_wh > 0 && range_m_val && *range_m_val > 0) {
+        auto now = std::chrono::steady_clock::now();
+        bool should_send = false;
+
+        if (!vem_ever_sent_) {
+            // First send: immediate (bypass throttle)
+            should_send = true;
+        } else if (now - last_vem_send_time_ > std::chrono::seconds(30)) {
+            // Subsequent sends: at most once every 30 seconds
+            should_send = true;
+        }
+
+        if (should_send) {
+            last_vem_send_time_ = now;
+            vem_ever_sent_ = true;
+            sh->sendVehicleEnergyModel(
+                static_cast<int>(*ev_cap_wh),
+                static_cast<int>(*ev_level_wh),
+                *range_m_val
+            );
+        }
+    }
+
     std::cerr << "[aasdk] vehicle_data processed" << std::endl;
 }
 
@@ -1718,9 +1762,9 @@ void LiveAasdkSession::forward_oal_gnss(const std::string& nmea) {
 
 void LiveAasdkSession::forward_oal_vehicle_data(const std::string& json) {
     if (!entity_ || !entity_->sensor_handler()) return;
-    // Reuse the existing vehicle data parsing logic
-    // This calls the same code path as the CPC vehicle_data handler
-    on_vehicle_data(json);
+    // Direct parsing of the vehicle_data JSON — same logic as the CPC path
+    // in on_vehicle_data(ParsedInputMessage) but without the base64 decode step.
+    parse_and_forward_vehicle_data(json);
 }
 
 void LiveAasdkSession::request_fresh_idr() {
@@ -1736,9 +1780,9 @@ void LiveAasdkSession::notify_call_availability(bool available) {
 }
 
 void LiveAasdkSession::on_vehicle_data(const std::string& json) {
-    // Legacy CPC path — vehicle data parsing is done in forward_oal_vehicle_data()
-    // which calls on_vehicle_data(ParsedInputMessage&) for OAL protocol.
-    std::cerr << "[aasdk] vehicle_data received (" << json.size() << " bytes)" << std::endl;
+    // Called by the legacy CPC path — delegate to shared parser
+    if (!entity_ || !entity_->sensor_handler()) return;
+    parse_and_forward_vehicle_data(json);
 }
 
 void LiveAasdkSession::on_vehicle_gnss(const uint8_t* nmea, size_t len) {
@@ -3068,6 +3112,49 @@ void HeadlessSensorHandler::sendRpm(int rpm_e3) {
     channel_->sendSensorEventIndication(indication, std::move(promise));
 }
 
+void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh, int rangeM) {
+    if (capacityWh <= 0 || currentWh <= 0 || rangeM <= 0) return;
+    if (!vemRequested_) return;
+
+    // Build VehicleEnergyModel protobuf
+    aap_protobuf::service::sensorsource::message::VehicleEnergyModel vem;
+
+    // Battery config
+    auto* batt = vem.mutable_battery();
+    batt->set_config_id(1);
+    batt->mutable_max_capacity()->set_watt_hours(capacityWh);
+    // Min usable = 95% of total (reasonable estimate for usable vs gross)
+    batt->mutable_min_usable_capacity()->set_watt_hours(static_cast<int>(capacityWh * 0.95));
+    // Reserve = 5% of capacity
+    batt->mutable_reserve_energy()->set_watt_hours(static_cast<int>(capacityWh * 0.05));
+    batt->set_regen_braking_capable(true);
+
+    // Energy consumption derived from car's own range estimate
+    // consumption = currentEnergy / rangeRemaining (Wh/m) * 1000 (Wh/km)
+    auto* cons = vem.mutable_consumption();
+    float whPerKm = (static_cast<float>(currentWh) / static_cast<float>(rangeM)) * 1000.0f;
+    cons->mutable_driving()->set_rate(whPerKm);
+    cons->mutable_auxiliary()->set_rate(2.0f);  // typical aux consumption
+
+    // Charging prefs
+    auto* prefs = vem.mutable_charging_prefs();
+    prefs->set_mode(1);  // standard
+
+    // Add to SensorBatch field 23 as a message.
+    // On the phone side, wrc is an empty pass-through message — our VEM proto
+    // fields become "unknown fields" that wrc preserves and re-serializes to GMS.
+    aap_protobuf::service::sensorsource::message::SensorBatch batch;
+    auto* vemMsg = batch.add_vehicle_energy_model_data();
+    *vemMsg = vem;
+
+    auto promise = aasdk::channel::SendPromise::defer(strand_);
+    promise->then([]() {}, [](auto) {});
+    channel_->sendSensorEventIndication(batch, std::move(promise));
+    std::cerr << "[aasdk] sensor: sent VehicleEnergyModel (capacity=" << capacityWh
+              << "Wh, current=" << currentWh << "Wh, range=" << rangeM
+              << "m, consumption=" << whPerKm << "Wh/km)" << std::endl;
+}
+
 void HeadlessSensorHandler::onChannelOpenRequest(
     const aap_protobuf::service::control::message::ChannelOpenRequest&)
 {
@@ -3087,6 +3174,12 @@ void HeadlessSensorHandler::onSensorStartRequest(
 {
     output_.emit(R"({"type":"event","event_type":"sensor_start","sensor_type":)" +
                  std::to_string(request.type()) + "}");
+
+    // Track if phone requests VEM sensor types (23 or 25)
+    if (request.type() == 23 || request.type() == 25) {
+        vemRequested_ = true;
+        std::cerr << "[aasdk] sensor: phone requested VEM — will send when VHAL data available" << std::endl;
+    }
 
     aap_protobuf::service::sensorsource::message::SensorStartResponseMessage response;
     response.set_status(aap_protobuf::shared::STATUS_SUCCESS);

@@ -308,6 +308,10 @@ object ControlMessageSerializer {
                 message.evRegenBrakingLevel?.let { put("ev_regen_level", it) }
                 message.evStoppingMode?.let { put("ev_stopping_mode", it) }
                 message.distanceDisplayUnits?.let { put("distance_display_units", it) }
+                // EV battery raw values for VEM (Vehicle Energy Model) — bridge builds protobuf
+                message.evBatteryCapacityWh?.let { put("ev_battery_capacity_wh", it) }
+                message.evBatteryLevelWh?.let { put("ev_battery_level_wh", it) }
+                message.evChargeRateW?.let { put("ev_charge_rate_w", it) }
             }
 
             is ControlMessage.ConfigUpdate -> buildJsonObject {
