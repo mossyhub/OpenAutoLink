@@ -568,7 +568,11 @@ void OalSession::handle_app_hello(const std::string& json) {
 
     if (display_w > 0) config_.video_width = display_w;
     if (display_h > 0) config_.video_height = display_h;
-    if (display_dpi > 0) config_.video_dpi = display_dpi;
+    // Only use the app's physical display DPI as a fallback when no explicit
+    // AA DPI was configured via env/CLI/config_update. The user's OAL_AA_DPI
+    // setting controls AA layout density and must not be overwritten by the
+    // display's hardware DPI on reconnect.
+    if (display_dpi > 0 && !config_.video_dpi_explicit) config_.video_dpi = display_dpi;
 
     // Read display cutout insets (physically curved/missing screen areas)
     int cut_top = 0, cut_bottom = 0, cut_left = 0, cut_right = 0;
@@ -830,6 +834,7 @@ void OalSession::handle_config_update(const std::string& json) {
     int dpi = 0;
     if (oal_json_extract_int(json, "aa_dpi", dpi) && dpi > 0 && dpi != config_.video_dpi) {
         config_.video_dpi = dpi;
+        config_.video_dpi_explicit = true;
         config_changed = true;
     }
 

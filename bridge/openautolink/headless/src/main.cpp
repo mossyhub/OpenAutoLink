@@ -276,7 +276,7 @@ int main(int argc, char* argv[])
         if (video_width > 0) c.video_width = video_width;
         if (video_height > 0) c.video_height = video_height;
         if (video_fps > 0) c.video_fps = video_fps;
-        if (video_dpi > 0) c.video_dpi = video_dpi;
+        if (video_dpi > 0) { c.video_dpi = video_dpi; c.video_dpi_explicit = true; }
         if (video_codec > 0) c.video_codec = video_codec;
         else if (video_codec == 0) c.video_codec = 0; // auto-negotiate
         if (aa_resolution > 0) c.aa_resolution_tier = aa_resolution;
