@@ -1,8 +1,8 @@
 [Unit]
 Description=OpenAutoLink Network Setup (car + SSH)
 DefaultDependencies=no
-Before=openautolink.service
-After=local-fs.target
+Before=openautolink.service network.target
+After=local-fs.target sysinit.target
 
 [Service]
 Type=oneshot

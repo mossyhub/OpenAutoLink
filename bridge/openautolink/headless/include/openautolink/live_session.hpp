@@ -275,6 +275,13 @@ private:
     std::shared_ptr<HeadlessAutoEntity> entity_;
     std::atomic<bool> running_{false};
 
+    // Peer IP of the currently-latched wireless TCP client. Set the moment
+    // accept() returns a new socket (before aasdk handshake). Used to reject
+    // racing TCP connections from a second phone during the multi-second
+    // window between TCP accept and phone_connected=true. Empty when no
+    // wireless session is active. Cleared in every entity_ teardown path.
+    std::string wireless_peer_ip_;
+
     // USB host mode — kept alive for continuous device scanning
     std::shared_ptr<aasdk::usb::USBWrapper> usb_wrapper_;
     std::shared_ptr<aasdk::usb::USBHub> usb_hub_;

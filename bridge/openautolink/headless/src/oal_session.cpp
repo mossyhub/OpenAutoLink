@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fcntl.h>
 #include <iostream>
 #include <sstream>
@@ -45,6 +46,25 @@ void OalSession::on_app_connected() {
 
     // Send hello immediately
     send_hello();
+
+    // Send current pairing-mode state so app UI is immediately in sync with
+    // the persisted/adapter state (bridge restart, app reopen, etc).
+    {
+        bool enabled = true;
+        FILE* pf = std::fopen("/var/lib/openautolink/pairing_mode", "r");
+        if (pf) {
+            char buf[16] = {0};
+            std::fread(buf, 1, sizeof(buf) - 1, pf);
+            std::fclose(pf);
+            std::string s(buf);
+            // Trim trailing whitespace/newline
+            while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' ')) s.pop_back();
+            if (s == "off" || s == "false" || s == "0" || s == "no") enabled = false;
+        }
+        std::ostringstream oss;
+        oss << R"({"type":"pairing_mode_status","enabled":)" << (enabled ? "true" : "false") << "}";
+        send_control_line(oss.str());
+    }
 
     // If phone already connected, send phone_connected immediately
     if (phone_connected_) {
@@ -1206,10 +1226,35 @@ void OalSession::handle_switch_phone(const std::string& json) {
 
     std::cerr << "[OAL] switching to phone: " << mac << std::endl;
 
-    // Build the BT switch command
+    // Write a switch-override file that the BT script reads to temporarily
+    // bypass the "is default phone connected?" RFCOMM gate. Without this,
+    // Phone A auto-reconnects during the disconnect/connect window and
+    // blocks the user's explicit switch to Phone B.
+    //
+    // Expiry is 90s as a safety ceiling. In the normal path the BT script
+    // actively clears the override when the target completes RFCOMM
+    // credential exchange, so 90s is only a floor for pathological cases.
+    {
+        ::mkdir("/run/openautolink", 0755);  // best-effort
+        time_t expiry = ::time(nullptr) + 90;
+        FILE* f = std::fopen("/run/openautolink/switch_override", "w");
+        if (f) {
+            std::fprintf(f, "%s\n%lld\n", mac.c_str(), static_cast<long long>(expiry));
+            std::fclose(f);
+        } else {
+            std::cerr << "[OAL] switch_phone: failed to write switch override" << std::endl;
+        }
+    }
+
+    // Build the BT switch command.
+    // Only disconnect devices OTHER than the target — leaves HFP/HSP audio
+    // on unrelated devices alone, and avoids the pointless round-trip of
+    // disconnecting+reconnecting the target.
     std::string bt_cmd = "( ";
     bt_cmd += "for dev in $(bluetoothctl devices Connected 2>/dev/null | awk '{print $2}'); do "
-              "bluetoothctl disconnect $dev 2>/dev/null; "
+              "  if [ \"$dev\" != \"" + mac + "\" ]; then "
+              "    bluetoothctl disconnect \"$dev\" 2>/dev/null; "
+              "  fi; "
               "done; ";
     bt_cmd += "sleep 1; ";
     bt_cmd += "bluetoothctl connect " + mac + " 2>/dev/null; ";
@@ -1301,13 +1346,35 @@ void OalSession::handle_set_pairing_mode(const std::string& json) {
 
     std::cerr << "[OAL] set_pairing_mode: " << (enabled ? "enabled" : "disabled") << std::endl;
 
-    // Toggle BlueZ adapter Discoverable + Pairable via bluetoothctl
-    std::string cmd = enabled
-        ? "bluetoothctl discoverable on 2>/dev/null; bluetoothctl pairable on 2>/dev/null"
-        : "bluetoothctl discoverable off 2>/dev/null; bluetoothctl pairable off 2>/dev/null";
+    // Set BlueZ Adapter1 Discoverable + Pairable directly via D-Bus (busctl).
+    // bluetoothctl is an interactive REPL and its exit code doesn't reliably
+    // reflect property-set success; busctl gives us a deterministic path.
+    const char* bus_val = enabled ? "true" : "false";
+    std::string cmd = std::string(
+        "busctl --system set-property org.bluez /org/bluez/hci0 "
+        "org.bluez.Adapter1 Discoverable b ") + bus_val +
+        " 2>&1 && busctl --system set-property org.bluez /org/bluez/hci0 "
+        "org.bluez.Adapter1 Pairable b " + bus_val + " 2>&1";
     int ret = system(cmd.c_str());
     if (ret != 0) {
-        std::cerr << "[OAL] set_pairing_mode: bluetoothctl returned " << ret << std::endl;
+        std::cerr << "[OAL] set_pairing_mode: busctl returned " << ret << std::endl;
+    }
+
+    // Persist to disk so the BT script can restore this state at next boot
+    // (systemd restart, car power cycle). Atomic via rename.
+    ::mkdir("/var/lib/openautolink", 0755);  // best-effort
+    const char* persist_tmp = "/var/lib/openautolink/pairing_mode.tmp";
+    const char* persist_final = "/var/lib/openautolink/pairing_mode";
+    FILE* pf = std::fopen(persist_tmp, "w");
+    if (pf) {
+        std::fputs(enabled ? "on\n" : "off\n", pf);
+        std::fclose(pf);
+        if (::rename(persist_tmp, persist_final) != 0) {
+            std::cerr << "[OAL] set_pairing_mode: rename failed" << std::endl;
+            ::unlink(persist_tmp);
+        }
+    } else {
+        std::cerr << "[OAL] set_pairing_mode: failed to open persist file" << std::endl;
     }
 
     // Respond with current state so app stays in sync

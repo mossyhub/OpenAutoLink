@@ -1175,6 +1175,7 @@ void LiveAasdkSession::on_host_disconnect() {
         entity_->stop();
         entity_.reset();
     }
+    wireless_peer_ip_.clear();
     output_.emit(json_event("phone_disconnected"));
     state_.connected = false;
     state_.session_active = false;
@@ -1819,6 +1820,7 @@ void LiveAasdkSession::restart_with_config(const HeadlessConfig& new_config) {
         output_.emit(R"({"type":"event","event_type":"config_changed","message":"AA session restarting with new config"})");
         state_.connected = false;
         active_transport_ = TransportType::NONE;
+        wireless_peer_ip_.clear();
         entity_.reset();
 
         // Notify OAL session that phone disconnected (sends phone_disconnected to app,
@@ -1858,6 +1860,7 @@ void LiveAasdkSession::graceful_disconnect_phone(std::function<void()> completio
         entity_->graceful_shutdown([this, cb = std::move(completion_cb)]() {
             state_.connected = false;
             active_transport_ = TransportType::NONE;
+            wireless_peer_ip_.clear();
             entity_.reset();
             if (oal_session_) {
                 oal_session_->on_phone_disconnected("graceful_shutdown");
@@ -2009,25 +2012,40 @@ void LiveAasdkSession::accept_connection() {
                     return;
                 }
 
-                // If an AA session is actively running (phone connected,
-                // services started), reject new TCP connections. This prevents
-                // a second phone from kicking an active session. The legitimate
-                // same-phone reconnect case is fine: when the old TCP dies,
-                // aasdk detects the error and fires on_phone_disconnected(),
-                // clearing phone_connected_ so the next accept succeeds.
-                if (oal_session_ && oal_session_->phone_connected()) {
-                    std::cerr << "[aasdk] Wireless connection rejected (AA session active)" << std::endl;
+                // Capture peer IP immediately — this is our atomic "session
+                // owner" latch. It's set BEFORE aasdk handshake, closing the
+                // multi-second race where a second phone could kick an active
+                // session while phone_connected_ is still false.
+                std::string peer_ip;
+                try {
+                    boost::system::error_code ep_ec;
+                    auto ep = socket->remote_endpoint(ep_ec);
+                    if (!ep_ec) peer_ip = ep.address().to_string();
+                } catch (...) {}
+
+                // If a wireless session is in progress (entity_ exists OR
+                // phone fully connected), reject TCP from a *different* peer
+                // IP. Same-IP reconnect is legitimate (phone lost WiFi and
+                // came back) — fall through to tear-down-and-replace.
+                const bool session_in_progress =
+                    (entity_ && active_transport_ == TransportType::WIRELESS) ||
+                    (oal_session_ && oal_session_->phone_connected());
+                if (session_in_progress && !wireless_peer_ip_.empty() && peer_ip != wireless_peer_ip_) {
+                    std::cerr << "[aasdk] Wireless connection rejected: peer "
+                              << peer_ip << " != active session peer "
+                              << wireless_peer_ip_ << std::endl;
                     socket->close();
                     accept_connection();
                     return;
                 }
 
-                std::cerr << "[aasdk] TCP client connected (wireless)!" << std::endl;
+                std::cerr << "[aasdk] TCP client connected (wireless) peer=" << peer_ip << std::endl;
                 output_.emit(R"({"type":"event","event_type":"phone_connected","transport":"wireless"})");
                 state_.connected = true;
                 active_transport_ = TransportType::WIRELESS;
+                wireless_peer_ip_ = peer_ip;
 
-                // Tear down old entity if exists (phone reconnect)
+                // Tear down old entity if exists (same-IP phone reconnect)
                 if (entity_) {
                     std::cerr << "[aasdk] Cleaning up previous entity for reconnect" << std::endl;
                     entity_->stop();
@@ -2089,6 +2107,7 @@ void LiveAasdkSession::create_entity(aasdk::transport::ITransport::Pointer trans
         state_.connected = false;
         state_.session_active = false;
         active_transport_ = TransportType::NONE;
+        wireless_peer_ip_.clear();
         entity_.reset();
         if (oal_session_) {
             oal_session_->on_phone_disconnected();
@@ -2151,6 +2170,7 @@ void LiveAasdkSession::create_entity_no_ssl(aasdk::transport::ITransport::Pointe
         state_.connected = false;
         state_.session_active = false;
         active_transport_ = TransportType::NONE;
+        wireless_peer_ip_.clear();
         entity_.reset();
         if (oal_session_) {
             oal_session_->on_phone_disconnected();

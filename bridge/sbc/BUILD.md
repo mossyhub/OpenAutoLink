@@ -163,6 +163,66 @@ Or find the IP via `arp -a` and connect directly.
 
 Connect your laptop to the OpenAutoLink WiFi network (the SSID and password are printed at first boot and saved to `/opt/openautolink/wifi-password.txt`), then SSH to `192.168.43.1`.
 
+## Manually Copying Files from Windows
+
+> **CRITICAL: Windows `scp` from PowerShell adds CRLF (`\r\n`) line endings to every text file.** Linux shell scripts, systemd service files, and Python scripts will silently malfunction or outright fail with CRLF. You **must** strip `\r` bytes after every `scp` from Windows.
+
+### The Reliable CRLF Fix
+
+`sed`, `tr`, and `perl` invoked over `ssh` from PowerShell **do not work** for stripping `\r` — PowerShell's SSH pipe re-injects CR bytes into escape sequences. The only reliable method is Python's binary I/O:
+
+1. **Create this file locally** (save as `fix_crlf.py` anywhere):
+
+```python
+import pathlib, glob
+targets = (
+    glob.glob('/opt/openautolink/*.sh') +
+    glob.glob('/opt/openautolink/scripts/*.py') +
+    glob.glob('/etc/systemd/system/openautolink*.service') +
+    ['/etc/openautolink.env']
+)
+CR, LF, CRLF = bytes([0x0D]), bytes([0x0A]), bytes([0x0D, 0x0A])
+for fp in targets:
+    p = pathlib.Path(fp)
+    if not p.exists():
+        continue
+    old = p.read_bytes()
+    new = old.replace(CRLF, LF)
+    if old != new:
+        p.write_bytes(new)
+        print('fixed: ' + fp)
+```
+
+2. **Every time you `scp` files to the SBC**, follow it with:
+
+```powershell
+# Copy your files
+scp bridge\sbc\*.service root@192.168.222.222:/etc/systemd/system/
+scp bridge\sbc\start-wireless.sh root@192.168.222.222:/opt/openautolink/
+
+# Fix CRLF (Python handles its own CRLF in source, so this always works)
+scp fix_crlf.py root@192.168.222.222:/tmp/fix_crlf.py
+ssh root@192.168.222.222 "python3 /tmp/fix_crlf.py; chmod +x /opt/openautolink/*.sh; systemctl daemon-reload"
+```
+
+3. **Verify** (should show `\n` not `\r\n`):
+
+```powershell
+ssh root@192.168.222.222 "od -c /etc/systemd/system/openautolink-bt.service | head -2"
+# Good: 0000000   [   U   n   i   t   ]  \n   D   e   s   c   r   ...
+# Bad:  0000000   [   U   n   i   t   ]  \r  \n   D   e   s   c   ...
+```
+
+### Using deploy-bridge.ps1 (Recommended for Developers)
+
+The deploy script handles CRLF automatically using the Python method above:
+
+```powershell
+.\scripts\deploy-bridge.ps1 -Full          # Full deploy (binary + scripts + services)
+.\scripts\deploy-bridge.ps1                # Binary only (fast iteration)
+.\scripts\deploy-bridge.ps1 -Clean         # Clean rebuild + deploy
+```
+
 ## Updating
 
 The bridge auto-updates itself. When the car app detects a newer release on GitHub, it pushes the update to the bridge over TCP. No manual action or internet access is needed on the SBC.

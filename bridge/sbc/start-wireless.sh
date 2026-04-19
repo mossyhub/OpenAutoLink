@@ -24,12 +24,17 @@ fi
 
 IFACE="${OAL_WIRELESS_INTERFACE:-}"
 if [ -z "$IFACE" ]; then
-    # Auto-detect: find the first wireless interface
-    for path in /sys/class/net/*/wireless; do
-        [ -d "$path" ] && IFACE=$(basename "$(dirname "$path")") && break
+    # Auto-detect: find the first wireless interface.
+    # Retry with backoff — WiFi driver module may still be loading on some SBCs.
+    for _attempt in $(seq 1 20); do
+        for path in /sys/class/net/*/wireless; do
+            [ -d "$path" ] && IFACE=$(basename "$(dirname "$path")") && break 2
+        done
+        [ "$_attempt" -eq 1 ] && echo "[wifi] Waiting for wireless interface..."
+        sleep 0.5
     done
     if [ -z "$IFACE" ]; then
-        echo "[wifi] ERROR: No wireless interface found"
+        echo "[wifi] ERROR: No wireless interface found after 10s"
         echo "[wifi] Set OAL_WIRELESS_INTERFACE in /etc/openautolink.env"
         exit 1
     fi

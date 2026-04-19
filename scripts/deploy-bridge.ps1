@@ -127,7 +127,35 @@ if ($Full) {
     Invoke-Ssh "$moveCommands"
 
     Write-Host ">>> Fixing line endings and permissions..." -ForegroundColor Yellow
-    Invoke-Ssh "sudo sed -i 's/\r$//' /opt/openautolink/*.sh /opt/openautolink/scripts/*.py /etc/systemd/system/openautolink*.service /etc/openautolink.env 2>/dev/null; sudo chmod +x /opt/openautolink/*.sh; sudo rm -rf /tmp/oal-deploy"
+    # CRITICAL: sed/tr/perl through PowerShell SSH CANNOT reliably strip \r because
+    # PowerShell's SSH pipe re-injects CR bytes into escape sequences. The only
+    # reliable method is using Python's pathlib (binary I/O, no shell escaping).
+    $crlfFixPy = @"
+import pathlib, glob
+targets = (
+    glob.glob('/opt/openautolink/*.sh') +
+    glob.glob('/opt/openautolink/scripts/*.py') +
+    glob.glob('/etc/systemd/system/openautolink*.service') +
+    ['/etc/openautolink.env']
+)
+CR, LF, CRLF = bytes([0x0D]), bytes([0x0A]), bytes([0x0D, 0x0A])
+for fp in targets:
+    p = pathlib.Path(fp)
+    if not p.exists():
+        continue
+    old = p.read_bytes()
+    new = old.replace(CRLF, LF)
+    if old != new:
+        p.write_bytes(new)
+        print('fixed: ' + fp)
+"@
+    # Write the Python script to a temp file, SCP it, run it (Python handles CRLF in .py source)
+    $tmpPy = [System.IO.Path]::GetTempFileName() + ".py"
+    [System.IO.File]::WriteAllText($tmpPy, $crlfFixPy)
+    scp $tmpPy "${Target}:/tmp/_fix_crlf.py" | Out-Null
+    Invoke-Ssh "python3 /tmp/_fix_crlf.py; rm -f /tmp/_fix_crlf.py"
+    Remove-Item $tmpPy -ErrorAction SilentlyContinue
+    Invoke-Ssh "sudo chmod +x /opt/openautolink/*.sh; sudo rm -rf /tmp/oal-deploy"
 
     foreach ($f in $filesToDeploy) {
         Write-Host "  $($f.Final)" -ForegroundColor DarkGray
@@ -156,7 +184,7 @@ Invoke-Ssh "sudo mv /tmp/openautolink-headless /opt/openautolink/bin/openautolin
 $applyScript = Join-Path $SbcDir "apply-bridge-update.sh"
 if (Test-Path $applyScript) {
     scp $applyScript "${Target}:/tmp/apply-bridge-update.sh"
-    Invoke-Ssh "sudo mv /tmp/apply-bridge-update.sh /opt/openautolink/bin/apply-bridge-update.sh && sudo sed -i 's/\r$//' /opt/openautolink/bin/apply-bridge-update.sh && sudo chmod +x /opt/openautolink/bin/apply-bridge-update.sh"
+    Invoke-Ssh "python3 -c 'import pathlib;p=pathlib.Path(\x22/tmp/apply-bridge-update.sh\x22);p.write_bytes(p.read_bytes().replace(bytes([0x0D,0x0A]),bytes([0x0A])))'; sudo mv /tmp/apply-bridge-update.sh /opt/openautolink/bin/apply-bridge-update.sh && sudo chmod +x /opt/openautolink/bin/apply-bridge-update.sh"
 }
 
 # ── Step 5: Start service ─────────────────────────────────────────────

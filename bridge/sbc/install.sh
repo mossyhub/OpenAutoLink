@@ -227,6 +227,29 @@ systemctl daemon-reload
 systemctl enable openautolink-network openautolink openautolink-wireless 2>/dev/null || true
 systemctl enable openautolink-bt 2>/dev/null || true
 
+# ── Boot-time optimization ────────────────────────────────────────────
+# Disable services that are unnecessary on a headless SBC dedicated to the
+# bridge. Each shaves 200-1400ms off the critical boot chain. These are
+# safe to disable:
+#   - keyboard-setup/console-setup/setvtrgb: no keyboard/console attached
+#   - e2scrub_reap: online ext4 scrub — not needed on SD/eMMC
+#   - rsyslog: systemd-journald already captures all logs
+#   - wpa_supplicant: we manage WiFi via hostapd (AP mode), not WPA client
+#   - armbian-hardware-monitor: hardware monitoring daemon, no value headless
+# NOT disabled (needed for ICS/internet via USB NIC during development):
+#   - systemd-resolved: DNS resolution
+#   - systemd-networkd: DHCP on USB NICs
+#   - systemd-timesyncd: NTP sync when internet is available
+echo "  Disabling unnecessary services for faster boot..."
+for svc in keyboard-setup console-setup setvtrgb e2scrub_reap \
+           rsyslog wpa_supplicant armbian-hardware-monitor; do
+    systemctl disable "$svc" 2>/dev/null || true
+    systemctl stop "$svc" 2>/dev/null || true
+done
+
+# Create persistent state directory for pairing mode etc.
+mkdir -p /var/lib/openautolink
+
 # Disable DietPi/ifupdown DHCP on ethernet — our network service manages NICs
 if [ -f /etc/network/interfaces ]; then
     if grep -q "^allow-hotplug eth0" /etc/network/interfaces || \

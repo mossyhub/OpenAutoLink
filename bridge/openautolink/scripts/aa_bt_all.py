@@ -33,7 +33,7 @@ Architecture:
 """
 import dbus, dbus.service, dbus.mainloop.glib
 from gi.repository import GLib
-import os, time, threading, struct, fcntl
+import os, time, threading, struct, fcntl, socket
 
 AA_UUID = "4de17a00-52cb-11e6-bdf4-0800200c9a66"
 HFP_HF_UUID = "0000111e-0000-1000-8000-00805f9b34fb"  # Hands-Free (our role: car kit)
@@ -70,6 +70,91 @@ def _get_bt_name():
 
 BT_NAME = _get_bt_name()
 last_bt_activity_at = 0.0
+
+# Multi-phone safety timing:
+#  - DEFAULT_GRACE_SEC: at script startup, non-default phones are blocked at
+#    AA RFCOMM for this many seconds. Gives the preferred phone a head start
+#    when both phones power on with the car and race BT ACL setup.
+#  - SWITCH_OVERRIDE_FILE: written by the C++ bridge in handle_switch_phone
+#    with "<mac>\n<expiry_unix_ts>". While the override is active, the
+#    target MAC bypasses the "is default connected?" check. This fixes the
+#    bug where Phone A auto-reconnects during the BT disconnect/connect
+#    window and blocks the user's explicit switch to Phone B.
+DEFAULT_GRACE_SEC = float(os.environ.get("OAL_DEFAULT_GRACE_SEC", "10"))
+SWITCH_OVERRIDE_FILE = "/run/openautolink/switch_override"
+PAIRING_MODE_FILE = "/var/lib/openautolink/pairing_mode"
+SCRIPT_START_AT = time.monotonic()
+
+def _read_pairing_mode():
+    """Return True if pairing is enabled (default), False if user explicitly disabled."""
+    try:
+        with open(PAIRING_MODE_FILE, "r") as f:
+            return f.read().strip().lower() not in ("off", "false", "0", "no")
+    except (FileNotFoundError, OSError):
+        return True  # default: pairing allowed
+
+# Proactive preferred-phone reachability probe. Populated asynchronously at
+# script startup so the RFCOMM gate can short-circuit the startup grace when
+# we've confirmed the default phone is offline (not in car). Without this,
+# non-default phones incur the full DEFAULT_GRACE_SEC penalty even when the
+# default isn't present.
+preferred_probe = {"done": False, "reachable": False, "lock": threading.Lock()}
+
+# Rate-limit per-MAC rejection logs so a phone retrying in a tight loop
+# doesn't spam journald. Key = MAC, value = last log monotonic-time.
+_last_reject_log_at = {}
+REJECT_LOG_INTERVAL_SEC = 10.0
+
+def _log_rejection(mac, reason):
+    now = time.monotonic()
+    last = _last_reject_log_at.get(mac, 0.0)
+    if now - last >= REJECT_LOG_INTERVAL_SEC:
+        print(f"AA RFCOMM rejected from {mac}: {reason}", flush=True)
+        _last_reject_log_at[mac] = now
+
+def _close_rejection_fd(fd):
+    """Clean socket shutdown + close on a rejected RFCOMM fd.
+    SHUT_RDWR sends FIN so the phone sees a clean close rather than RST,
+    which discourages the aggressive sub-second retry loop seen on some
+    Android versions."""
+    # Duplicate the fd so the socket wrapper can close its copy cleanly
+    # without affecting our close() below. socket.socket(fileno=...) takes
+    # ownership and will close on __del__, so we use os.dup.
+    try:
+        dup_fd = os.dup(fd)
+        try:
+            s = socket.socket(fileno=dup_fd)
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            s.close()  # closes dup_fd
+        except Exception:
+            try:
+                os.close(dup_fd)
+            except OSError:
+                pass
+    except OSError:
+        pass
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+def _read_switch_override():
+    """Return the target MAC if a valid (unexpired) switch override exists, else ""."""
+    try:
+        with open(SWITCH_OVERRIDE_FILE, "r") as f:
+            lines = f.read().strip().split("\n")
+        if len(lines) < 2:
+            return ""
+        mac = _normalize_mac(lines[0])
+        expiry = float(lines[1])
+        if time.time() > expiry:
+            return ""
+        return mac
+    except (FileNotFoundError, ValueError, OSError):
+        return ""
 
 def _normalize_mac(mac):
     return mac.strip().upper()
@@ -140,7 +225,21 @@ def _connect_device(path):
                          "org.bluez.Device1")
     dp = dbus.Interface(bus.get_object("org.bluez", path),
                         "org.freedesktop.DBus.Properties")
-    dp.Set("org.bluez.Device1", "Trusted", dbus.Boolean(True))
+
+    # Only force-trust the preferred phone. Trusted devices skip the
+    # Agent.AuthorizeService hook, which is our last-resort BlueZ-level
+    # gate against non-default phones. For non-preferred devices, leave
+    # BlueZ's existing Trusted state alone — the auto-accept Agent still
+    # handles any authorization prompts.
+    preferred = _preferred_bt_mac()
+    try:
+        addr = _normalize_mac(str(dp.Get("org.bluez.Device1", "Address")))
+        if preferred and addr == preferred:
+            already = bool(dp.Get("org.bluez.Device1", "Trusted"))
+            if not already:
+                dp.Set("org.bluez.Device1", "Trusted", dbus.Boolean(True))
+    except Exception as e:
+        print(f"Trust check {path}: {e}", flush=True)
 
     try:
         dev.ConnectProfile(HFP_AG_UUID)
@@ -159,8 +258,44 @@ def _connect_device(path):
     except Exception:
         pass
 
+def _probe_preferred_async(path, mac):
+    """Proactively attempt to connect the preferred phone so the RFCOMM gate
+    can short-circuit the startup grace. Runs in a daemon thread.
+    Sets preferred_probe["reachable"] True on success, False on unreachable."""
+    try:
+        dev = dbus.Interface(bus.get_object("org.bluez", path), "org.bluez.Device1")
+        print(f"Preferred probe: attempting Connect on {mac}", flush=True)
+        try:
+            dev.Connect(timeout=8)  # D-Bus timeout; BlueZ page timeout ~5-10s
+            with preferred_probe["lock"]:
+                preferred_probe["reachable"] = True
+                preferred_probe["done"] = True
+            print(f"Preferred probe: {mac} REACHABLE", flush=True)
+        except dbus.DBusException as e:
+            name = e.get_dbus_name() if hasattr(e, "get_dbus_name") else str(e)
+            # Errors that imply the phone IS reachable:
+            #  - AlreadyConnected: phone already linked
+            #  - InProgress: BlueZ is already negotiating a connect from the
+            #    phone's side (very common — both sides race at boot).
+            # Everything else (Failed, ConnectionAttemptFailed, NotConnected,
+            # Page Timeout) = unreachable.
+            reachable = ("AlreadyConnected" in name) or ("InProgress" in name)
+            with preferred_probe["lock"]:
+                preferred_probe["reachable"] = reachable
+                preferred_probe["done"] = True
+            state = "REACHABLE" if reachable else "UNREACHABLE"
+            print(f"Preferred probe: {mac} {state} ({name})", flush=True)
+    except Exception as e:
+        with preferred_probe["lock"]:
+            preferred_probe["done"] = True
+        print(f"Preferred probe error: {e}", flush=True)
+
 def _reconnect_worker():
     time.sleep(RECONNECT_INITIAL_DELAY_SEC)
+    # Tracks consecutive failures on the preferred phone so we can fall
+    # back to other paired devices when the default is truly offline.
+    preferred_miss_count = 0
+    PREFERRED_FALLBACK_AFTER = 3  # cycles (~45 s) before trying non-default
     while True:
         try:
             objects = _get_managed_objects()
@@ -170,6 +305,7 @@ def _reconnect_worker():
                 continue
 
             if any(bool(props.get("Connected", False)) for _, props, _ in devices):
+                preferred_miss_count = 0
                 time.sleep(RECONNECT_INTERVAL_SEC)
                 continue
 
@@ -178,11 +314,34 @@ def _reconnect_worker():
                 continue
 
             preferred_mac = _preferred_bt_mac()
-            if preferred_mac:
-                print(f"Reconnect preferred MAC: {preferred_mac}", flush=True)
+            switch_target = _read_switch_override()
 
-            for path, _, _ in _sort_paired_devices(devices, preferred_mac):
-                _connect_device(path)
+            if switch_target:
+                # Explicit user switch — only try the target
+                for path, _, mac in devices:
+                    if mac == switch_target:
+                        print(f"Reconnect switch target: {switch_target}", flush=True)
+                        _connect_device(path)
+                        break
+            elif preferred_mac:
+                preferred_path = next((p for p, _, m in devices if m == preferred_mac), None)
+                if preferred_path:
+                    print(f"Reconnect preferred MAC: {preferred_mac} "
+                          f"(miss={preferred_miss_count})", flush=True)
+                    _connect_device(preferred_path)
+                    preferred_miss_count += 1
+                    # After enough misses, allow fallback to other paired devices
+                    if preferred_miss_count >= PREFERRED_FALLBACK_AFTER:
+                        for path, _, mac in devices:
+                            if mac != preferred_mac:
+                                _connect_device(path)
+                else:
+                    # Preferred not in paired list — treat like no preference
+                    for path, _, _ in devices:
+                        _connect_device(path)
+            else:
+                for path, _, _ in _sort_paired_devices(devices, ""):
+                    _connect_device(path)
         except Exception as e:
             print(f"Phone connect: {e}", flush=True)
         time.sleep(RECONNECT_INTERVAL_SEC)
@@ -216,7 +375,7 @@ def rfcomm_recv(fd):
         d += os.read(fd, sz - len(d))
     return mt, d
 
-def handle_aa_rfcomm(fd):
+def handle_aa_rfcomm(fd, connecting_mac=""):
     """Handle the AA wireless WiFi credential exchange over RFCOMM."""
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl & ~os.O_NONBLOCK)
@@ -238,6 +397,18 @@ def handle_aa_rfcomm(fd):
         print(f"Got msg type={mt3} len={len(d3)}", flush=True)
 
         print("WiFi credential exchange complete!", flush=True)
+
+        # If this was the switch-override target, clear the override now that
+        # credentials are delivered. Eliminates the need for a wall-clock timer
+        # guess — the target has everything it needs to come up on WiFi.
+        if connecting_mac:
+            switch_target = _read_switch_override()
+            if switch_target and switch_target == connecting_mac:
+                try:
+                    os.unlink(SWITCH_OVERRIDE_FILE)
+                    print(f"Switch override cleared (target {connecting_mac} got credentials)", flush=True)
+                except OSError:
+                    pass
     except Exception as e:
         print(f"RFCOMM exchange error: {e}", flush=True)
         try:
@@ -286,30 +457,54 @@ class AAProfile(dbus.service.Object):
         connecting_mac = _normalize_mac(
             str(device).split("/")[-1].replace("dev_", "").replace("_", ":"))
         preferred = _preferred_bt_mac()
+        switch_target = _read_switch_override()
 
-        # If a default phone is set and this isn't it, check if the default
-        # phone is currently BT-connected. If so, reject — the default phone
-        # has priority and we don't want a second phone kicking the session.
-        # If the default phone is NOT connected (not in car), allow the
-        # non-default phone through as a fallback.
-        if preferred and connecting_mac != preferred:
-            try:
-                objects = _get_managed_objects()
-                for path, ifaces in objects.items():
-                    dev_props = ifaces.get("org.bluez.Device1")
-                    if not dev_props:
-                        continue
-                    dev_mac = _normalize_mac(str(dev_props.get("Address", "")))
-                    if dev_mac == preferred and bool(dev_props.get("Connected", False)):
-                        print(f"AA RFCOMM rejected: {connecting_mac} — "
-                              f"default phone {preferred} is connected", flush=True)
-                        os.close(fd)
-                        return
-            except Exception as e:
-                print(f"AA RFCOMM: error checking default phone: {e}", flush=True)
+        # Multi-phone gating — reject non-default phones in these cases:
+        #   1. A switch override is active and the connecting phone isn't the target.
+        #      (User explicitly chose another phone; lock out racers.)
+        #   2. Within the startup grace period, a preferred phone is set, and this
+        #      isn't it. (Gives default a head start when both phones power on.)
+        #   3. The default phone is currently BT-connected to us. (Don't let
+        #      a second phone kick the active session.)
+        # The switch_target branch takes priority so an explicit user action
+        # always overrides the default-phone preference.
+        reject_reason = None
+        if switch_target:
+            if connecting_mac != switch_target:
+                reject_reason = f"switch override active (target {switch_target})"
+        elif preferred and connecting_mac != preferred:
+            grace_remaining = DEFAULT_GRACE_SEC - (time.monotonic() - SCRIPT_START_AT)
+            with preferred_probe["lock"]:
+                probe_done = preferred_probe["done"]
+                probe_reachable = preferred_probe["reachable"]
+            # Skip grace early if we've confirmed preferred is offline.
+            if probe_done and not probe_reachable:
+                pass  # fall through to "is default currently connected?" check
+            elif grace_remaining > 0:
+                reject_reason = (f"default phone {preferred} has "
+                                 f"{grace_remaining:.1f}s startup grace "
+                                 f"(probe_done={probe_done} reachable={probe_reachable})")
+            if not reject_reason:
+                try:
+                    objects = _get_managed_objects()
+                    for path, ifaces in objects.items():
+                        dev_props = ifaces.get("org.bluez.Device1")
+                        if not dev_props:
+                            continue
+                        dev_mac = _normalize_mac(str(dev_props.get("Address", "")))
+                        if dev_mac == preferred and bool(dev_props.get("Connected", False)):
+                            reject_reason = f"default phone {preferred} is connected"
+                            break
+                except Exception as e:
+                    print(f"AA RFCOMM: error checking default phone: {e}", flush=True)
+
+        if reject_reason:
+            _log_rejection(connecting_mac, reject_reason)
+            _close_rejection_fd(fd)
+            return
 
         print(f"AA RFCOMM NewConnection from {device} fd={fd} mac={connecting_mac}", flush=True)
-        threading.Thread(target=handle_aa_rfcomm, args=(fd,), daemon=True).start()
+        threading.Thread(target=handle_aa_rfcomm, args=(fd, connecting_mac), daemon=True).start()
     @dbus.service.method(PROFILE_IFACE, in_signature="o", out_signature="")
     def RequestDisconnection(self, dev): print(f"AA disconnect {dev}", flush=True)
     @dbus.service.method(PROFILE_IFACE, in_signature="", out_signature="")
@@ -643,8 +838,11 @@ for p, i in objs.items():
 # Adapter settings
 ap = _wait_for_adapter_properties()
 ap.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(True))
-ap.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(True))
-ap.Set("org.bluez.Adapter1", "Pairable", dbus.Boolean(True))
+# Read persisted pairing-mode from disk — survives reboots. User can disable
+# new pairings via the app and the state is remembered.
+_pairing_enabled = _read_pairing_mode()
+ap.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(_pairing_enabled))
+ap.Set("org.bluez.Adapter1", "Pairable", dbus.Boolean(_pairing_enabled))
 ap.Set("org.bluez.Adapter1", "DiscoverableTimeout", dbus.UInt32(0))
 ap.Set("org.bluez.Adapter1", "Alias", BT_NAME)
 # Set device class and SSP mode. These require raw HCI ioctls that BlueZ
@@ -667,5 +865,29 @@ except Exception:
 # Periodically retry wireless AA reconnects. Prefer OAL_BT_MAC when configured,
 # but fall back to the remaining paired phones so multi-phone switching still works.
 threading.Thread(target=_reconnect_worker, daemon=True).start()
+
+# Proactively probe the preferred phone's reachability so the AA RFCOMM gate
+# can skip grace when default phone is confirmed offline. Concurrent with
+# phone's own BT auto-reconnect — whichever succeeds first wins.
+_preferred_mac_for_probe = _preferred_bt_mac()
+if _preferred_mac_for_probe:
+    try:
+        for _path, _ifaces in _get_managed_objects().items():
+            _dev_props = _ifaces.get("org.bluez.Device1")
+            if _dev_props and _normalize_mac(str(_dev_props.get("Address", ""))) == _preferred_mac_for_probe:
+                threading.Thread(
+                    target=_probe_preferred_async,
+                    args=(_path, _preferred_mac_for_probe),
+                    daemon=True).start()
+                break
+        else:
+            # Preferred MAC configured but not in BlueZ's paired list — treat as unreachable.
+            with preferred_probe["lock"]:
+                preferred_probe["done"] = True
+                preferred_probe["reachable"] = False
+            print(f"Preferred probe: {_preferred_mac_for_probe} NOT PAIRED, marking unreachable", flush=True)
+    except Exception as e:
+        print(f"Preferred probe launch: {e}", flush=True)
+
 print("All services running", flush=True)
 GLib.MainLoop().run()

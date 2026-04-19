@@ -139,7 +139,7 @@ See [bridge/sbc/BUILD.md](bridge/sbc/BUILD.md) for SBC setup. CI builds via `.gi
 | [docs/testing.md](docs/testing.md) | Local testing with AAOS emulator + SBC |
 ## Pitfalls
 
-- **CRLF**: SBC scripts and env files must be LF. Windows scp creates CRLF — always convert
+- **CRLF**: SBC scripts and env files must be LF. Windows `scp` from PowerShell injects CRLF. **`sed`, `tr`, and `perl` over SSH from PowerShell cannot fix this** — PowerShell re-injects `\r` into escape sequences. Use the Python binary-I/O method in [bridge/sbc/BUILD.md](bridge/sbc/BUILD.md#manually-copying-files-from-windows). The `deploy-bridge.ps1` script handles this automatically.
 - **aasdk v1.6**: Phone requires v1.6 ServiceConfiguration format. v1.1 format = silent ignore
 - **BlueZ SAP plugin**: Steals RFCOMM channel 8. Disable with `--noplugin=sap`
 - **MediaCodec lifecycle**: Must release codec on pause, recreate on resume. Surface changes require full codec reset
