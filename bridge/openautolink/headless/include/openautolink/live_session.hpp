@@ -304,6 +304,7 @@ private:
     int cached_ev_cap_wh_ = 0;
     int cached_ev_level_wh_ = 0;
     int cached_range_m_ = 0;
+    int cached_ev_charge_rate_w_ = 0;
 
     // Raw SSL for TCP wireless (TLS at socket level, not in aasdk cryptor)
     void* ssl_ = nullptr;      // SSL*
@@ -507,10 +508,11 @@ public:
     bool isVemRequested() const { return vemRequested_; }
 
     // Cache EV values so VEM can be sent immediately when phone requests sensor 23
-    void cacheEvValues(int capWh, int levelWh, int rangeM) {
+    void cacheEvValues(int capWh, int levelWh, int rangeM, int chargeRateW = 0) {
         cached_ev_cap_wh_ = capWh;
         cached_ev_level_wh_ = levelWh;
         cached_range_m_ = rangeM;
+        if (chargeRateW > 0) cached_ev_charge_rate_w_ = chargeRateW;
     }
 
 private:
@@ -525,6 +527,7 @@ private:
     int cached_ev_cap_wh_ = 0;
     int cached_ev_level_wh_ = 0;
     int cached_range_m_ = 0;
+    int cached_ev_charge_rate_w_ = 0;
 };
 
 class HeadlessInputHandler

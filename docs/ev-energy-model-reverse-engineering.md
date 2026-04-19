@@ -67,6 +67,20 @@ We were setting `min_usable_capacity = capacityWh * 0.95` (a constant), so Maps 
 computed ~95% regardless of actual charge. Fixed by setting `min_usable_capacity = currentWh`
 (the live `EV_BATTERY_LEVEL` value).
 
+**Gross vs Usable Capacity (fixed):** Maps was showing 64% SOC when the car's
+dashboard showed 73%. Root cause: we were using `INFO_EV_BATTERY_CAPACITY` (gross
+battery capacity = 83,010 Wh) as `max_capacity`. The car's dashboard shows SOC relative
+to the **usable** capacity (`EV_CURRENT_BATTERY_CAPACITY` ≈ 72,800 Wh), which excludes
+GM's ~12% top/bottom buffer. Maps computed SOC = 53,126 / 83,010 = 64% instead of the
+correct 53,126 / 72,800 = 73%. Fixed by preferring `EV_CURRENT_BATTERY_CAPACITY` when
+available, falling back to `INFO_EV_BATTERY_CAPACITY` if not.
+
+Additionally, arrive/return estimates showed the same percentage (no route energy
+deduction). Added missing VEM fields discovered in the AAOS Maps decompile
+(`gzd.m22124j`): `max_charge_power_w`, `max_discharge_power_w`, and
+`consumption.aerodynamic.rate` — the server-side EV routing computation likely
+needs these to produce accurate battery-on-arrival estimates.
+
 ```java
 // From rah.m33791O() — how Maps constructs BatteryLevel from VEM:
 //   batteryLevelWh  = aeahVar.f10387d  → min_usable_capacity.watt_hours
@@ -407,14 +421,23 @@ High byte of type_info char: `0x10` = has-bit presence word 1, `0x14/0x15` etc =
 The `sendVehicleEnergyModel(capacityWh, currentWh, rangeM)` method builds the protobuf:
 
 ```
-battery.max_capacity.watt_hours = capacityWh          // from INFO_EV_BATTERY_CAPACITY
+battery.max_capacity.watt_hours = capacityWh          // EV_CURRENT_BATTERY_CAPACITY (usable) preferred, fallback INFO_EV_BATTERY_CAPACITY (gross)
 battery.min_usable_capacity.watt_hours = currentWh     // from EV_BATTERY_LEVEL — Maps reads this as current SOC!
 battery.reserve_energy.watt_hours = capacityWh * 0.05
 battery.regen_braking_capable = true
+battery.max_charge_power_w = EV_CHARGE_RATE or 150000  // needed for server-side routing
+battery.max_discharge_power_w = 150000
 consumption.driving.rate = (currentWh / rangeM) * 1000  // Wh/km from car's own range estimate
 consumption.auxiliary.rate = 2.0                         // typical aux consumption
+consumption.aerodynamic.rate = 0.36                      // drag coefficient contribution
 charging_prefs.mode = 1                                  // standard
 ```
+
+> **Critical insight — usable vs gross capacity:** GM reserves ~12% of the total battery
+> (top/bottom buffer). `INFO_EV_BATTERY_CAPACITY` reports the full 83 kWh, but
+> `EV_CURRENT_BATTERY_CAPACITY` reports only the ~73 kWh usable portion. The dashboard
+> shows SOC relative to usable capacity, so the VEM must use `EV_CURRENT_BATTERY_CAPACITY`
+> as `max_capacity` to produce matching percentages.
 
 > **Critical insight:** Despite the proto field name `min_usable_capacity`, Maps uses this
 > as the **current battery level in Wh**. This was discovered by tracing `rah.m33791O()` in

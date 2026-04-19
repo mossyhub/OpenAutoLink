@@ -1551,20 +1551,29 @@ void LiveAasdkSession::parse_and_forward_vehicle_data(const std::string& json) {
 
     auto ev_cap_wh = extract_float("ev_battery_capacity_wh");
     auto ev_level_wh = extract_float("ev_battery_level_wh");
+    auto ev_current_cap_wh = extract_float("ev_current_cap_wh");
+    auto ev_charge_rate_w = extract_float("ev_charge_rate_w");
     auto range_m_val = extract_int("range_m");
 
     // Cache EV values — they persist across phone reconnects so VEM can be
     // sent immediately when the phone requests sensor 23 on next session
-    if (ev_cap_wh && *ev_cap_wh > 0)
+    // Prefer EV_CURRENT_BATTERY_CAPACITY (usable capacity) over INFO_EV_BATTERY_CAPACITY
+    // (gross capacity). The car dashboard shows SOC relative to usable capacity, and
+    // Maps must use the same denominator to display matching percentages.
+    if (ev_current_cap_wh && *ev_current_cap_wh > 0)
+        cached_ev_cap_wh_ = static_cast<int>(*ev_current_cap_wh);
+    else if (ev_cap_wh && *ev_cap_wh > 0)
         cached_ev_cap_wh_ = static_cast<int>(*ev_cap_wh);
     if (ev_level_wh && *ev_level_wh > 0)
         cached_ev_level_wh_ = static_cast<int>(*ev_level_wh);
     if (range_m_val && *range_m_val > 0)
         cached_range_m_ = *range_m_val;
+    if (ev_charge_rate_w && *ev_charge_rate_w > 0)
+        cached_ev_charge_rate_w_ = static_cast<int>(*ev_charge_rate_w);
 
     // Also cache on the sensor handler so it can send immediately on sensor 23 request
     if (sh && cached_ev_cap_wh_ > 0 && cached_ev_level_wh_ > 0 && cached_range_m_ > 0) {
-        sh->cacheEvValues(cached_ev_cap_wh_, cached_ev_level_wh_, cached_range_m_);
+        sh->cacheEvValues(cached_ev_cap_wh_, cached_ev_level_wh_, cached_range_m_, cached_ev_charge_rate_w_);
     }
 
     // Send VEM if we have all three values (from this message or cache)
@@ -3168,6 +3177,9 @@ void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh
     aap_protobuf::service::sensorsource::message::VehicleEnergyModel vem;
 
     // Battery config
+    // capacityWh should be EV_CURRENT_BATTERY_CAPACITY (usable) when available,
+    // falling back to INFO_EV_BATTERY_CAPACITY (gross). Using usable capacity
+    // ensures SOC = currentWh/capacityWh matches the car's dashboard percentage.
     auto* batt = vem.mutable_battery();
     batt->set_config_id(1);
     batt->mutable_max_capacity()->set_watt_hours(capacityWh);
@@ -3178,6 +3190,11 @@ void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh
     // Reserve = small buffer below which Maps warns "low battery"
     batt->mutable_reserve_energy()->set_watt_hours(static_cast<int>(capacityWh * 0.05));
     batt->set_regen_braking_capable(true);
+    // Charge/discharge power — needed for server-side EV routing computation
+    // Blazer EV: ~150kW DC fast charge, ~150kW max discharge
+    int charge_power = (cached_ev_charge_rate_w_ > 0) ? cached_ev_charge_rate_w_ : 150000;
+    batt->set_max_charge_power_w(charge_power);
+    batt->set_max_discharge_power_w(150000);
 
     // Energy consumption derived from car's own range estimate
     // consumption = currentEnergy / rangeRemaining (Wh/m) * 1000 (Wh/km)
@@ -3185,6 +3202,7 @@ void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh
     float whPerKm = (static_cast<float>(currentWh) / static_cast<float>(rangeM)) * 1000.0f;
     cons->mutable_driving()->set_rate(whPerKm);
     cons->mutable_auxiliary()->set_rate(2.0f);  // typical aux consumption
+    cons->mutable_aerodynamic()->set_rate(0.36f);  // drag coefficient contribution
 
     // Charging prefs
     auto* prefs = vem.mutable_charging_prefs();
@@ -3202,7 +3220,8 @@ void HeadlessSensorHandler::sendVehicleEnergyModel(int capacityWh, int currentWh
     channel_->sendSensorEventIndication(batch, std::move(promise));
     std::cerr << "[aasdk] sensor: sent VehicleEnergyModel (capacity=" << capacityWh
               << "Wh, current=" << currentWh << "Wh, range=" << rangeM
-              << "m, consumption=" << whPerKm << "Wh/km)" << std::endl;
+              << "m, consumption=" << whPerKm << "Wh/km, charge_power="
+              << charge_power << "W)" << std::endl;
 }
 
 void HeadlessSensorHandler::onChannelOpenRequest(
