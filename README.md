@@ -14,6 +14,14 @@ OpenAutoLink is an open-source wireless Android Auto bridge for AAOS head units.
   <em>Android Auto streaming wirelessly on a 2024 Chevrolet Blazer EV</em>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/AA-EV-Battery-Maps.jpg" alt="Google Maps showing EV battery percentage via OpenAutoLink" width="720">
+  <br>
+  <em>Google Maps displaying the car's EV battery level (92%) — real vehicle data forwarded through OpenAutoLink into Android Auto</em>
+</p>
+
+> **First-of-its-kind EV integration:** OpenAutoLink forwards real EV battery percentage, range, fuel type, and charge port data from the car into Android Auto. Google Maps uses this to show battery level alongside navigation — something no other aftermarket solution provides, including OEM Android Auto implementations.
+
 > This is a hobby project under active development. Core features are implemented and working on real hardware, but the project is not yet polished or broadly validated across vehicles.
 
 > **Discuss on XDA:** [OpenAutoLink — Wireless Android Auto bridge for AAOS (GM EVs)](https://xdaforums.com/t/open-source-openautolink-wireless-android-auto-bridge-for-aaos-gm-evs.4785192/) — questions, feedback, and build reports welcome.
@@ -48,6 +56,7 @@ The current design is purpose-built for this setup:
 ## What It Does
 
 - Wireless Android Auto over Bluetooth + WiFi, no phone cable required
+- **EV battery and energy data in Android Auto** — battery percentage, range, fuel type, and charge port forwarded from the car's VHAL into Android Auto, where Google Maps displays it natively alongside navigation. No other aftermarket bridge or OEM wireless Android Auto implementation does this
 - Up to 1080p60 by default, with 1440p and 4K available through AA Developer Mode and supported codecs
 - Automatic display adaptation for wide and irregular AAOS displays
 - Audio forwarding for media, navigation, phone calls, and voice assistant
@@ -331,6 +340,7 @@ Active development. Core features are implemented and working on real hardware o
 - Audio
 - Touch input
 - Vehicle and sensor data forwarding
+- **EV energy model data** (battery %, range, fuel type, charge port) visible in Google Maps
 - Cluster navigation
 - Media metadata
 - Microphone support
