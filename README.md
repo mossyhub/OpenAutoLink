@@ -168,9 +168,7 @@ H.264 generally tops out at 1080p for practical phone encoder support. H.265 and
 
 ### Display Adaptation
 
-OpenAutoLink is designed for AAOS displays that are not simple 16:9 rectangles. The app includes a content inset editor that lets you push Android Auto's interactive UI elements inward from any edge of the screen, so buttons and controls stay away from curved bezels or clipped areas while maps and backgrounds still fill the full display.
-
-For the 2024 Blazer EV, the right edge of the display has a curved bezel — a right-side content inset keeps interactive elements comfortably inside the visible area.
+OpenAutoLink is designed for AAOS displays that are not simple 16:9 rectangles. The "pixel aspect" is auto-calcualted so that the AA 16:9 video stream is perfectly displayed even on ultra-wide screens. The app includes a content inset editor that lets you push Android Auto's UI inward from any edge of the screen, so buttons and controls stay away from curved bezels or clipped areas. I reccomend pulling the top down about 50-55 pixels for the Blazer EV screen.
 
 <details>
 <summary>🖥️ Display & Layout Screenshots</summary>
@@ -214,7 +212,7 @@ The bridge relays already-encoded video and audio, so raw CPU performance matter
 
 #### Development / tested boards
 
-The primary development board is a **Khadas VIM4** (Amlogic A311D2, 8 GB RAM, 32 GB eMMC, Wi-Fi 6, GigE). The **Raspberry Pi 5 / CM5** is also tested and works well. Both are overkill for this workload — the bridge does not benefit from their CPU headroom — but they are convenient for development.
+The primary development board is a **Khadas VIM4** (Amlogic A311D2, 8 GB RAM, 32 GB eMMC, Wi-Fi 6, GigE). The **Raspberry Pi 5** is also tested and works well. Both are overkill for this workload — the bridge does not benefit from their CPU headroom — but they are convenient for development.
 
 The current daily-driver board is an **Orange Pi Zero2** (Allwinner H616, 1 GB RAM, Wi-Fi 5, GigE) running Armbian Minimal. It boots and connects in about 30–40 seconds and is compact enough to hide easily in the center console.
 
@@ -274,7 +272,7 @@ The SBC, adapter, and cable can usually live entirely inside the center console 
 
 No local build is required. The SBC install script downloads the latest prebuilt bridge binary from GitHub Releases.
 
-1. Flash [DietPi](https://dietpi.com/) (or any ARM64 Linux server image) onto your SBC.
+1. Flash [DietPi](https://dietpi.com/) or Armbian Minimal (or any ARM64 Linux server image) onto your SBC.
 2. Connect the SBC's onboard Ethernet to your router or laptop to get a DHCP address.
 3. SSH in and run:
 
@@ -284,9 +282,7 @@ curl -fsSL https://raw.githubusercontent.com/mossyhub/openautolink/main/bridge/s
 
 The installer downloads packages, deploys the bridge, and applies the network configuration. When it finishes, it prints a summary showing that the onboard Ethernet is now a static car connection and the WiFi radio is a phone hotspot — **the SBC no longer has internet or general SSH access through those adapters.**
 
-After a reboot, all services start automatically and the bridge is ready for the car.
-
-See the [Bridge Setup Guide](bridge/sbc/BUILD.md) for configuration, SSH access after install, and troubleshooting.
+After a reboot, all services start automatically and the bridge is ready for the car. If you need further ssh access, you can use the in-app "Bridge" settings to set a static Wifi password (in normal operation the Wifi password is randomly geenrated), then connect you laptop to it.
 
 ### App Setup
 
@@ -313,12 +309,6 @@ Because this is an AAOS app rather than a normal phone app, installation on the 
 9. Install the app from the Play Store on the head unit.
 10. Manually grant the **Car Information** permission in Settings → Apps → OpenAutoLink → Permissions.
 
-### Run Tests
-
-```powershell
-.\gradlew :app:testDebugUnitTest
-```
-
 ## Repository Layout
 
 | Component | Language | Location |
@@ -344,7 +334,7 @@ Because this is an AAOS app rather than a normal phone app, installation on the 
 
 ## Status
 
-Active development. Core features are implemented and working on real hardware on a 2024 Chevrolet Blazer EV:
+Active development, but stable for daily use. Core features are implemented and working on real hardware on a 2024 Chevrolet Blazer EV:
 
 - Video
 - Audio
@@ -377,14 +367,13 @@ Active development. Core features are implemented and working on real hardware o
 ## Known Issues
 
 - **Steering wheel controls on GM EVs:** the left-side rocker currently maps to skip forward and play/pause only. Previous-track is not exposed by GM. The steering-wheel voice button is consumed by the system before the app can intercept it.
-- **Occasional audio jitter / cutout:** intermittent and still under investigation.
+- **Audio playback on first boot:** when pressing play on Spotify or other media apps, it will take a few taps to get it to play, but after that it will work as expected. This is still under investigation.
 - **"Unsupported device" popup on GM EVs:** the USB Ethernet adapter can trigger a brief cosmetic warning even though networking still works.
-- **USB gadget networking does not work:** presenting the SBC directly as a USB network gadget has not worked in testing; the external USB Ethernet adapter remains the working approach.
-- **The Android Auto stream green** UI may start out blocky and green, but will self recover in 10-20 seconds. Still fighting this one...
+- **The Android Auto stream green or black** UI may start out blocky and green or black, but will self recover in 10-20 seconds. Still fighting this one...
 
 ## Compatibility
 
-OpenAutoLink is not yet known to work across all AAOS vehicles. It is currently validated on a 2024 Chevrolet Blazer EV. Other GM vehicles on similar AAOS platforms may work, but that has not been verified broadly, and non-GM AAOS vehicles may impose different restrictions around USB networking or app access.
+OpenAutoLink is not yet known to work across all AAOS vehicles. It is currently validated on a 2024 Chevrolet Blazer EV. Other GM vehicles on similar AAOS platforms may work, but that has not been verified broadly, and non-GM AAOS vehicles may impose different restrictions around USB networking or app access. Currently it is known that my GM vhicle automatically sets a USB NIC to a static 192.168.222.108 ip address, so this repo takes advatage of that. The app settings include UI to change the IP the bridge connects to if you see different behavior in your vehicle.
 
 ## Acknowledgments
 
