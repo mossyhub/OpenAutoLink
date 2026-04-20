@@ -125,35 +125,56 @@ void OalSession::on_app_disconnected() {
 void OalSession::on_video_client_connected() {
     if (!phone_connected_) return;
 
-    // Only replay/request IDR when reconnecting the car app to an EXISTING
-    // phone session that's already been streaming. During initial phone
-    // connection, the video handler's onChannelOpenRequest sends exactly one
-    // VideoFocusIndication — adding more causes the phone to abort the session
-    // within 1 second (Communication Error 6).
-    if (video_frames_written_ > 0) {
+    // Always replay cached SPS/PPS so the car app's decoder can initialise.
 #ifdef PI_AA_ENABLE_AASDK_LIVE
-        if (aa_session_) {
-            aa_session_->replay_cached_keyframe();
+    if (aa_session_) {
+        aa_session_->replay_cached_keyframe();
+
+        // Only request fresh IDR if the phone has been connected for > 5s.
+        // During initial connection, the entity's onChannelSetupResponse already
+        // sent a VideoFocusIndication — sending another causes the phone to
+        // receive 3 VFIs at once and drop with Error 6.
+        auto since_connected = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - phone_connected_time_).count();
+        if (since_connected > 5) {
             aa_session_->request_fresh_idr();
+        } else {
+            BLOG << "[OAL] on_video_client_connected: skipping IDR request (initial connection, "
+                      << since_connected << "s since phone_connected)" << std::endl;
         }
-#endif
     }
+#endif
 }
 
 // ── Phone lifecycle (from aasdk thread) ──────────────────────────────
 
 void OalSession::on_phone_connected(const std::string& phone_name,
-                                     const std::string& phone_type) {
-    phone_connected_ = true;
+                                     const std::string& phone_type,
+                                     bool deferred) {
     phone_name_ = phone_name;
-    if (app_connected_) {
-        send_phone_connected(phone_name, phone_type);
+
+    if (deferred) {
+        // Defer phone_connected notification to car app until first video frame.
+        // Sending it at handshake time causes the car app to connect video/audio
+        // TCP channels immediately, which sends VideoFocusIndication during the
+        // phone's AA channel setup — the phone can't handle multiple
+        // VideoFocusIndications during setup and drops with Error 6.
+        phone_connected_deferred_ = true;
+        BLOG << "[OAL] phone connected (deferred until first video frame): " << phone_name << std::endl;
+    } else {
+        // Immediate mode (mock sessions, testing)
+        phone_connected_ = true;
+        phone_connected_time_ = std::chrono::steady_clock::now();
+        if (app_connected_) {
+            send_phone_connected(phone_name, phone_type);
+        }
+        BLOG << "[OAL] phone connected: " << phone_name << std::endl;
     }
-    BLOG << "[OAL] phone connected: " << phone_name << std::endl;
 }
 
 void OalSession::on_phone_disconnected(const std::string& reason) {
     phone_connected_ = false;
+    phone_connected_deferred_ = false;
     session_active_ = false;
     if (app_connected_) {
         send_phone_disconnected(reason);
@@ -185,6 +206,17 @@ void OalSession::write_video_frame(
 {
     // Carry-forward fix #1: don't queue video until app is connected
     if (!app_connected_) return;
+
+    // First video frame after handshake: NOW notify the car app.
+    // The AA session is fully established at this point — video channel is
+    // open and streaming. Safe for the car app to connect video/audio TCP.
+    if (phone_connected_deferred_ && !phone_connected_) {
+        phone_connected_deferred_ = false;
+        phone_connected_ = true;
+        phone_connected_time_ = std::chrono::steady_clock::now();
+        send_phone_connected(phone_name_, "android");
+        BLOG << "[OAL] phone_connected sent to app (triggered by first video frame)" << std::endl;
+    }
 
     // Build OAL video header + payload
     size_t total = OAL_VIDEO_HEADER_SIZE + codec_size;
@@ -1200,8 +1232,18 @@ void OalSession::handle_keyframe_request() {
         // decoder after a surface change. Do NOT replay the stale cached IDR
         // — it causes green/blocky artifacts (see replayCachedKeyframe comment).
         aa_session_->replay_cached_keyframe();
-        // Ask the phone for a fresh IDR that matches the current P-frame stream.
-        aa_session_->request_fresh_idr();
+        // Only request fresh IDR if the phone has been connected for > 5s.
+        // During initial connection, the entity's onChannelSetupResponse already
+        // sent a VideoFocusIndication — sending another causes the phone to
+        // receive multiple VFIs at once and drop with Error 6.
+        auto since_connected = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - phone_connected_time_).count();
+        if (since_connected > 5) {
+            aa_session_->request_fresh_idr();
+        } else {
+            BLOG << "[OAL] keyframe: skipping IDR request (initial connection, "
+                      << since_connected << "s since phone_connected)" << std::endl;
+        }
     }
 #endif
 }

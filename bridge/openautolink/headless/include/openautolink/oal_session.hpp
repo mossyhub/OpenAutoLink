@@ -67,7 +67,8 @@ public:
     // ── Phone-side lifecycle (called from aasdk IO thread) ───────────
 
     void on_phone_connected(const std::string& phone_name = "",
-                            const std::string& phone_type = "android");
+                            const std::string& phone_type = "android",
+                            bool deferred = true);
     void on_phone_disconnected(const std::string& reason = "");
     void on_session_active();
 
@@ -161,10 +162,12 @@ private:
     // Session state
     bool app_connected_ = false;
     bool phone_connected_ = false;
+    bool phone_connected_deferred_ = false;  // handshake done, waiting for first video frame
     bool session_active_ = false;
     bool aa_config_pending_restart_ = false;  // config_update set AA-affecting params; restart_services must restart BT
     std::string phone_name_;
     uint64_t mic_frame_count_ = 0;
+    std::chrono::steady_clock::time_point phone_connected_time_{};  // when phone_connected_ was set
 
     // Thread-safe pending video write queue (aasdk thread → video TCP thread)
     std::mutex video_mutex_;

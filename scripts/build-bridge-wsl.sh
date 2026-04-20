@@ -112,6 +112,14 @@ if [ ! -f CMakeCache.txt ]; then
         -DBUILD_AASDK_STATIC=ON \
         -DOAL_BRIDGE_VERSION="$BRIDGE_VERSION"
     echo ""
+else
+    # Always update version in cached builds — it's compiled into the binary
+    # via add_compile_definitions and won't update unless we tell CMake.
+    CACHED_VER=$(grep '^OAL_BRIDGE_VERSION:' CMakeCache.txt | cut -d= -f2)
+    if [ "$CACHED_VER" != "$BRIDGE_VERSION" ]; then
+        echo ">>> Updating cached version: $CACHED_VER -> $BRIDGE_VERSION"
+        cmake . -DOAL_BRIDGE_VERSION="$BRIDGE_VERSION" >/dev/null 2>&1
+    fi
 fi
 
 echo ">>> Building..."

@@ -448,10 +448,10 @@ void HeadlessAutoEntity::onHandshake(const aasdk::common::DataConstBuffer& paylo
             output_.emit(json_event("auth_complete"));
 
             // Notify the session that the handshake succeeded.
-            // This is where on_phone_connected should fire — NOT before
-            // the handshake, because the car app's video/audio TCP connections
-            // compete with the handshake on the io_service and can delay the
-            // TLS response enough for the phone to timeout and RST.
+            // on_phone_connected records the phone name and defers the actual
+            // notification to the car app until the first video frame arrives,
+            // preventing the car app from connecting video/audio TCP during
+            // channel setup (which causes Error 6).
             if (handshake_complete_cb_) {
                 handshake_complete_cb_();
                 handshake_complete_cb_ = nullptr;  // one-shot
@@ -2187,6 +2187,10 @@ void LiveAasdkSession::create_entity(aasdk::transport::ITransport::Pointer trans
         state_.connected = false;
         state_.session_active = false;
         active_transport_ = TransportType::NONE;
+        // Reset handshake flag so the phone can reconnect immediately.
+        // The cooldown is only needed while a session is alive (entity != null)
+        // to prevent RFCOMM retry cycles from tearing it down.
+        last_handshake_succeeded_ = false;
         // Don't clear wireless_peer_ip_ here — it must persist for the
         // same-IP cooldown timer that prevents SSL handshake cycling.
         // The phone fires rapid TCP reconnects after a failed handshake;
@@ -2213,11 +2217,11 @@ void LiveAasdkSession::create_entity(aasdk::transport::ITransport::Pointer trans
     // Propagate session to entity (which propagates to handlers)
     if (oal_session_) {
         entity_->set_oal_session(oal_session_);
-        // DEFER on_phone_connected until TLS handshake completes.
-        // Calling it here (before handshake) causes the car app to connect
-        // video/audio TCP channels immediately, which compete with the
-        // phone's handshake on the io_service and delay the TLS response
-        // enough for the phone to timeout and RST the connection.
+        // Record phone connection at handshake time, but defer the
+        // phone_connected notification to the car app until the first video
+        // frame arrives.  This prevents the car app from connecting
+        // video/audio TCP during the AA channel setup phase, which would
+        // send extra VideoFocusIndications and cause Error 6.
         entity_->set_handshake_complete_callback([this]() {
             last_handshake_succeeded_ = true;
             if (oal_session_) {
@@ -2230,6 +2234,9 @@ void LiveAasdkSession::create_entity(aasdk::transport::ITransport::Pointer trans
     state_.session_active = true;
     last_entity_created_ = std::chrono::steady_clock::now();
     last_handshake_succeeded_ = false;  // reset until handshake completes
+    // Suppress the first FRAME command's VideoFocusIndication for 5s —
+    // the entity's own onChannelSetupResponse already sends one.
+    last_frame_request_time_ = last_entity_created_;
 }
 
 void LiveAasdkSession::create_entity_no_ssl(aasdk::transport::ITransport::Pointer transport) {
@@ -2286,7 +2293,7 @@ void LiveAasdkSession::create_entity_no_ssl(aasdk::transport::ITransport::Pointe
     // Propagate session to entity
     if (oal_session_) {
         entity_->set_oal_session(oal_session_);
-        // Same deferred notification as create_entity() — wait for handshake
+        // Same deferred notification as create_entity() — first video frame
         entity_->set_handshake_complete_callback([this]() {
             if (oal_session_) {
                 oal_session_->on_phone_connected(phone_name_);

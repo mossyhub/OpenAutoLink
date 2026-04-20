@@ -277,7 +277,7 @@ private:
         std::this_thread::sleep_for(std::chrono::seconds(1));
         if (!running_.load()) return;
 
-        oal_.on_phone_connected("Mock Pixel", "android");
+        oal_.on_phone_connected("Mock Pixel", "android", /*deferred=*/false);
         oal_.send_audio_start(OalAudioPurpose::MEDIA, 48000, 2);
         phone_announced_.store(true);
         std::cerr << "[mock] simulated phone connection" << std::endl;
