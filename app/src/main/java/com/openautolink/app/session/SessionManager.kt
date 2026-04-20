@@ -326,6 +326,17 @@ class SessionManager(
                     Log.i(TAG, "Session state: $newState")
                     _remoteDiagnostics?.log(DiagnosticLevel.INFO, "transport", "Session state: $newState")
 
+                    // Start GNSS/vehicle/IMU forwarding when session reaches STREAMING.
+                    // These send control messages to the bridge which forwards them to the
+                    // phone as sensor data. Starting them earlier (on PHONE_CONNECTED)
+                    // floods the bridge during AA ServiceDiscovery and causes the phone
+                    // to abort the session (Communication Error 6).
+                    if (newState == SessionState.STREAMING && previousState != SessionState.STREAMING) {
+                        _gnssForwarder?.start()
+                        _vehicleDataForwarder?.start()
+                        _imuForwarder?.start()
+                    }
+
                     // Auto-reconnect video/audio if they dropped but phone is still connected
                     if (newState == SessionState.PHONE_CONNECTED && previousState == SessionState.STREAMING) {
                         Log.w(TAG, "Video/audio channel lost — reconnecting")
@@ -755,15 +766,17 @@ class SessionManager(
             }
             is ControlMessage.PhoneConnected -> {
                 _remoteDiagnostics?.log(DiagnosticLevel.INFO, "session", "Phone connected: ${message.phoneName}")
-                // Phone connected — open video and audio channels
+                // Phone connected — open video and audio channels.
+                // Do NOT start GNSS/vehicle/IMU forwarding here — the phone's
+                // AA session isn't ready for sensor data until the video channel
+                // is open. Starting them here floods the bridge with control
+                // messages during AA ServiceDiscovery, causing the phone to
+                // abort the session within 1 second (Communication Error 6).
+                // These will be started when the session reaches STREAMING state.
                 val info = _bridgeInfo.value ?: return
                 val host = targetHost ?: return
                 startVideoChannel(host, info.videoPort)
                 startAudioChannel(host, info.audioPort)
-                // Start GNSS and vehicle data forwarding
-                _gnssForwarder?.start()
-                _vehicleDataForwarder?.start()
-                _imuForwarder?.start()
             }
             is ControlMessage.PhoneDisconnected -> {
                 _remoteDiagnostics?.log(DiagnosticLevel.INFO, "session", "Phone disconnected: ${message.reason}")
