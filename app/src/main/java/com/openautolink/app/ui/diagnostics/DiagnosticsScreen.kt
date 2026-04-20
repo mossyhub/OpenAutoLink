@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -133,7 +134,9 @@ fun DiagnosticsScreen(
                     .fillMaxHeight()
                     .weight(1f)
                     .padding(horizontal = 24.dp, vertical = 16.dp),
+                contentAlignment = Alignment.TopStart,
             ) {
+              Box(modifier = Modifier.widthIn(max = 720.dp)) {
                 when (selectedTab) {
                     DiagnosticsTab.SYSTEM -> SystemTab(uiState.system)
                     DiagnosticsTab.NETWORK -> NetworkTab(uiState.network)
@@ -141,6 +144,7 @@ fun DiagnosticsScreen(
                     DiagnosticsTab.CAR -> CarTab(uiState.car)
                     DiagnosticsTab.LOGS -> LogsTab(uiState.logs, uiState.logFilter, viewModel)
                 }
+              }
             }
         }
     }
