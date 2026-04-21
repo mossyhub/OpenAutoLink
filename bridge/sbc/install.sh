@@ -9,8 +9,21 @@
 #   # — or download the file first, inspect it, then run: —
 #   sudo bash install.sh
 #
+# Options:
+#   --fresh   Overwrite /etc/openautolink.env with defaults and clear BT pairings.
+#             Use this to start from scratch if you're having issues.
+#
 # Tested on: Raspberry Pi CM5, Khadas VIM4, ROCK 3A (any ARM64 with WiFi+BT)
 set -eu
+
+# ── Parse arguments ───────────────────────────────────────────────────
+FRESH=0
+for arg in "$@"; do
+    case "$arg" in
+        --fresh) FRESH=1 ;;
+        *) echo "Unknown option: $arg" >&2; exit 1 ;;
+    esac
+done
 
 GITHUB_REPO="mossyhub/openautolink"
 INSTALL_DIR="/opt/openautolink"
@@ -33,7 +46,7 @@ if [ "$ARCH" != "aarch64" ]; then
 fi
 
 # ── 1. System packages ───────────────────────────────────────────────
-echo ">>> [1/8] Installing system packages..."
+echo ">>> [1/6] Installing system packages..."
 apt-get update -qq
 
 # Release binaries are dynamically linked against protobuf. Package names vary
@@ -60,7 +73,7 @@ echo "  Protobuf runtime: ${PROTOBUF_RUNTIME_PKG}"
 echo ""
 
 # ── 2. Download latest release from GitHub ────────────────────────────
-echo ">>> [2/8] Downloading latest release..."
+echo ">>> [2/6] Downloading latest release..."
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
@@ -110,7 +123,7 @@ done
 echo ""
 
 # ── 3. Deploy files ──────────────────────────────────────────────────
-echo ">>> [3/8] Installing to ${INSTALL_DIR}..."
+echo ">>> [3/6] Installing to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}/bin" "${INSTALL_DIR}/scripts"
 
 # Binary
@@ -134,12 +147,26 @@ chmod +x "${INSTALL_DIR}/bin/apply-bridge-update.sh" 2>/dev/null || true
 [ -f "${TMP_DIR}/aa_bt_all.py" ] && \
     cp "${TMP_DIR}/aa_bt_all.py" "${INSTALL_DIR}/scripts/"
 
-# Env file (don't overwrite if user already has one)
-if [ ! -f /etc/openautolink.env ]; then
+# Env file (don't overwrite unless --fresh)
+if [ ! -f /etc/openautolink.env ] || [ "$FRESH" -eq 1 ]; then
     cp "${TMP_DIR}/openautolink.env" /etc/openautolink.env
-    echo "  Created /etc/openautolink.env (edit this to configure)"
+    if [ "$FRESH" -eq 1 ]; then
+        echo "  Reset /etc/openautolink.env to defaults (--fresh)"
+    else
+        echo "  Created /etc/openautolink.env (edit this to configure)"
+    fi
 else
-    echo "  /etc/openautolink.env exists — not overwriting"
+    echo "  /etc/openautolink.env exists — not overwriting (use --fresh to reset)"
+fi
+
+# Clear BT pairings if --fresh
+if [ "$FRESH" -eq 1 ]; then
+    echo "  Clearing all Bluetooth pairings (--fresh)..."
+    for adapter_dir in /var/lib/bluetooth/*/; do
+        [ -d "$adapter_dir" ] || continue
+        find "$adapter_dir" -maxdepth 1 -mindepth 1 -type d ! -name cache -exec rm -rf {} + 2>/dev/null || true
+        rm -rf "${adapter_dir}cache/"* 2>/dev/null || true
+    done
 fi
 
 # mDNS discovery is published dynamically by openautolink-headless via
@@ -160,54 +187,15 @@ if [ -d "/etc/aasdk" ]; then
 fi
 echo ""
 
-# ── 4. USB gadget + kernel modules (only if not using external-nic) ──
-echo ">>> [4/8] Checking car network mode..."
-source /etc/openautolink.env 2>/dev/null || true
-if [ "${OAL_CAR_NET_MODE:-external-nic}" != "external-nic" ]; then
-    if [ -f /boot/firmware/config.txt ]; then
-        grep -q "^dtoverlay=dwc2" /boot/firmware/config.txt || \
-            echo "dtoverlay=dwc2,dr_mode=peripheral" >> /boot/firmware/config.txt
-        echo "  Raspberry Pi: dwc2 overlay configured"
-    elif [ -f /boot/config.txt ]; then
-        grep -q "^dtoverlay=dwc2" /boot/config.txt || \
-            echo "dtoverlay=dwc2,dr_mode=peripheral" >> /boot/config.txt
-        echo "  Raspberry Pi (legacy): dwc2 overlay configured"
-    else
-        echo "  Non-RPi platform — see docs for USB gadget setup"
-    fi
-    for mod in libcomposite usb_f_ecm usb_f_mass_storage; do
-        grep -q "^${mod}$" /etc/modules 2>/dev/null || echo "$mod" >> /etc/modules
-    done
-    echo "  Kernel modules configured"
-else
-    echo "  Skipped (external-nic mode)"
-fi
-echo ""
-
-# ── 5. Hostname + mDNS ───────────────────────────────────────────────
-echo ">>> [5/8] Setting hostname..."
+# ── 4. Hostname + mDNS ───────────────────────────────────────────────
+echo ">>> [4/6] Setting hostname..."
 hostnamectl set-hostname openautolink 2>/dev/null || true
 grep -q "openautolink" /etc/hosts || echo "127.0.1.1 openautolink" >> /etc/hosts
 echo "  Hostname: openautolink"
 echo ""
 
-# ── 6. Service user ──────────────────────────────────────────────────
-echo ">>> [6/8] Setting up openautolink user..."
-if ! id openautolink &>/dev/null; then
-    useradd -m -s /bin/bash -G sudo openautolink
-    echo "openautolink:openautolink" | chpasswd
-    echo "  Created user 'openautolink' (change password with: passwd openautolink)"
-else
-    echo "  User 'openautolink' already exists"
-fi
-# Passwordless sudo for deploy scripts
-echo "openautolink ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/openautolink
-chmod 440 /etc/sudoers.d/openautolink
-echo "  Passwordless sudo configured"
-echo ""
-
-# ── 7. Systemd services ──────────────────────────────────────────────
-echo ">>> [7/8] Installing systemd services..."
+# ── 5. Systemd services ──────────────────────────────────────────────
+echo ">>> [5/6] Installing systemd services..."
 for svc in openautolink.service openautolink-network.service \
            openautolink-wireless.service openautolink-bt.service; do
     if [ -f "${TMP_DIR}/${svc}" ]; then
@@ -275,7 +263,7 @@ fi
 rm -rf "$TMP_DIR"
 
 # ── 8. Apply network now ─────────────────────────────────────────────
-echo ">>> [8/8] Applying network configuration..."
+echo ">>> [6/6] Applying network configuration..."
 echo ""
 
 # Detect the onboard NIC (not USB — check sysfs bus path)
@@ -311,7 +299,6 @@ echo ""
 echo "  Binary:   ${INSTALL_DIR}/bin/openautolink-headless"
 echo "  Config:   /etc/openautolink.env"
 echo "  Hostname: openautolink"
-echo "  SSH user: openautolink (passwordless sudo)"
 echo "  Version:  ${LATEST_TAG}"
 echo ""
 echo "  Network (active now):"

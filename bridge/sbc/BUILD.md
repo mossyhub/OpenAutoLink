@@ -69,12 +69,16 @@ The installer will:
 1. Install system packages (hostapd, dnsmasq, bluez, avahi)
 2. Download the latest `openautolink-headless` binary from GitHub Releases
 3. Deploy scripts and config to `/opt/openautolink/`
-4. Create `/etc/openautolink.env` (your main config file)
-5. Configure USB gadget support (Raspberry Pi auto-detected)
-6. Set hostname to `openautolink` and enable mDNS (Avahi)
-7. Create an `openautolink` user with passwordless sudo
-8. Install and enable systemd services
-9. Apply the network configuration immediately
+4. Create `/etc/openautolink.env` (your main config file — preserved on re-install)
+5. Set hostname to `openautolink` and enable mDNS (Avahi)
+6. Install and enable systemd services
+7. Apply the network configuration immediately
+
+**Starting from scratch?** If you're having issues and want a clean slate, add `--fresh` to reset the config and clear Bluetooth pairings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mossyhub/openautolink/main/bridge/sbc/install.sh | sudo bash -s -- --fresh
+```
 
 When the script finishes, it prints a summary like:
 
@@ -112,7 +116,6 @@ Key settings to check:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `OAL_CAR_NET_MODE` | `external-nic` | How the SBC connects to the car. `external-nic` = onboard Ethernet to car via USB adapter (recommended) |
 | `OAL_CAR_NET_IP` | `192.168.222.222` | IP address the car app connects to |
 | `OAL_VIDEO_WIDTH` | `2914` | Video resolution width |
 | `OAL_VIDEO_HEIGHT` | `1134` | Video resolution height |
@@ -268,6 +271,15 @@ bluetoothctl show                   # is BT adapter visible?
 
 ### Need to reconfigure but can't SSH in
 Connect the SBC to a monitor + keyboard (or USB serial console), log in at the console, and edit `/etc/openautolink.env`.
+
+### Want to start completely fresh
+Re-run the installer with `--fresh` to reset `/etc/openautolink.env` to defaults and clear all Bluetooth pairings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mossyhub/openautolink/main/bridge/sbc/install.sh | sudo bash -s -- --fresh
+```
+
+You'll need to re-edit your config and re-pair your phone after this.
 
 ## File Layout
 

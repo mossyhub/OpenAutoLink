@@ -37,23 +37,14 @@ OAL_PHONE_MODE=usb       # wireless (default) or usb
 
 ## Supported Hardware
 
-### USB Gadget Mode (SBC → car via USB-C)
+Any ARM64 SBC with onboard Ethernet, WiFi, and Bluetooth. The SBC's onboard Ethernet connects to the car via a USB Ethernet adapter.
 
-Requires a SBC with USB OTG/peripheral support. The installer auto-detects RPi; other platforms may need manual DT configuration.
-
-| SBC | USB Controller | Status | Notes |
-|---|---|---|---|
-| **Khadas VIM4** | Amlogic crgudc2 | Tested, working | 8 cores, 8GB RAM. aarch64. |
-| **Raspberry Pi CM5** | DWC2 | Tested, working | `dtoverlay=dwc2` auto-configured. |
-| Raspberry Pi CM4 | DWC2 | Expected to work | Same controller as CM5 |
-| Raspberry Pi 4B | DWC2 | Expected to work | Use USB-C port (not USB-A) |
-| Raspberry Pi Zero 2 W | DWC2 | Expected to work | Limited RAM (512MB) |
-| Rockchip RK3568/RK3588 | DWC3 | Manual DT setup | Set `dr_mode = "peripheral"` in DT |
-| Amlogic boards | crgudc2 | Manual DT setup | Platform-specific USB controller |
-
-### External NIC Mode (any SBC)
-
-No USB gadget needed — works with any SBC that has Ethernet. Plug a USB NIC into the car, run Ethernet cable to SBC.
+| SBC | Status | Notes |
+|---|---|---|
+| **Khadas VIM4** | Tested, working | 8 cores, 8GB RAM. aarch64. |
+| **Raspberry Pi CM5** | Tested, working | aarch64. |
+| Raspberry Pi 4B/5 | Expected to work | aarch64. |
+| Rockchip RK3568/RK3588 | Expected to work | DietPi/Armbian supported |
 
 ### WiFi
 
@@ -63,20 +54,9 @@ The wireless script auto-probes hardware capabilities:
 - Falls back to 2.4GHz if 5GHz isn't supported
 - App can send band preference (5GHz/2.4GHz) which the SBC respects if hardware supports it
 
-## Network Modes
+## Network
 
-The SBC connects to the car via Ethernet. Two modes are supported:
-
-| Mode | How | Best For |
-|---|---|---|
-| `usb-gadget` (default) | SBC USB-C plugs into car USB port. Presents as CDC-ECM NIC + UDisk composite. | Minimal wiring, GM EV compatible |
-| `external-nic` | USB NIC plugged into car, Ethernet cable to SBC RJ45. | Any SBC, no USB gadget needed |
-
-Set in `/etc/openautolink.env`:
-```bash
-OAL_CAR_NET_MODE=usb-gadget   # or external-nic
-OAL_CAR_NET_UDISK=1           # UDisk for GM EV (avoids "unsupported device" popup)
-```
+The SBC's onboard Ethernet connects to the car via a USB Ethernet adapter. A USB NIC plugged into the SBC provides SSH access.
 
 ## Quick Start
 
@@ -92,10 +72,9 @@ sudo reboot
 ```
 
 The installer:
-- Installs dependencies (cmake, boost, hostapd, bluez, avahi, etc.)
-- Builds `openautolink-headless` from source
+- Installs dependencies (hostapd, bluez, avahi, etc.)
+- Downloads `openautolink-headless` from GitHub Releases
 - Deploys systemd services (auto-start on boot)
-- Configures USB gadget (if `usb-gadget` mode)
 - Sets hostname to `openautolink` with mDNS discovery
 
 ## Architecture
@@ -105,10 +84,9 @@ The installer:
 | Service | Purpose |
 |---|---|
 | `openautolink.service` | Main AA bridge — aasdk + OAL protocol over TCP |
-| `openautolink-car-net.service` | Car network setup (USB gadget or external NIC) |
+| `openautolink-network.service` | Car network setup (static IP on onboard NIC) |
 | `openautolink-wireless.service` | WiFi AP for phone (hostapd + dnsmasq) |
 | `openautolink-bt.service` | Bluetooth (BLE + HSP + AA RFCOMM ch8) |
-| `openautolink-eth-ssh.service` | Debug SSH over Ethernet (optional) |
 
 ### Key Paths
 
@@ -162,8 +140,6 @@ OAL_AA_FPS=60                  # 30 or 60
 OAL_AA_CODEC=h264              # h264/h265*/vp9*  (* = phone may not support)
 
 # Car network
-OAL_CAR_NET_MODE=usb-gadget    # usb-gadget | external-nic
-OAL_CAR_NET_UDISK=1            # GM EV UDisk composite
 OAL_CAR_TCP_PORT=5288          # TCP port for car app
 
 # Phone connection
@@ -201,7 +177,7 @@ bridge/
     install.sh           — One-shot installer
     openautolink.env     — Default configuration
     run-openautolink.sh  — Launcher (reads env, passes CLI flags)
-    setup-car-net.sh     — Car network (USB gadget or external NIC)
+    setup-network.sh     — Car + SSH network setup
     start-wireless.sh    — WiFi AP (auto-probes 5GHz/VHT)
     prebuilt/aarch64/    — Pre-compiled binary for quick deployment
     openautolink*.service — systemd units
