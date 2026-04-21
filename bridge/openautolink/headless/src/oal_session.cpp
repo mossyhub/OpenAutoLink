@@ -749,6 +749,15 @@ void OalSession::handle_app_hello(const std::string& json) {
         }
     }
 
+    // Push any auto-computed values (pixel_aspect, stable_insets) into the AA
+    // session so the SDR built on the next phone connection reflects them.
+    // Both OalSession and LiveAasdkSession hold independent copies of
+    // HeadlessConfig; without this the SDR always uses the initial (boot-time)
+    // values regardless of what handle_app_hello computed.
+    if (aa_session_) {
+        aa_session_->update_config(config_);
+    }
+
     // Send config echo so app knows current bridge settings
     send_config_echo();
 }
@@ -952,7 +961,8 @@ void OalSession::handle_config_update(const std::string& json) {
         BLOG << "[OAL] height_margin override: " << hm << std::endl;
     }
     int pa = 0;
-    if (oal_json_extract_int(json, "aa_pixel_aspect", pa) && pa >= 0 &&
+    bool pixel_aspect_present = oal_json_extract_int(json, "aa_pixel_aspect", pa) && pa >= 0;
+    if (pixel_aspect_present &&
         pa != static_cast<int>(config_.aa_ui_experiment.pixel_aspect_ratio_e4)) {
         config_.aa_ui_experiment.pixel_aspect_ratio_e4 = pa;
         config_.pixel_aspect_explicit = (pa > 0);
@@ -1127,6 +1137,11 @@ void OalSession::handle_config_update(const std::string& json) {
             env_update += env_upsert("OAL_AA_INIT_STABLE_INSETS", stable_insets);
         if (!content_insets.empty())
             env_update += env_upsert("OAL_AA_INIT_CONTENT_INSETS", content_insets);
+        if (pixel_aspect_present)
+            // Write value when >0 (user override), clear env var when ==0
+            // (reset to default / auto) so both paths survive SBC reboot.
+            env_update += env_upsert("OAL_AA_PIXEL_ASPECT_E4",
+                                     pa > 0 ? std::to_string(pa) : std::string());
         if (!hide_clock_str.empty())
             env_update += env_upsert("OAL_AA_HIDE_CLOCK", hide_clock_str);
         if (!hide_phone_signal_str.empty())
@@ -1145,6 +1160,16 @@ void OalSession::handle_config_update(const std::string& json) {
         if (config_changed) {
             aa_config_pending_restart_ = true;
         }
+    }
+
+    // Keep the AA session's config in sync. OalSession and LiveAasdkSession
+    // each hold their own HeadlessConfig copy (both constructed from the same
+    // initial value in main.cpp). Without this, pixel_aspect / stable_insets /
+    // width_margin / height_margin / codec / resolution tier / etc. changes
+    // applied here never reach the SDR that LiveAasdkSession sends to the
+    // phone on the next reconnect.
+    if (aa_session_ && (config_changed || infra_changed)) {
+        aa_session_->update_config(config_);
     }
 
     send_config_echo();
