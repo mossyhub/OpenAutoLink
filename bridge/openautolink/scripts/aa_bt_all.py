@@ -296,11 +296,26 @@ def _connect_device(path):
     # Check if already connected — skip redundant profile connections that
     # can disrupt an existing HFP SLC (causes "NoReply" errors and breaks
     # SCO audio routing for VoIP apps like Teams).
+    # BUT: after BT service restart, ACL stays up while HFP RFCOMM is gone.
+    # Only skip if HFP SLC is actually established.
     try:
         already_connected = bool(dp.Get("org.bluez.Device1", "Connected"))
-        if already_connected:
-            oal_print(f"Reconnect: {path} already connected, skipping", flush=True)
+        if already_connected and hfp_slc_established:
+            oal_print(f"Reconnect: {path} already connected with HFP SLC, skipping", flush=True)
             return
+        elif already_connected:
+            # ACL is up but HFP profile connection was lost (e.g., after our
+            # service restart). ConnectProfile(HFP_AG_UUID) fails because the
+            # phone doesn't accept incoming HFP AG connections — it expects to
+            # initiate HFP to us. Force a BT disconnect→reconnect cycle so the
+            # phone re-establishes all profiles including HFP.
+            oal_print(f"Reconnect: {path} ACL up but no HFP SLC, cycling BT connection", flush=True)
+            try:
+                dev.Disconnect()
+                time.sleep(2)
+            except Exception as e:
+                oal_print(f"Disconnect for HFP cycle: {e}", flush=True)
+            # Fall through to Connect below
     except Exception:
         pass
 
@@ -749,14 +764,27 @@ def handle_hfp_rfcomm(fd, device):
                 elif line == "OK":
                     # AG acknowledged our last command.
                     # Drive the SLC setup state machine forward.
-                    # Sequence: AT+BRSF → AT+CIND=? → AT+CMER → SLC done
-                    # (AT+CIND? skipped — some phones don't respond to it)
+                    # HFP 1.8 SLC sequence (all mandatory):
+                    #   AT+BRSF → [AT+BAC if codec neg] → AT+CIND=? → AT+CIND? → AT+CMER → SLC done
                     if not hfp_slc_established:
-                        if ag_features > 0 and not getattr(handle_hfp_rfcomm, '_sent_cind_test', False):
+                        # Codec negotiation: HF bit 7, AG bit 9 (different bitmasks!)
+                        _both_codec_neg = bool(HFP_HF_FEATURES & (1 << 7)) and bool(ag_features & (1 << 9))
+                        if ag_features > 0 and _both_codec_neg and not getattr(handle_hfp_rfcomm, '_sent_bac', False):
+                            # HFP spec requires AT+BAC= before AT+CIND=? when
+                            # both sides support codec negotiation. Without this,
+                            # the phone won't attempt SCO for VoIP apps.
+                            handle_hfp_rfcomm._sent_bac = True
+                            send_at("AT+BAC=1,2")
+                            oal_print("[HFP] >> AT+BAC=1,2 (CVSD, mSBC)", flush=True)
+                        elif ag_features > 0 and not getattr(handle_hfp_rfcomm, '_sent_cind_test', False):
                             handle_hfp_rfcomm._sent_cind_test = True
                             send_at("AT+CIND=?")
                             oal_print("[HFP] >> AT+CIND=?", flush=True)
-                        elif getattr(handle_hfp_rfcomm, '_sent_cind_test', False) and not getattr(handle_hfp_rfcomm, '_sent_cmer', False):
+                        elif getattr(handle_hfp_rfcomm, '_sent_cind_test', False) and not getattr(handle_hfp_rfcomm, '_sent_cind_read', False):
+                            handle_hfp_rfcomm._sent_cind_read = True
+                            send_at("AT+CIND?")
+                            oal_print("[HFP] >> AT+CIND?", flush=True)
+                        elif getattr(handle_hfp_rfcomm, '_sent_cind_read', False) and not getattr(handle_hfp_rfcomm, '_sent_cmer', False):
                             handle_hfp_rfcomm._sent_cmer = True
                             send_at("AT+CMER=3,0,0,1")
                             oal_print("[HFP] >> AT+CMER=3,0,0,1", flush=True)
@@ -902,6 +930,20 @@ def handle_hfp_rfcomm(fd, device):
                     # Subscriber number
                     send_ok()
 
+                # ── Unsolicited result codes (NO OK response) ───
+                elif line.startswith("+CIEV:"):
+                    # Indicator event (unsolicited) — log only
+                    oal_print(f"[HFP] indicator event: {line}", flush=True)
+
+                elif line == "RING" or line.startswith("+CLIP:"):
+                    # Incoming call ring/caller ID (unsolicited)
+                    oal_print(f"[HFP] ring: {line}", flush=True)
+
+                elif line.startswith("+CIEV") or line.startswith("+BCS"):
+                    # Other unsolicited results — already handled above
+                    # but catch any variant formatting
+                    oal_print(f"[HFP] unsolicited: {line}", flush=True)
+
                 else:
                     # Unknown AT command — OK to avoid phone disconnect
                     oal_print(f"[HFP] unknown AT: {line}", flush=True)
@@ -914,7 +956,7 @@ def handle_hfp_rfcomm(fd, device):
         hfp_connected_device = None
         hfp_slc_established = False
         # Clean up SLC state machine attrs
-        for attr in ('_sent_cind_test', '_sent_cmer'):
+        for attr in ('_sent_bac', '_sent_cind_test', '_sent_cind_read', '_sent_cmer'):
             if hasattr(handle_hfp_rfcomm, attr):
                 delattr(handle_hfp_rfcomm, attr)
         _mark_bt_activity()
@@ -1007,13 +1049,20 @@ except dbus.exceptions.DBusException as e:
 
 # HFP HF Profile (Hands-Free — car kit role, primary for phone calls)
 hfp = HFPProfile(bus, "/pi_aa/hfp")
+# SDP SupportedFeatures (attribute 0x0311) uses a DIFFERENT bitmask than AT+BRSF.
+# AT+BRSF bit 7 = Codec Negotiation, but SDP bit 5 = Wide Band Speech.
+# The Features param in RegisterProfile maps directly to SDP 0x0311.
+# Old code used HFP_HF_FEATURES (156 = 0x9C) which has bit 7 but NOT bit 5.
+# Android's BluetoothHeadsetClient reads SDP bit 5 to allow VoIP SCO routing.
+# SDP bits: EC/NR=0, 3way=0, CLI=1, VoiceRecog=1, RemoteVol=1, WBS=1
+HFP_SDP_FEATURES = (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5)  # = 0x003C
 try:
     pm.RegisterProfile("/pi_aa/hfp", HFP_HF_UUID, {
         "Name": "HFP HF", "Role": "client",
         "RequireAuthentication": False, "RequireAuthorization": False,
-        "Features": dbus.UInt16(HFP_HF_FEATURES),
+        "Features": dbus.UInt16(HFP_SDP_FEATURES),
         "Version": dbus.UInt16(0x0108)})  # HFP 1.8
-    oal_print("HFP HF profile registered", flush=True)
+    oal_print(f"HFP HF profile registered (SDP features=0x{HFP_SDP_FEATURES:04X})", flush=True)
 except dbus.exceptions.DBusException as e:
     oal_print(f"HFP profile: {e} (continuing)", flush=True)
 
