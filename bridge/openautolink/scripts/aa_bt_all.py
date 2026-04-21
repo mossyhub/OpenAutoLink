@@ -170,8 +170,18 @@ def _close_rejection_fd(fd):
 def _disconnect_rejected_phone(mac):
     """Disconnect a rejected phone from BT entirely after a short delay.
     Runs in a daemon thread. The delay avoids racing with BlueZ's own
-    connection setup (pairing may still be in flight)."""
+    connection setup (pairing may still be in flight).
+    
+    CRITICAL: Check the switch override before disconnecting — if the user
+    initiated a switch to this phone between the rejection and the disconnect,
+    we must NOT kick it off. This race happens when RFCOMM rejections pile up
+    right before a switch."""
     time.sleep(2)
+    # Abort if a switch override now targets this phone
+    switch_target = _read_switch_override()
+    if switch_target and _normalize_mac(switch_target) == _normalize_mac(mac):
+        oal_print(f"Skipped disconnect of {mac} — switch override targets this phone", flush=True)
+        return
     try:
         import subprocess
         subprocess.run(
