@@ -127,7 +127,7 @@ protobuf (direct mode).
 
 ### Phase 1: Direct Transport in Our App (~10 days)
 
-**Status: IMPLEMENTATION COMPLETE** — 7 commits on `feature/direct-mode`
+**Status: IMPLEMENTATION COMPLETE** — 9 commits on `feature/direct-mode`, pushed to GitHub
 
 New package: `app/src/main/java/com/openautolink/app/transport/direct/`
 
@@ -148,18 +148,22 @@ New package: `app/src/main/java/com/openautolink/app/transport/direct/`
 - [x] `AaVideoAssembler` — parse fragments → reassemble → VideoFrame
 - [x] Video channel → codec config + media data → existing VideoDecoder
 - [x] Audio channels → PCM data → AudioFrame with correct AudioPurpose
-- [x] Input channel → touch events (structure ready, needs wiring)
-- [x] Sensor channel → send VHAL data, GNSS, IMU, VEM as SensorBatch (structure ready)
-- [x] Navigation channel → parse turn events (structure ready, needs proto parsing)
-- [x] Control channel → ping/pong, audio focus, channel open/close
-- [x] Mic channel → capture start signal (structure ready)
+- [x] Input channel → touch events → AA InputReport protobuf (multi-touch, pointer IDs)
+- [x] Sensor channel → VHAL speed/gear/brake/night/fuel/RPM/accel/gyro/compass → SensorBatch
+- [x] Navigation channel → parse NextTurnDetail (0x8004) + NextTurnDistanceEvent (0x8005) → NavState
+- [x] Control channel → ping/pong, audio focus, channel open/close, byebye
+- [x] Mic channel → sendMicAudio() on channel 7
 
 #### 1d. Integration (~2 days)
 - [x] `SessionManager` — add `DirectAaSession` as alternative to `BridgeSession`
 - [x] `AppPreferences` — `connectionMode` preference ("bridge" / "direct"), default "direct"
 - [x] `ProjectionViewModel` — reads `connectionMode` and passes to `SessionManager.start()`
-- [ ] Settings UI — "Connection Mode" picker (Bridge / Direct)
-- [ ] Reconnection logic — when phone hotspot drops, show "Connecting..." and retry
+- [x] Settings UI — "Connection Mode" picker (Direct / Bridge) with FilterChip toggle
+- [x] `AaMessageConverter` — Touch→InputReport, Button→KeyEvent, VehicleData→SensorBatch
+- [x] VEM sensor builder — VehicleEnergyModel (field 23) for Maps battery-on-arrival
+- [x] SSL post-handshake data path — header unencrypted, body encrypted (matches HURev)
+- [x] Reconnection — server loop auto-restarts after phone disconnect
+- [x] Media playback metadata parsing (song/artist logged, emission deferred)
 - [ ] End-to-end test on car
 
 ### Phase 2: Companion App (~3 days)
