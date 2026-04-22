@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.protobuf)
 }
 
 android {
@@ -67,6 +68,21 @@ android {
     }
 }
 
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.29.3"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     // Core
     implementation(libs.core.ktx)
@@ -104,6 +120,12 @@ dependencies {
 
     // MediaSession for AAOS integration
     implementation(libs.media)
+
+    // Protobuf (AA wire protocol for direct mode)
+    implementation(libs.protobuf.javalite)
+
+    // Conscrypt (TLS provider for AA SSL handshake)
+    implementation(libs.conscrypt.android)
 
     // Testing
     testImplementation(libs.junit)

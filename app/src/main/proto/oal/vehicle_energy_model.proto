@@ -1,0 +1,77 @@
+syntax = "proto2";
+
+package oal;
+option java_package = "com.openautolink.app.proto";
+option java_outer_classname = "VehicleEnergyModelProto";
+
+// Reconstructed from AAOS Google Maps + Android Auto APK decompilation.
+// This is the payload sent as sensor type 23 (VEHICLE_ENERGY_MODEL).
+// Field numbers and types decoded from protobuf-lite descriptor strings.
+
+message EnergyValue {
+    optional int32 watt_hours = 1;
+    optional float display_value = 2;
+}
+
+message EnergyRate {
+    optional float rate = 1;
+    optional float uncertainty = 2;
+}
+
+message BatteryConfig {
+    optional int64 config_id = 1;
+    // field 2 unused
+    optional EnergyValue min_usable_capacity = 3;
+    optional EnergyValue max_capacity = 4;
+    optional int32 display_unit = 5;           // enum
+    optional float charge_efficiency = 6;
+    optional float discharge_efficiency = 7;
+    optional EnergyValue reserve_energy = 8;
+    optional int32 max_charge_power_w = 9;
+    optional int32 max_discharge_power_w = 10;
+    optional bool regen_braking_capable = 11;
+    optional float preconditioning_power_kw = 12;
+    // field 13: repeated BatterySegment (omitted — not needed for MVP)
+}
+
+message EnergyConsumption {
+    optional EnergyRate driving = 1;
+    optional EnergyRate auxiliary = 2;
+    optional EnergyRate aerodynamic = 3;
+}
+
+message ChargingCurvePoint {
+    optional float charge_rate_kw = 1;
+    optional EnergyValue soc_low = 2;
+    optional EnergyValue soc_mid = 3;
+    optional EnergyValue soc_high = 4;
+}
+
+message ChargingPrefs {
+    optional string provider_package = 1;
+    optional bool user_modified = 2;
+    optional int32 mode = 3;                   // enum: 1=standard
+}
+
+message VehicleEnergyModel {
+    optional BatteryConfig battery = 1;
+    optional EnergyConsumption consumption = 2;
+    // field 3 unused
+    // field 4: VehicleSpecs (fuel types, connector types — omitted for MVP)
+    // field 5 unused
+    repeated ChargingCurvePoint curves_ac = 6;
+    repeated ChargingCurvePoint curves_dc = 7;
+    // fields 8-11: efficiency, thermal, connectors, wheels (omitted for MVP)
+    optional ChargingPrefs charging_prefs = 12;
+    // field 13: CalibrationData (omitted for MVP)
+}
+
+// Wrapper for sensor type 25 (RAW_VEHICLE_ENERGY_MODEL)
+message RawVehicleEnergyModel {
+    optional bytes payload = 1;                // serialized VehicleEnergyModel
+}
+
+// Wrapper for sensor type 26 (RAW_EV_TRIP_SETTINGS)
+message RawEvTripSettings {
+    optional bytes payload = 1;
+}
