@@ -5,7 +5,7 @@
 # OpenAutoLink
 
 > **Active Development Notice**
-> This project ahs been under heavy development, but as of April 21, 2026 I think I have everything pretty darn stable and fully featured (but i am sure i will keep tewaking/hacking/adding regularly). Having said that...I only have one car, a 2024 Chevrolet Blazer EV RS AWD. So, am only testing on that. I am also using a Khadas VIM4 SBC running Armbian Minimal. This is overkill, but I had one and it has fast EMMC which helps boot times a lot. Your milage may very depending on your SBC choice and OS setup. I also use an OrangePi Zero2 to test with (Armbian Minimal as well) and its sufficient too, but takes a handfull of seconds longer to boot. Feeback, conversation and submitting issues are invited!
+> This project has been under heavy development, but as of April 21, 2026 I think I have everything pretty stable and fully featured (but I am sure I will keep tweaking/hacking/adding regularly). Having said that...I only have one car, a 2024 Chevrolet Blazer EV RS AWD. So, I am only testing on that. I am primarily using a Khadas VIM4 SBC running Armbian Minimal. This is overkill, but I had one and it has fast EMMC which helps boot times a lot. Your boot times will very depending on your SBC choice and OS setup. I also use an OrangePi Zero2 to test with (Armbian Minimal as well) and it works great too, but takes a bit longer to boot. Feeback, conversation and submitting issues are invited!
 
 [![CI](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml/badge.svg)](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml)
 
