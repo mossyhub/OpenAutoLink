@@ -175,9 +175,9 @@ OpenAutoLink auto-computes pixel aspect ratio for wide AAOS displays so the 16:9
 | **Documentation** | Markdown | `docs/` |
 | **Build Scripts** | PowerShell / Bash | `scripts/` |
 
-### Historical (removed)
+### Historical
 
-The bridge architecture (SBC + C++ binary + Python BT scripts) was removed in the `feature/direct-mode` branch. The app now runs the AA protocol directly. Bridge code remains in the `main` branch history for reference.
+The original architecture used an SBC (single-board computer) running a C++ bridge binary and Python Bluetooth/WiFi scripts to relay Android Auto from the phone to the car over Ethernet. This was replaced by direct mode, where the AAOS app speaks the AA protocol natively — no SBC, no bridge, no extra hardware. The bridge code is preserved on the [`bridge-mode`](https://github.com/mossyhub/openautolink/tree/bridge-mode) branch.
 
 ## Documentation
 
