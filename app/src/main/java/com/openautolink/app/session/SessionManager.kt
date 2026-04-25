@@ -190,6 +190,9 @@ class SessionManager(
         hideClock: Boolean = false,
         hideSignal: Boolean = false,
         hideBattery: Boolean = false,
+        volumeOffsetMedia: Int = 0,
+        volumeOffsetNavigation: Int = 0,
+        volumeOffsetAssistant: Int = 0,
     ) {
         micSource = micSourcePreference
         observeJob?.cancel()
@@ -202,6 +205,12 @@ class SessionManager(
         _audioPlayer?.release()
         _audioPlayer = audioManager?.let { AudioPlayerImpl(it) }
         _audioPlayer?.initialize()
+        // Apply volume offsets to the audio coordinator
+        (_audioPlayer as? AudioPlayerImpl)?.coordinator?.let { coord ->
+            coord.volumeOffsetMedia = volumeOffsetMedia
+            coord.volumeOffsetNavigation = volumeOffsetNavigation
+            coord.volumeOffsetAssistant = volumeOffsetAssistant
+        }
 
         // Create mic capture â€” sends frames via DirectAaSession
         _micCaptureManager?.release()

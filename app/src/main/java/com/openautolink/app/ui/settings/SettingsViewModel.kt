@@ -48,6 +48,12 @@ data class SettingsUiState(
     val safeAreaBottom: Int = AppPreferences.DEFAULT_SAFE_AREA_BOTTOM,
     val safeAreaLeft: Int = AppPreferences.DEFAULT_SAFE_AREA_LEFT,
     val safeAreaRight: Int = AppPreferences.DEFAULT_SAFE_AREA_RIGHT,
+    // Key remap
+    val keyRemap: String = AppPreferences.DEFAULT_KEY_REMAP,
+    // Volume offsets
+    val volumeOffsetMedia: Int = AppPreferences.DEFAULT_VOLUME_OFFSET_MEDIA,
+    val volumeOffsetNavigation: Int = AppPreferences.DEFAULT_VOLUME_OFFSET_NAVIGATION,
+    val volumeOffsetAssistant: Int = AppPreferences.DEFAULT_VOLUME_OFFSET_ASSISTANT,
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -84,6 +90,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.safeAreaBottom,
         preferences.safeAreaLeft,
         preferences.safeAreaRight,
+        preferences.keyRemap,
+        preferences.volumeOffsetMedia,
+        preferences.volumeOffsetNavigation,
+        preferences.volumeOffsetAssistant,
     ) { values: Array<Any> ->
         SettingsUiState(
             videoAutoNegotiate = values[0] as Boolean,
@@ -112,6 +122,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             safeAreaBottom = values[23] as Int,
             safeAreaLeft = values[24] as Int,
             safeAreaRight = values[25] as Int,
+            keyRemap = values[26] as String,
+            volumeOffsetMedia = values[27] as Int,
+            volumeOffsetNavigation = values[28] as Int,
+            volumeOffsetAssistant = values[29] as Int,
         )
     }.stateIn(
         viewModelScope,
@@ -264,6 +278,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateKeyRemap(json: String) {
+        viewModelScope.launch { preferences.setKeyRemap(json) }
+    }
+
+    fun updateVolumeOffsetMedia(offset: Int) {
+        viewModelScope.launch { preferences.setVolumeOffsetMedia(offset) }
+    }
+
+    fun updateVolumeOffsetNavigation(offset: Int) {
+        viewModelScope.launch { preferences.setVolumeOffsetNavigation(offset) }
+    }
+
+    fun updateVolumeOffsetAssistant(offset: Int) {
+        viewModelScope.launch { preferences.setVolumeOffsetAssistant(offset) }
+    }
+
     override fun onCleared() {
         super.onCleared()
     }
@@ -290,6 +320,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val hideClock = preferences.hideAaClock.first()
             val hideSignal = preferences.hidePhoneSignal.first()
             val hideBattery = preferences.hideBatteryLevel.first()
+            val volMedia = preferences.volumeOffsetMedia.first()
+            val volNav = preferences.volumeOffsetNavigation.first()
+            val volAssistant = preferences.volumeOffsetAssistant.first()
             sm.start(
                 codecPreference = codec,
                 micSourcePreference = micSrc,
@@ -308,6 +341,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 hideClock = hideClock,
                 hideSignal = hideSignal,
                 hideBattery = hideBattery,
+                volumeOffsetMedia = volMedia,
+                volumeOffsetNavigation = volNav,
+                volumeOffsetAssistant = volAssistant,
             )
         }
     }

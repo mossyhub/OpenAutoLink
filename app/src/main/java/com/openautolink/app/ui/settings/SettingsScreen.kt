@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DisplaySettings
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Refresh
@@ -51,8 +52,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +74,7 @@ private enum class SettingsTab(
     DISPLAY("Display", Icons.Default.DisplaySettings),
     VIDEO("Video", Icons.Default.VideoSettings),
     AUDIO("Audio", Icons.Default.Mic),
+    INPUT("Input", Icons.Default.Keyboard),
     DIAGNOSTICS("Diagnostics", Icons.Default.BugReport),
 }
 
@@ -183,6 +188,7 @@ fun SettingsScreen(
                         )
                         SettingsTab.VIDEO -> VideoTab(viewModel, uiState)
                         SettingsTab.AUDIO -> AudioTab(viewModel, uiState)
+                        SettingsTab.INPUT -> InputTab(viewModel, uiState)
                         SettingsTab.DIAGNOSTICS -> DiagnosticsSettingsTab(
                             viewModel, uiState, onNavigateToDiagnostics
                         )
@@ -1237,6 +1243,212 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
     }
 }
 
+// --- Input Tab: Key Remapping ---
+
+/** AA actions that can be mapped to physical keys. */
+private data class MappableAction(
+    val aaKeycode: Int,
+    val label: String,
+    val description: String,
+)
+
+private val mappableActions = listOf(
+    MappableAction(85, "Play / Pause", "Toggle media playback"),
+    MappableAction(87, "Next Track", "Skip to next track"),
+    MappableAction(88, "Previous Track", "Go to previous track"),
+    MappableAction(86, "Stop", "Stop media playback"),
+    MappableAction(126, "Play", "Start media playback"),
+    MappableAction(127, "Pause", "Pause media playback"),
+    MappableAction(84, "Voice Assistant", "Activate Google Assistant"),
+    MappableAction(19, "DPAD Up", "Navigate up"),
+    MappableAction(20, "DPAD Down", "Navigate down"),
+    MappableAction(21, "DPAD Left", "Navigate left"),
+    MappableAction(22, "DPAD Right", "Navigate right"),
+    MappableAction(23, "DPAD Center", "Select / Confirm"),
+    MappableAction(5, "Call", "Answer phone call"),
+    MappableAction(6, "End Call", "Hang up phone call"),
+)
+
+@Composable
+private fun InputTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
+    // Parse current key map from JSON
+    val currentMap = remember(uiState.keyRemap) {
+        if (uiState.keyRemap.isBlank()) emptyMap()
+        else try {
+            val json = org.json.JSONObject(uiState.keyRemap)
+            buildMap { for (key in json.keys()) put(key.toInt(), json.getInt(key)) }
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    // Reverse map: AA keycode → list of hardware keycodes mapped to it
+    val reverseMap = remember(currentMap) {
+        val rev = mutableMapOf<Int, MutableList<Int>>()
+        for ((hwKey, aaKey) in currentMap) {
+            rev.getOrPut(aaKey) { mutableListOf() }.add(hwKey)
+        }
+        rev
+    }
+
+    // Key capture dialog state
+    var captureTarget by remember { mutableStateOf<MappableAction?>(null) }
+    var lastDetectedKey by remember { mutableStateOf<Pair<Int, String>?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        SectionHeader("Key Remapping")
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Map physical buttons (steering wheel, remote) to Android Auto actions. " +
+                    "Tap an action, then press the physical button you want to assign. " +
+                    "Requires Save & Restart.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        // Last detected key (diagnostic)
+        if (lastDetectedKey != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth(0.7f).padding(bottom = 12.dp),
+            ) {
+                Text(
+                    "Last key: ${lastDetectedKey!!.second} (${lastDetectedKey!!.first})",
+                    modifier = Modifier.padding(8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        // List of mappable actions
+        mappableActions.forEach { action ->
+            val boundKeys = reverseMap[action.aaKeycode] ?: emptyList()
+            val boundLabel = if (boundKeys.isNotEmpty()) {
+                boundKeys.joinToString(", ") { code ->
+                    android.view.KeyEvent.keyCodeToString(code)
+                        .removePrefix("KEYCODE_")
+                }
+            } else "Not mapped"
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .clickable { captureTarget = action }
+                    .padding(vertical = 8.dp, horizontal = 4.dp)
+                    .testTag("keyMap_${action.aaKeycode}"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        action.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        boundLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (boundKeys.isNotEmpty()) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Tap to assign",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+            HorizontalDivider(modifier = Modifier.fillMaxWidth(0.7f))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Reset all mappings button
+        if (currentMap.isNotEmpty()) {
+            FilledTonalButton(
+                onClick = { viewModel.updateKeyRemap("") },
+                modifier = Modifier.testTag("resetKeyMap"),
+            ) {
+                Text("Reset All Mappings")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+
+    // Key capture dialog
+    if (captureTarget != null) {
+        val target = captureTarget!!
+        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { captureTarget = null },
+            title = { Text("Assign key to: ${target.label}") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .focusRequester(focusRequester)
+                        .onKeyEvent { event ->
+                            if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_UP) {
+                                val code = event.nativeKeyEvent.keyCode
+                                val name = android.view.KeyEvent.keyCodeToString(code)
+                                    .removePrefix("KEYCODE_")
+                                lastDetectedKey = code to name
+                            }
+                            true // consume all key events
+                        }
+                ) {
+                    Text("Press any physical button (steering wheel, remote, keyboard) now.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "The next key press will be mapped to ${target.label} (AA keycode ${target.aaKeycode}).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (lastDetectedKey != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "Detected: ${lastDetectedKey!!.second} (${lastDetectedKey!!.first})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (lastDetectedKey != null) {
+                    Button(onClick = {
+                        val hwKey = lastDetectedKey!!.first
+                        val newMap = currentMap.toMutableMap()
+                        // Remove any existing mapping for this hardware key
+                        newMap.keys.removeAll { it == hwKey }
+                        newMap[hwKey] = target.aaKeycode
+                        val json = org.json.JSONObject(newMap.mapKeys { it.key.toString() }).toString()
+                        viewModel.updateKeyRemap(json)
+                        captureTarget = null
+                        lastDetectedKey = null
+                    }) {
+                        Text("Assign ${lastDetectedKey!!.second}")
+                    }
+                }
+            },
+            dismissButton = {
+                Button(onClick = { captureTarget = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
 @Composable
 private fun AudioTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
     Column(
@@ -1292,7 +1504,68 @@ private fun AudioTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        // --- Per-Purpose Volume Offsets ---
+        SectionHeader("Volume Offsets")
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Adjust relative volume for each audio purpose. " +
+                    "0 = default. Positive = louder, negative = quieter. " +
+                    "Requires Save & Restart.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        VolumeOffsetSlider(
+            label = "Media",
+            value = uiState.volumeOffsetMedia,
+            onValueChange = { viewModel.updateVolumeOffsetMedia(it) }
+        )
+        VolumeOffsetSlider(
+            label = "Navigation",
+            value = uiState.volumeOffsetNavigation,
+            onValueChange = { viewModel.updateVolumeOffsetNavigation(it) }
+        )
+        VolumeOffsetSlider(
+            label = "Assistant / Speech",
+            value = uiState.volumeOffsetAssistant,
+            onValueChange = { viewModel.updateVolumeOffsetAssistant(it) }
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun VolumeOffsetSlider(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth(0.7f).padding(vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            val display = if (value >= 0) "+$value%" else "$value%"
+            Text(
+                display,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (value == 0) MaterialTheme.colorScheme.onSurfaceVariant
+                       else MaterialTheme.colorScheme.primary,
+            )
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.toInt()) },
+            valueRange = -100f..100f,
+            steps = 19, // 10% increments
+            modifier = Modifier.testTag("volumeOffset_$label"),
+        )
     }
 }
 

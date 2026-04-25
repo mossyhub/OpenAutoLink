@@ -41,10 +41,8 @@ class SteeringWheelController(
             KeyEvent.KEYCODE_MEDIA_PAUSE,        // 127
         )
 
-        // GM AAOS steering wheel F-key mappings.
-        // GM sends F-keys instead of standard media keycodes.
-        // F7 (137) confirmed as track-next on 2024 Blazer EV.
-        // F6/F8 suspected for track-prev/play-pause — logged for discovery.
+        // GM AAOS steering wheel F-key mappings (built-in defaults).
+        // Used when no custom key remap is configured for a given key.
         private val GM_FKEY_TO_AA = mapOf(
             KeyEvent.KEYCODE_F6 to KeyEvent.KEYCODE_MEDIA_PREVIOUS,     // 131 → track prev (suspected)
             KeyEvent.KEYCODE_F7 to KeyEvent.KEYCODE_MEDIA_NEXT,         // 137 → track next (confirmed)
@@ -64,6 +62,10 @@ class SteeringWheelController(
         )
     }
 
+    /** User-configurable key remapping: Android keycode → AA keycode.
+     *  Takes priority over built-in GM mappings. Set from preferences. */
+    @Volatile var customKeyMap: Map<Int, Int> = emptyMap()
+
     /**
      * Handle a KeyEvent from the activity's dispatchKeyEvent.
      * Returns true if the event was consumed (caller should not propagate further).
@@ -71,6 +73,14 @@ class SteeringWheelController(
     fun onKeyEvent(event: KeyEvent): Boolean {
         val keycode = event.keyCode
         val isDown = event.action == KeyEvent.ACTION_DOWN
+
+        // 1. Check user-configured custom key map first (highest priority)
+        val customMapped = customKeyMap[keycode]
+        if (customMapped != null) {
+            DiagnosticLog.i("input", "Custom remap: ${KeyEvent.keyCodeToString(keycode)} ($keycode) → AA $customMapped")
+            sendButtonToAA(customMapped, isDown, event)
+            return true
+        }
 
         return when {
             keycode in MEDIA_KEYCODES -> {

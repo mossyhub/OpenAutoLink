@@ -42,6 +42,12 @@ class AudioPurposeCoordinator {
 
     private val activePurposes = mutableSetOf<AudioPurpose>()
 
+    /** Per-purpose volume offsets from user settings (-100 to +100).
+     *  0 = default, +50 = 1.5x volume, -50 = 0.5x volume. */
+    @Volatile var volumeOffsetMedia: Int = 0
+    @Volatile var volumeOffsetNavigation: Int = 0
+    @Volatile var volumeOffsetAssistant: Int = 0
+
     private val _callState = MutableStateFlow(CallState.IDLE)
     val callState: StateFlow<CallState> = _callState.asStateFlow()
 
@@ -104,7 +110,16 @@ class AudioPurposeCoordinator {
         for (purpose in AudioPurpose.entries) {
             if (purpose !in activePurposes) continue
 
-            val targetVolume = computeTargetVolume(purpose, highestPriority)
+            val duckVolume = computeTargetVolume(purpose, highestPriority)
+            // Apply user volume offset on top of ducking
+            val offset = when (purpose) {
+                AudioPurpose.MEDIA -> volumeOffsetMedia
+                AudioPurpose.NAVIGATION -> volumeOffsetNavigation
+                AudioPurpose.ASSISTANT -> volumeOffsetAssistant
+                else -> 0
+            }
+            val gain = 1.0f + (offset / 100f) // -100→0.0, 0→1.0, +100→2.0
+            val targetVolume = (duckVolume * gain).coerceIn(0f, 2f)
             actions.add(VolumeAction(purpose, targetVolume))
         }
 

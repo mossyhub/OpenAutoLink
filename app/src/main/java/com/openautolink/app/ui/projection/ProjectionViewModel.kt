@@ -230,6 +230,27 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             val hideClock = preferences.hideAaClock.first()
             val hideSignal = preferences.hidePhoneSignal.first()
             val hideBattery = preferences.hideBatteryLevel.first()
+
+            // Load key remap from preferences
+            val keyRemapJson = preferences.keyRemap.first()
+            if (keyRemapJson.isNotBlank()) {
+                try {
+                    val map = mutableMapOf<Int, Int>()
+                    val json = org.json.JSONObject(keyRemapJson)
+                    for (key in json.keys()) {
+                        map[key.toInt()] = json.getInt(key)
+                    }
+                    steeringWheelController.customKeyMap = map
+                } catch (_: Exception) {
+                    steeringWheelController.customKeyMap = emptyMap()
+                }
+            }
+
+            // Load volume offsets
+            val volMedia = preferences.volumeOffsetMedia.first()
+            val volNav = preferences.volumeOffsetNavigation.first()
+            val volAssistant = preferences.volumeOffsetAssistant.first()
+
             sessionManager.start(
                 codecPreference = codec,
                 micSourcePreference = micSrc,
@@ -248,6 +269,9 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
                 hideClock = hideClock,
                 hideSignal = hideSignal,
                 hideBattery = hideBattery,
+                volumeOffsetMedia = volMedia,
+                volumeOffsetNavigation = volNav,
+                volumeOffsetAssistant = volAssistant,
             )
         }
     }

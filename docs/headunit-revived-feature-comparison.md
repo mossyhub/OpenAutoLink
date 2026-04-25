@@ -103,31 +103,15 @@ The AA protocol is identical over USB and WiFi — same version exchange, SSL ha
 
 ---
 
-### 8. User-Configurable Key Remapping
+### ~~8. User-Configurable Key Remapping~~ ✅ DONE
 
-**What HUR has**: Full key remapping UI. User picks which physical button maps to which AA keycode. Supports all AA keycodes (media, phone, DPAD, numbers, rotary codes).
-
-**What OAL has**: Fixed keycode mappings in `SteeringWheelController` (GM-specific F-key mappings hardcoded).
-
-**Why port**: OAL's fixed mappings only work on GM. Other AAOS platforms (Rivian, Polestar, aftermarket) send different keycodes for steering wheel buttons. Configurable remapping makes OAL work on any AAOS platform without code changes.
-
-**Effort**: Medium. Add `Map<Int, Int>` key mapping preference, UI to configure, apply in `SteeringWheelController` / `DirectAaSession` button handler.
-
-**Priority**: **Medium** — critical for multi-platform support.
+> **Completed.** New **Input** tab in Settings with 14 mappable AA actions (play/pause, next/prev, stop, voice, DPAD, call/endcall). Tap an action → capture dialog opens → press any physical button → assigns it. Custom map stored as JSON in DataStore, loaded at session start into `SteeringWheelController.customKeyMap`. Custom mappings take highest priority over built-in GM F-key defaults. "Reset All Mappings" button clears everything. Requires Save & Restart.
 
 ---
 
-### 9. Per-Purpose Volume Offsets
+### ~~9. Per-Purpose Volume Offsets~~ ✅ DONE
 
-**What HUR has**: Three separate volume sliders: media, assistant/speech, navigation/guidance. Software gain applied via `AudioTrack.setVolume()`.
-
-**What OAL has**: Per-purpose ducking ratios in `AudioPurposeCoordinator` (hardcoded: call ducks media to 15%, assistant to 10%, nav to 50%), but no user-adjustable volume offsets.
-
-**Why port**: Users often want navigation prompts louder than music, or assistant voice quieter. Per-purpose volume offsets let users tune this. On AAOS, the car's audio mixer may not distinguish AA audio purposes — the app-level control is the only knob.
-
-**Effort**: Low. Add 3 preferences, multiply against existing `setVolume()` in `AudioPurposeSlot`.
-
-**Priority**: **Medium** — quality-of-life improvement.
+> **Completed.** Three sliders in the **Audio** tab: Media, Navigation, Assistant/Speech. Range -100% to +100% in 10% steps (0 = default, +50 = 1.5× gain, -50 = 0.5× gain). Applied in `AudioPurposeCoordinator.computeActions()` on top of the existing ducking logic via `volumeOffsetMedia/Navigation/Assistant` fields. Stored as `intPreferencesKey` in DataStore, passed through `SessionManager.start()`. Requires Save & Restart.
 
 ---
 
@@ -310,8 +294,8 @@ Having fallback strategies is useful. The light sensor strategy with hysteresis 
 | 7 | Dynamic vehicle identity from VHAL | Low | Medium | **✅ DONE** |
 | 8 | `maxUnacked` flow control tuning | Trivial | Medium | **✅ DONE** |
 | 9 | **USB Host Connection (AOA)** | **Medium** | **High** | **Port now** |
-| 10 | User key remapping | Medium | Medium | Port soon |
-| 11 | Per-purpose volume offsets | Low | Medium | Port soon |
+| 10 | User key remapping | Medium | Medium | **✅ DONE** |
+| 11 | Per-purpose volume offsets | Low | Medium | **✅ DONE** |
 | 12 | Rotary controller input | Medium | Medium | Port soon |
 | 13 | Auto-optimization wizard (codec/res detection) | Medium | Medium | Port soon |
 | 14 | WiFi Direct frequency detection | Trivial | Medium | **✅ DONE** |
@@ -362,6 +346,8 @@ These HUR features already exist in OpenAutoLink's direct mode:
 - ✅ Bluetooth service announcement (A2DP + HFP pairing methods)
 - ✅ Phone status parsing (signal strength + call state from channel 12)
 - ✅ WiFi Direct frequency detection (5 GHz / 2.4 GHz in stats overlay)
+- ✅ User-configurable key remapping (14 AA actions, capture dialog, JSON DataStore)
+- ✅ Per-purpose volume offsets (media/nav/assistant sliders, -100% to +100%)
 
 ---
 

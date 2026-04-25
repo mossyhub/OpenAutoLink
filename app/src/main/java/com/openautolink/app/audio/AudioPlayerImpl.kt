@@ -61,7 +61,7 @@ class AudioPlayerImpl(private val audioManager: AudioManager) : AudioPlayer {
     private val slots = mutableMapOf<AudioPurpose, AudioPurposeSlot>()
     private val slotFormats = mutableMapOf<AudioPurpose, AudioFormat>()
     private val focusManager = AudioFocusManager(audioManager)
-    private val coordinator = AudioPurposeCoordinator()
+    val coordinator = AudioPurposeCoordinator()
     private var idleCheckTimer: Timer? = null
 
     /** Tracks when each purpose was explicitly stopped via stopPurpose().

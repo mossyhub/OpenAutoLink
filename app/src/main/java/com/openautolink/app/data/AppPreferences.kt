@@ -69,6 +69,16 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val CUSTOM_VIEWPORT_HEIGHT = intPreferencesKey("custom_viewport_height")
         val VIEWPORT_ASPECT_RATIO_LOCKED = booleanPreferencesKey("viewport_aspect_ratio_locked")
 
+        // Key remapping — JSON string: {"androidKeycode": aaKeycode, ...}
+        // e.g. {"131":88,"137":87} means F6→MEDIA_PREVIOUS, F7→MEDIA_NEXT
+        val KEY_REMAP = stringPreferencesKey("key_remap")
+
+        // Per-purpose volume offsets (-100 to +100, applied as gain multiplier)
+        // 0 = default, +50 = 1.5x, -50 = 0.5x
+        val VOLUME_OFFSET_MEDIA = intPreferencesKey("volume_offset_media")
+        val VOLUME_OFFSET_NAVIGATION = intPreferencesKey("volume_offset_navigation")
+        val VOLUME_OFFSET_ASSISTANT = intPreferencesKey("volume_offset_assistant")
+
         const val DEFAULT_VIDEO_AUTO_NEGOTIATE = true
         const val DEFAULT_VIDEO_CODEC = "h264"
         const val DEFAULT_VIDEO_FPS = 60
@@ -101,6 +111,10 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_CUSTOM_VIEWPORT_WIDTH = 0 // 0 = use full usable width
         const val DEFAULT_CUSTOM_VIEWPORT_HEIGHT = 0 // 0 = use full usable height
         const val DEFAULT_VIEWPORT_ASPECT_RATIO_LOCKED = true
+        const val DEFAULT_KEY_REMAP = "" // empty = use built-in defaults
+        const val DEFAULT_VOLUME_OFFSET_MEDIA = 0
+        const val DEFAULT_VOLUME_OFFSET_NAVIGATION = 0
+        const val DEFAULT_VOLUME_OFFSET_ASSISTANT = 0
     }
 
     val videoAutoNegotiate: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -357,5 +371,35 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     suspend fun setViewportAspectRatioLocked(locked: Boolean) {
         dataStore.edit { it[VIEWPORT_ASPECT_RATIO_LOCKED] = locked }
+    }
+
+    // Key remapping
+    val keyRemap: Flow<String> = dataStore.data.map { prefs ->
+        prefs[KEY_REMAP] ?: DEFAULT_KEY_REMAP
+    }
+
+    suspend fun setKeyRemap(json: String) {
+        dataStore.edit { it[KEY_REMAP] = json }
+    }
+
+    // Per-purpose volume offsets
+    val volumeOffsetMedia: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[VOLUME_OFFSET_MEDIA] ?: DEFAULT_VOLUME_OFFSET_MEDIA
+    }
+    val volumeOffsetNavigation: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[VOLUME_OFFSET_NAVIGATION] ?: DEFAULT_VOLUME_OFFSET_NAVIGATION
+    }
+    val volumeOffsetAssistant: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[VOLUME_OFFSET_ASSISTANT] ?: DEFAULT_VOLUME_OFFSET_ASSISTANT
+    }
+
+    suspend fun setVolumeOffsetMedia(offset: Int) {
+        dataStore.edit { it[VOLUME_OFFSET_MEDIA] = offset.coerceIn(-100, 100) }
+    }
+    suspend fun setVolumeOffsetNavigation(offset: Int) {
+        dataStore.edit { it[VOLUME_OFFSET_NAVIGATION] = offset.coerceIn(-100, 100) }
+    }
+    suspend fun setVolumeOffsetAssistant(offset: Int) {
+        dataStore.edit { it[VOLUME_OFFSET_ASSISTANT] = offset.coerceIn(-100, 100) }
     }
 }
