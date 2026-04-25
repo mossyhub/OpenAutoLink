@@ -212,11 +212,13 @@ class NearbyAdvertiser(
                 }
                 context.startActivity(triggerIntent)
 
-                // Timeout: if AA never connects, clean up
-                delay(15_000)
-                if (activeProxy != null) {
-                    Log.w(TAG, "Launch timed out")
-                    activeProxy?.stop()
+                // Timeout: if AA never connects to the proxy, clean up.
+                // But don't kill the proxy if AA is already connected and streaming.
+                delay(30_000)
+                val currentProxy = activeProxy
+                if (currentProxy != null && !currentProxy.hasActiveBridge()) {
+                    Log.w(TAG, "Launch timed out — AA never connected to proxy")
+                    currentProxy.stop()
                     activeProxy = null
                     stateListener.onLaunchTimeout()
                 }

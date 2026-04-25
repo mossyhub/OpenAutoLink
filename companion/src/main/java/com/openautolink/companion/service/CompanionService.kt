@@ -96,22 +96,15 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
     override fun onProxyDisconnected() {
         _isConnected.value = false
         _statusText.value = "Disconnected"
-        Log.i(TAG, "AA proxy disconnected")
+        Log.i(TAG, "AA proxy disconnected — restarting advertising")
 
-        val prefs = getSharedPreferences(CompanionPrefs.NAME, MODE_PRIVATE)
-        val autoReconnect = prefs.getBoolean(CompanionPrefs.BT_AUTO_RECONNECT, false)
-
-        if (autoReconnect && shouldAutoReconnect()) {
-            Log.i(TAG, "Auto-reconnecting...")
-            _statusText.value = "Reconnecting..."
-            updateNotification("Reconnecting...")
-            serviceScope.launch {
-                delay(3000)
-                startNearby()
-            }
-        } else {
-            releaseWakeLock()
-            stopSelf()
+        // Always restart advertising after disconnect so the car can reconnect
+        // (e.g., after Save & Restart on the car side).
+        _statusText.value = "Reconnecting..."
+        updateNotification("Waiting for car...")
+        serviceScope.launch {
+            delay(2000)
+            startNearby()
         }
     }
 

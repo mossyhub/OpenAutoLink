@@ -130,10 +130,9 @@ fun ProjectionScreen(
             .padding(displayModePadding)
             .testTag("projectionScreen")
     ) {
-        // Letterbox: constrain SurfaceView to 16:9 (matching AA video output), centered.
-        // Qualcomm c2.qti decoders ignore SCALE_TO_FIT and fill the surface,
-        // so the surface itself must match the video AR to avoid zoom/crop.
-        // Fill: fillMaxSize — decoder fills surface, pixel_aspect keeps proportions correct.
+        // Crop: fillMaxSize — video fills entire surface, pixel_aspect tells AA to
+        // pre-distort UI so stretched pixels render correctly on wide displays.
+        // Letterbox: constrain to 16:9, no stretching needed.
         val surfaceModifier = if (uiState.videoScalingMode == "crop") {
             Modifier
                 .fillMaxSize()

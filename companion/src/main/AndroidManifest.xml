@@ -9,10 +9,12 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
-    <!-- Bluetooth (auto-start trigger) -->
+    <!-- Bluetooth (auto-start trigger + Nearby advertising) -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
     <!-- Nearby Connections -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
@@ -20,6 +22,8 @@
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

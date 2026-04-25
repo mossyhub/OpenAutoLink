@@ -39,6 +39,9 @@ class AaProxy(
     private var activeCarSocket: Socket? = null
     private val activeBridges = AtomicInteger(0)
 
+    /** Returns true if at least one AA bridge is active (AA connected and streaming). */
+    fun hasActiveBridge(): Boolean = activeBridges.get() > 0
+
     /** Start the proxy server. Returns the localhost port AA should connect to. */
     fun start(): Int {
         val server = ServerSocket(0)
