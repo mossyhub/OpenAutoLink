@@ -33,6 +33,7 @@
 #include <aasdk/Channel/MediaSink/Audio/Channel/MediaAudioChannel.hpp>
 #include <aasdk/Channel/MediaSink/Audio/Channel/GuidanceAudioChannel.hpp>
 #include <aasdk/Channel/MediaSink/Audio/Channel/SystemAudioChannel.hpp>
+#include <aasdk/Channel/MediaSink/Audio/Channel/TelephonyAudioChannel.hpp>
 #include <aasdk/Channel/MediaSource/MediaSourceService.hpp>
 #include <aasdk/Channel/MediaSource/IMediaSourceServiceEventHandler.hpp>
 #include <aasdk/Channel/SensorSource/SensorSourceService.hpp>
@@ -212,6 +213,7 @@ private:
     std::shared_ptr<aasdk::channel::mediasink::audio::AudioMediaSinkService> mediaAudioChannel_;
     std::shared_ptr<aasdk::channel::mediasink::audio::AudioMediaSinkService> guidanceAudioChannel_;
     std::shared_ptr<aasdk::channel::mediasink::audio::AudioMediaSinkService> systemAudioChannel_;
+    std::shared_ptr<aasdk::channel::mediasink::audio::AudioMediaSinkService> telephonyAudioChannel_;
     std::shared_ptr<aasdk::channel::inputsource::InputSourceService> inputChannel_;
     std::shared_ptr<aasdk::channel::sensorsource::SensorSourceService> sensorChannel_;
     std::shared_ptr<aasdk::channel::navigationstatus::NavigationStatusService> navChannel_;
@@ -224,6 +226,7 @@ private:
     std::shared_ptr<JniAudioSinkHandler> mediaAudioHandler_;
     std::shared_ptr<JniAudioSinkHandler> guidanceAudioHandler_;
     std::shared_ptr<JniAudioSinkHandler> systemAudioHandler_;
+    std::shared_ptr<JniAudioSinkHandler> telephonyAudioHandler_;
     std::shared_ptr<JniSensorHandler> sensorHandler_;
     std::shared_ptr<JniInputHandler> inputHandler_;
     std::shared_ptr<JniNavStatusHandler> navHandler_;

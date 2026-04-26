@@ -196,7 +196,7 @@ class AasdkSession(
             1 -> AudioPurpose.NAVIGATION
             2 -> AudioPurpose.ALERT
             3 -> AudioPurpose.ASSISTANT
-            4 -> AudioPurpose.CALL
+            4 -> AudioPurpose.PHONE_CALL
             else -> AudioPurpose.MEDIA
         }
         val frame = AudioFrame(

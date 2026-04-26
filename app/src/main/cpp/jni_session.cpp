@@ -235,6 +235,8 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
             *strand_, messenger_);
         systemAudioChannel_ = std::make_shared<aasdk::channel::mediasink::audio::channel::SystemAudioChannel>(
             *strand_, messenger_);
+        telephonyAudioChannel_ = std::make_shared<aasdk::channel::mediasink::audio::channel::TelephonyAudioChannel>(
+            *strand_, messenger_);
         inputChannel_ = std::make_shared<aasdk::channel::inputsource::InputSourceService>(
             *strand_, messenger_);
         sensorChannel_ = std::make_shared<aasdk::channel::sensorsource::SensorSourceService>(
@@ -639,6 +641,10 @@ void JniSession::startAllHandlers()
         *strand_, systemAudioChannel_, *this, JniAudioSinkHandler::AudioType::System);
     systemAudioHandler_->start();
 
+    telephonyAudioHandler_ = std::make_shared<JniAudioSinkHandler>(
+        *strand_, telephonyAudioChannel_, *this, JniAudioSinkHandler::AudioType::Telephony);
+    telephonyAudioHandler_->start();
+
     // Sensor handler
     sensorHandler_ = std::make_shared<JniSensorHandler>(*strand_, sensorChannel_, *this);
     sensorHandler_->start();
@@ -768,6 +774,16 @@ void JniSession::buildServiceDiscoveryResponse(
     saCfg->set_channel_count(1);
     saSink->set_type(aap_protobuf::shared::SINK);
     saSink->set_available_while_in_call(true);
+
+    // ---- Telephony audio (16kHz mono — phone call voice) ----
+    auto* taDesc = response.add_channels();
+    auto* taSink = taDesc->mutable_media_sink_service();
+    auto* taCfg = taSink->mutable_audio_configs()->Add();
+    taCfg->set_sample_rate(16000);
+    taCfg->set_bit_depth(16);
+    taCfg->set_channel_count(1);
+    taSink->set_type(aap_protobuf::shared::SINK);
+    taSink->set_available_while_in_call(true);
 
     // ---- Mic input (16kHz mono) ----
     auto* micDesc = response.add_channels();
