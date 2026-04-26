@@ -180,12 +180,13 @@ class AasdkSession(
     }
 
     override fun onVideoFrame(data: ByteArray, timestampUs: Long, width: Int, height: Int, isKeyFrame: Boolean) {
+        val flags = if (isKeyFrame) VideoFrame.FLAG_KEYFRAME else 0
         val frame = VideoFrame(
-            data = data,
-            timestampUs = timestampUs,
             width = width,
             height = height,
-            isKeyFrame = isKeyFrame
+            ptsMs = timestampUs / 1000,
+            flags = flags,
+            data = data
         )
         _videoFrames.tryEmit(frame)
     }
