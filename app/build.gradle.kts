@@ -18,6 +18,19 @@ android {
         versionName = (findProperty("oalVersionName") as? String) ?: "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")  // AAOS head units are ARM64
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_BUILD_TYPE=Release"
+                )
+            }
+        }
     }
 
     signingConfigs {
@@ -56,6 +69,16 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // NDK build for aasdk JNI
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    ndkVersion = "27.0.12077973"
 
     testOptions {
         unitTests.isReturnDefaultValues = true
