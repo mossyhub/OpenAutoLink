@@ -111,27 +111,15 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
     override fun onProxyDisconnected() {
         _isConnected.value = false
         _statusText.value = "Disconnected"
-        Log.i(TAG, "AA proxy disconnected — restarting advertising")
-
-        // Always restart advertising after disconnect so the car can reconnect
-        // (e.g., after Save & Restart on the car side).
-        _statusText.value = "Reconnecting..."
-        updateNotification("Waiting for car...")
-        serviceScope.launch {
-            delay(2000)
-            if (_isRunning.value) {
-                startNearby()
-            }
-        }
+        Log.i(TAG, "AA proxy disconnected")
+        updateNotification("Disconnected — tap Start to retry")
+        // Auto-reconnect disabled during development to avoid interfering
+        // with the phone's AA session lifecycle.
     }
 
     override fun onLaunchTimeout() {
-        Log.i(TAG, "Launch timeout, restarting advertising")
-        _statusText.value = "Timeout — retrying..."
-        updateNotification("Searching for car...")
-        nearbyAdvertiser?.stop()
-        tcpAdvertiser?.stop()
-        startNearby()
+        Log.i(TAG, "Launch timeout — waiting for AA to connect to proxy")
+        // Don't restart — the proxy is still listening, AA may connect late.
     }
 
     // ── Wake lock ──────────────────────────────────────────────────────

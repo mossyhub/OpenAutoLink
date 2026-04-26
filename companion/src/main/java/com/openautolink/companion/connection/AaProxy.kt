@@ -76,13 +76,6 @@ class AaProxy(
         scope.launch {
             var carSocket: Socket? = null
             try {
-                if (bridgeUsed) {
-                    Log.w(TAG, "Car socket already used — rejecting second AA connection")
-                    runCatching { aaSocket.close() }
-                    return@launch
-                }
-                bridgeUsed = true
-
                 activeBridges.incrementAndGet()
                 listener?.onConnected()
 
