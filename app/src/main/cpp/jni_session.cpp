@@ -603,6 +603,17 @@ void JniSession::onMediaChannelSetupRequest(
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     videoChannel_->sendChannelSetupResponse(config, std::move(promise));
+
+    // Send VIDEO_FOCUS_PROJECTED immediately after setup — the phone's
+    // ProjectionWindowManager waits for this before it can start projection.
+    LOGI("Sending VIDEO_FOCUS_PROJECTED after setup");
+    aap_protobuf::service::media::video::message::VideoFocusNotification focus;
+    focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+    focus.set_unsolicited(true);
+    auto focusPromise = aasdk::channel::SendPromise::defer(*strand_);
+    focusPromise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
+    videoChannel_->sendVideoFocusIndication(focus, std::move(focusPromise));
+
     videoChannel_->receive(shared_from_this());
 }
 

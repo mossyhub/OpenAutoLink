@@ -2,7 +2,8 @@ package com.openautolink.companion.service
 
 import android.content.Context
 import android.content.Intent
-import android.provider.Settings
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.util.Log
 import com.openautolink.companion.connection.AaProxy
 import com.openautolink.companion.trigger.TransparentTriggerActivity
@@ -19,11 +20,8 @@ import java.net.Socket
  * TCP transport for car ←→ phone AA connection.
  *
  * Listens on [PORT] for incoming TCP connections from the car app.
- * When the car connects, creates an [AaProxy] bridge and launches
- * Android Auto exactly like [NearbyAdvertiser] does.
- *
- * The car connects outbound to the phone's hotspot gateway IP on this port,
- * so no incoming firewall rules are needed on the car side.
+ * Also registers an mDNS/NSD service so the car can discover the phone
+ * on any shared network (hotspot or home WiFi).
  */
 class TcpAdvertiser(
     private val context: Context,
@@ -32,12 +30,16 @@ class TcpAdvertiser(
     companion object {
         private const val TAG = "OAL_TcpAdv"
         const val PORT = 5277
+        const val NSD_SERVICE_TYPE = "_openautolink._tcp"
+        const val NSD_SERVICE_NAME = "OpenAutoLink"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var serverSocket: ServerSocket? = null
     private var activeProxy: AaProxy? = null
     private var activeCarSocket: Socket? = null
+    private var nsdManager: NsdManager? = null
+    private var nsdRegistrationListener: NsdManager.RegistrationListener? = null
 
     @Volatile
     private var isRunning = false
@@ -57,6 +59,8 @@ class TcpAdvertiser(
                 server.bind(InetSocketAddress(PORT))
                 serverSocket = server
                 Log.i(TAG, "Listening on 0.0.0.0:$PORT")
+
+                registerNsd()
 
                 while (isRunning) {
                     val carSocket = server.accept()
@@ -131,7 +135,8 @@ class TcpAdvertiser(
                     }
                 context.startActivity(triggerIntent)
 
-                stateListener.onLaunchTimeout() // Signal that launch is in progress
+                // Don't call onLaunchTimeout — that's for Nearby retry logic.
+                // TCP stays connected; AA will connect to the proxy when ready.
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to launch AA: ${e.message}")
                 isLaunching = false
@@ -143,6 +148,7 @@ class TcpAdvertiser(
     fun stop() {
         Log.i(TAG, "Stopping TCP server")
         isRunning = false
+        unregisterNsd()
         activeProxy?.stop()
         activeProxy = null
         activeCarSocket?.let { runCatching { it.close() } }
@@ -150,5 +156,40 @@ class TcpAdvertiser(
         runCatching { serverSocket?.close() }
         serverSocket = null
         scope.cancel()
+    }
+
+    private fun registerNsd() {
+        try {
+            nsdManager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
+            val serviceInfo = NsdServiceInfo().apply {
+                serviceName = NSD_SERVICE_NAME
+                serviceType = NSD_SERVICE_TYPE
+                port = PORT
+            }
+            nsdRegistrationListener = object : NsdManager.RegistrationListener {
+                override fun onRegistrationFailed(si: NsdServiceInfo, errorCode: Int) {
+                    Log.w(TAG, "mDNS registration failed: error $errorCode")
+                }
+                override fun onUnregistrationFailed(si: NsdServiceInfo, errorCode: Int) {
+                    Log.w(TAG, "mDNS unregistration failed: error $errorCode")
+                }
+                override fun onServiceRegistered(si: NsdServiceInfo) {
+                    Log.i(TAG, "mDNS registered: ${si.serviceName} on port $PORT")
+                }
+                override fun onServiceUnregistered(si: NsdServiceInfo) {
+                    Log.d(TAG, "mDNS unregistered")
+                }
+            }
+            nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, nsdRegistrationListener)
+        } catch (e: Exception) {
+            Log.w(TAG, "mDNS registration failed: ${e.message}")
+        }
+    }
+
+    private fun unregisterNsd() {
+        try {
+            nsdRegistrationListener?.let { nsdManager?.unregisterService(it) }
+        } catch (_: Exception) {}
+        nsdRegistrationListener = null
     }
 }

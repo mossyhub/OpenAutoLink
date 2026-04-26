@@ -518,11 +518,13 @@ class SessionManager(
             }
         }
 
-        // Observe Nearby status
-        scope.launch {
-            AaNearbyManager.status.collect { nearbyStatus ->
-                if (_sessionState.value == SessionState.IDLE) {
-                    _statusMessage.value = "Nearby: $nearbyStatus"
+        // Observe Nearby status (only in nearby mode)
+        if (directTransport == "nearby") {
+            scope.launch {
+                AaNearbyManager.status.collect { nearbyStatus ->
+                    if (_sessionState.value == SessionState.IDLE) {
+                        _statusMessage.value = "Nearby: $nearbyStatus"
+                    }
                 }
             }
         }
