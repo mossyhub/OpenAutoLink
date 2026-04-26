@@ -1,5 +1,7 @@
 # OAL Wire Protocol — OpenAutoLink App ↔ Bridge
 
+> **Bridge-mode only.** This protocol is used for communication between the car app and the SBC bridge binary. In direct/JNI mode (the current architecture on `feature/aasdk-jni`), the app runs aasdk natively via JNI — no OAL protocol, no TCP connections, no bridge. This document is preserved for the `bridge-mode` branch.
+
 ## Overview
 
 Three independent TCP connections between the car app and the bridge. Each connection carries one type of data. The OAL protocol is phone-protocol-agnostic — the same framing carries Android Auto streams. The car app does not know which phone protocol is active.

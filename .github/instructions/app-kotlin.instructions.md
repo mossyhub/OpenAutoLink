@@ -4,17 +4,17 @@ applyTo: "app/**/*.kt"
 ---
 # App Kotlin Conventions
 
-## Bridge Cross-Reference Rule (CRITICAL)
-When implementing or modifying any app code that communicates with the bridge (transport, video, audio, input, session):
-1. **Always read the corresponding bridge source code** in `bridge/openautolink/headless/` before writing app code. Verify what the bridge actually sends/receives — don't rely solely on protocol docs.
-2. **Check for protocol mismatches.** The app must match what the bridge actually outputs.
-3. **It is OK to modify the bridge C++ code** if it improves the protocol, simplifies the app, or fixes bugs.
-4. **Key bridge files to reference:**
-   - `bridge/openautolink/headless/include/openautolink/oal_protocol.hpp` — OAL wire format
-   - `bridge/openautolink/headless/include/openautolink/tcp_car_transport.hpp` — TCP transport
-   - `bridge/openautolink/headless/src/oal_session.cpp` — OAL session, video/audio routing
-   - `bridge/openautolink/headless/src/live_session.cpp` — aasdk handler, keyframe detection
-   - `bridge/openautolink/headless/include/openautolink/headless_config.hpp` — config/ports
+## JNI Cross-Reference Rule (CRITICAL)
+When implementing or modifying any app code that communicates with the JNI layer (transport, video, audio, input, session):
+1. **Always read the corresponding C++ JNI code** in `app/src/main/cpp/` before writing Kotlin code. Verify what the native side actually sends/receives via JNI callbacks.
+2. **Check for JNI signature mismatches.** The Kotlin `external fun` declarations in `AasdkNative.kt` must match the C++ `JNICALL` signatures exactly.
+3. **It is OK to modify the C++ JNI code** if it improves the interface, simplifies the Kotlin side, or fixes bugs.
+4. **Key C++ files to reference:**
+   - `app/src/main/cpp/aasdk_jni.cpp` — JNI entry point, native method registration
+   - `app/src/main/cpp/jni_session.{h,cpp}` — aasdk pipeline: SSL → Cryptor → Messenger → channels
+   - `app/src/main/cpp/jni_channel_handlers.{h,cpp}` — audio, sensor, input, nav, mic handlers
+   - `app/src/main/cpp/jni_transport.{h,cpp}` — ITransport backed by Nearby streams
+   - `external/opencardev-aasdk/include/aasdk/Channel/` — aasdk channel interfaces
 
 ## Architecture
 - **MVVM** with StateFlow — ViewModels expose `StateFlow<UiState>`, composables collect
@@ -25,7 +25,7 @@ When implementing or modifying any app code that communicates with the bridge (t
 ## Package Structure
 ```
 com.openautolink.app/
-├── transport/   # TCP connection management
+├── transport/   # aasdk JNI session + Nearby transport
 ├── video/       # MediaCodec decoder + Surface
 ├── audio/       # AudioTrack management + mic
 ├── input/       # Touch, GNSS, vehicle data
