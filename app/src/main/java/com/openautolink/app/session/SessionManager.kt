@@ -48,8 +48,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Session orchestrator â€” connects component islands, manages lifecycle.
- * aasdk JNI mode â€" native aasdk C++ handles AA protocol via Nearby transport.
+ * Session orchestrator -- connects component islands, manages lifecycle.
+ * aasdk JNI mode -- native aasdk C++ handles AA protocol via Nearby transport.
  */
 class SessionManager(
     externalScope: CoroutineScope,
@@ -74,7 +74,7 @@ class SessionManager(
 
     private val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
 
-    // aasdk JNI session â€" native C++ handles AA protocol
+    // aasdk JNI session -- native C++ handles AA protocol
     private var aasdkSession: AasdkSession? = null
 
     // Dedicated single-threaded dispatcher for video decode
@@ -240,7 +240,7 @@ class SessionManager(
             coord.volumeOffsetAssistant = volumeOffsetAssistant
         }
 
-        // Create mic capture â€" sends frames via AasdkSession
+        // Create mic capture -- sends frames via AasdkSession
         _micCaptureManager?.release()
         _micCaptureManager = MicCaptureManager { frame ->
             aasdkSession?.let { session ->
@@ -248,14 +248,14 @@ class SessionManager(
             }
         }
 
-        // Create GNSS forwarder (NMEA not used in direct mode â€” LocationListener used instead)
+        // Create GNSS forwarder (NMEA not used in direct mode -- LocationListener used instead)
         _gnssForwarder?.stop()
         _directLocationListener = null
         _gnssForwarder = context?.let { ctx ->
             GnssForwarderImpl(ctx) { _ -> /* NMEA not used in direct mode */ }
         }
 
-        // Create vehicle data forwarder â€" sends via AasdkSession
+        // Create vehicle data forwarder -- sends via AasdkSession
         _vehicleDataForwarder?.stop()
         _vehicleDataForwarder = context?.let { ctx ->
             VehicleDataForwarderImpl(
@@ -280,7 +280,7 @@ class SessionManager(
             )
         }
 
-        // Create IMU forwarder â€" sends via AasdkSession
+        // Create IMU forwarder -- sends via AasdkSession
         _imuForwarder?.stop()
         _imuForwarder = context?.let { ctx ->
             ImuForwarder(ctx) { imuData ->
@@ -647,9 +647,9 @@ class SessionManager(
         while (_videoDecoder == null) { delay(500) }
         _videoDecoder?.decoderState?.collect { state ->
             if (state == DecoderState.ERROR) {
-                OalLog.w(TAG, "Decoder error â€" initiating recovery")
-                _remoteDiagnostics?.log(DiagnosticLevel.ERROR, "video", "Decoder error â€” recovery")
-                _statusMessage.value = "Video error â€” recovering..."
+                OalLog.w(TAG, "Decoder error -- initiating recovery")
+                _remoteDiagnostics?.log(DiagnosticLevel.ERROR, "video", "Decoder error -- recovery")
+                _statusMessage.value = "Video error -- recovering..."
                 recoverDecoder()
             }
         }
@@ -694,7 +694,7 @@ class SessionManager(
                 else -> AudioPurpose.ASSISTANT
             }
             _micCaptureManager?.setMicPurpose(purpose)
-            OalLog.d(TAG, "Call state: $state â€" mic purpose: $purpose")
+            OalLog.d(TAG, "Call state: $state -- mic purpose: $purpose")
         }
     }
 
@@ -773,3 +773,4 @@ class SessionManager(
         }
     }
 }
+
