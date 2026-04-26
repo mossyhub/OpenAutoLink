@@ -218,6 +218,21 @@ echo ""
 
 cmake --build . --target aasdk aap_protobuf -j$(nproc) 2>&1
 
+# Build protobuf runtime and abseil (needed for linking)
+echo ""
+echo "=== Building protobuf + abseil dependencies ==="
+echo ""
+cmake --build . --target protobuf-lite -j$(nproc) 2>&1 || true
+cmake --build . --target libprotobuf -j$(nproc) 2>&1 || true
+
+# Build all abseil targets
+ABSL_TARGETS=$(cmake --build . --target help 2>&1 | grep -oP 'absl_\w+' | sort -u || true)
+if [ -n "$ABSL_TARGETS" ]; then
+    for target in $ABSL_TARGETS; do
+        cmake --build . --target "$target" -j$(nproc) 2>&1 || true
+    done
+fi
+
 echo ""
 echo "=== Packaging output ==="
 echo ""
@@ -232,10 +247,14 @@ find "$BUILD_DIR" -name "libaasdk.a" -exec cp {} "$PACK_DIR/lib/" \;
 
 # protobuf libs (may be in different locations)
 find "$BUILD_DIR" -name "libaap_protobuf.a" -exec cp {} "$PACK_DIR/lib/" \;
-find "$BUILD_DIR/_deps/protobuf-build" -name "libprotobuf.a" -exec cp {} "$PACK_DIR/lib/" \; 2>/dev/null || true
+find "$BUILD_DIR" -name "libprotobuf.a" -exec cp {} "$PACK_DIR/lib/" \; 2>/dev/null || true
+find "$BUILD_DIR" -name "libprotobuf-lite.a" -exec cp {} "$PACK_DIR/lib/" \; 2>/dev/null || true
 
-# abseil libs
-find "$BUILD_DIR/_deps/abseil-build" -name "libabsl_*.a" -exec cp {} "$PACK_DIR/lib/" \; 2>/dev/null || true
+# abseil libs — search entire build tree
+find "$BUILD_DIR" -name "libabsl_*.a" -exec cp {} "$PACK_DIR/lib/" \; 2>/dev/null || true
+
+# utf8_range (protobuf dependency)
+find "$BUILD_DIR" -name "libutf8_range.a" -o -name "libutf8_validity.a" | while read f; do cp "$f" "$PACK_DIR/lib/"; done 2>/dev/null || true
 
 # Generated protobuf headers (aap_protobuf .pb.h files)
 if [ -d "$BUILD_DIR/protobuf" ]; then

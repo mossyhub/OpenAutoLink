@@ -1,10 +1,10 @@
 /*
- * jni_session.cpp — aasdk session lifecycle + JNI callback dispatch.
+ * jni_session.cpp Ã¢â‚¬â€ aasdk session lifecycle + JNI callback dispatch.
  *
  * This is the core integration: creates the aasdk pipeline, implements
  * all AA channel event handlers, and fires JNI callbacks to Kotlin.
  *
- * Based on bridge/openautolink/headless/src/live_session.cpp — same
+ * Based on bridge/openautolink/headless/src/live_session.cpp Ã¢â‚¬â€ same
  * aasdk API calls, but output goes to JNI instead of OAL TCP.
  */
 #include "jni_session.h"
@@ -33,6 +33,9 @@
 #include <aap_protobuf/service/sensorsource/SensorSourceService.pb.h>
 #include <aap_protobuf/service/inputsource/InputSourceService.pb.h>
 #include <aap_protobuf/service/bluetooth/BluetoothService.pb.h>
+#include <aap_protobuf/service/bluetooth/message/BluetoothPairingMethod.pb.h>
+#include <aap_protobuf/service/inputsource/message/TouchScreenType.pb.h>
+#include <aap_protobuf/service/navigationstatus/NavigationStatusService.pb.h>
 #include <aap_protobuf/shared/MessageStatus.pb.h>
 
 #include <aap_protobuf/service/inputsource/message/InputReport.pb.h>
@@ -111,7 +114,7 @@ void JniSession::callVoidCallback(jmethodID method)
 }
 
 // ============================================================================
-// start() — build the aasdk pipeline
+// start() Ã¢â‚¬â€ build the aasdk pipeline
 // ============================================================================
 
 void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, jobject sdrConfig)
@@ -300,7 +303,7 @@ void JniSession::stop()
 }
 
 // ============================================================================
-// IControlServiceChannelEventHandler — AA handshake + session control
+// IControlServiceChannelEventHandler Ã¢â‚¬â€ AA handshake + session control
 // ============================================================================
 
 void JniSession::onVersionResponse(uint16_t majorCode, uint16_t minorCode,
@@ -332,9 +335,9 @@ void JniSession::onHandshake(const aasdk::common::DataConstBuffer& payload)
         auto complete = cryptor_->doHandshake();
 
         if (complete) {
-            LOGI("TLS handshake complete — sending AuthComplete");
+            LOGI("TLS handshake complete Ã¢â‚¬â€ sending AuthComplete");
             aap_protobuf::service::control::message::AuthResponse authResponse;
-            authResponse.set_status(aap_protobuf::shared::AUTH_STATUS_OK);
+            authResponse.set_status(0);
             auto promise = aasdk::channel::SendPromise::defer(*strand_);
             promise->then([]() {},
                 [this](const auto& e) { this->onChannelError(e); });
@@ -357,7 +360,7 @@ void JniSession::onHandshake(const aasdk::common::DataConstBuffer& payload)
 void JniSession::onServiceDiscoveryRequest(
     const aap_protobuf::service::control::message::ServiceDiscoveryRequest& /*request*/)
 {
-    LOGI("Service discovery request — building response");
+    LOGI("Service discovery request Ã¢â‚¬â€ building response");
 
     aap_protobuf::service::control::message::ServiceDiscoveryResponse response;
     buildServiceDiscoveryResponse(response);
@@ -365,7 +368,7 @@ void JniSession::onServiceDiscoveryRequest(
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then(
         [this]() {
-            LOGI("SDR sent — starting all service handlers");
+            LOGI("SDR sent Ã¢â‚¬â€ starting all service handlers");
             startAllHandlers();
             streaming_ = true;
             callVoidCallback(cbMethods_.onSessionStarted);
@@ -379,11 +382,28 @@ void JniSession::onServiceDiscoveryRequest(
 void JniSession::onAudioFocusRequest(
     const aap_protobuf::service::control::message::AudioFocusRequest& request)
 {
-    LOGI("Audio focus request: type=%d", request.audio_focus_type());
+    auto focus_type = request.audio_focus_type();
+    // Match bridge logic: map request type → response state
+    aap_protobuf::service::control::message::AudioFocusStateType state;
+    switch (focus_type) {
+        case aap_protobuf::service::control::message::AUDIO_FOCUS_GAIN:
+            state = aap_protobuf::service::control::message::AUDIO_FOCUS_STATE_GAIN;
+            break;
+        case aap_protobuf::service::control::message::AUDIO_FOCUS_GAIN_TRANSIENT:
+        case aap_protobuf::service::control::message::AUDIO_FOCUS_GAIN_TRANSIENT_MAY_DUCK:
+            state = aap_protobuf::service::control::message::AUDIO_FOCUS_STATE_GAIN_TRANSIENT;
+            break;
+        case aap_protobuf::service::control::message::AUDIO_FOCUS_RELEASE:
+            state = aap_protobuf::service::control::message::AUDIO_FOCUS_STATE_LOSS;
+            break;
+        default:
+            state = aap_protobuf::service::control::message::AUDIO_FOCUS_STATE_LOSS;
+            break;
+    }
+    LOGI("Audio focus request: type=%d → state=%d", (int)focus_type, (int)state);
 
     aap_protobuf::service::control::message::AudioFocusNotification response;
-    response.set_audio_focus_state(
-        aap_protobuf::service::control::message::AudioFocusNotification::AUDIO_FOCUS_STATE_GAIN);
+    response.set_focus_state(state);
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     controlChannel_->sendAudioFocusResponse(response, std::move(promise));
@@ -403,10 +423,9 @@ void JniSession::onAudioFocusRequest(
 void JniSession::onNavigationFocusRequest(
     const aap_protobuf::service::control::message::NavFocusRequestNotification& /*request*/)
 {
-    LOGI("Navigation focus request — granting");
+    LOGI("Navigation focus request Ã¢â‚¬â€ granting");
     aap_protobuf::service::control::message::NavFocusNotification response;
-    response.set_focus_type(
-        aap_protobuf::service::control::message::NavFocusNotification::NAV_FOCUS_PROJECTED);
+    response.set_focus_type(aap_protobuf::service::control::message::NAV_FOCUS_PROJECTED);
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     controlChannel_->sendNavigationFocusResponse(response, std::move(promise));
@@ -416,7 +435,7 @@ void JniSession::onNavigationFocusRequest(
 void JniSession::onByeByeRequest(
     const aap_protobuf::service::control::message::ByeByeRequest& /*request*/)
 {
-    LOGI("ByeBye request — disconnecting");
+    LOGI("ByeBye request Ã¢â‚¬â€ disconnecting");
     aap_protobuf::service::control::message::ByeByeResponse response;
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([this]() { stop(); }, [this](const auto&) { stop(); });
@@ -434,7 +453,7 @@ void JniSession::onBatteryStatusNotification(
     const aap_protobuf::service::control::message::BatteryStatusNotification& notification)
 {
     int level = notification.battery_level();
-    bool charging = notification.charging_status();
+    bool charging = notification.critical_battery();
 
     if (cbMethods_.onPhoneBattery) {
         bool attached;
@@ -451,7 +470,7 @@ void JniSession::onBatteryStatusNotification(
 void JniSession::onVoiceSessionRequest(
     const aap_protobuf::service::control::message::VoiceSessionNotification& request)
 {
-    bool active = request.voice_session_type() != 0;
+    bool active = request.status() == aap_protobuf::service::control::message::VOICE_SESSION_START;
 
     if (cbMethods_.onVoiceSession) {
         bool attached;
@@ -498,7 +517,7 @@ void JniSession::onChannelError(const aasdk::error::Error& e)
 }
 
 // ============================================================================
-// IVideoMediaSinkServiceEventHandler — video from phone
+// IVideoMediaSinkServiceEventHandler Ã¢â‚¬â€ video from phone
 // ============================================================================
 
 void JniSession::onChannelOpenRequest(
@@ -516,10 +535,10 @@ void JniSession::onChannelOpenRequest(
 void JniSession::onMediaChannelSetupRequest(
     const aap_protobuf::service::media::shared::message::Setup& request)
 {
-    LOGI("Video setup: type=%d", request.media_codec_type());
+    LOGI("Video setup: type=%d", request.type());
 
     aap_protobuf::service::media::shared::message::Config config;
-    config.set_status(aap_protobuf::shared::STATUS_SUCCESS);
+    config.set_status(aap_protobuf::service::media::shared::message::Config::STATUS_READY);
     config.set_max_unacked(30);
     config.add_configuration_indices(0);
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
@@ -534,9 +553,8 @@ void JniSession::onMediaChannelStartIndication(
     LOGI("Video stream starting");
 
     aap_protobuf::service::media::video::message::VideoFocusNotification focus;
-    focus.set_focus_mode(
-        aap_protobuf::service::media::video::message::VideoFocusNotification::VIDEO_FOCUS_PROJECTED);
-    focus.set_unrequested(false);
+    focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+    focus.set_unsolicited(false);
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     videoChannel_->sendVideoFocusIndication(focus, std::move(promise));
@@ -555,7 +573,7 @@ void JniSession::onMediaWithTimestampIndication(
     aasdk::messenger::Timestamp::ValueType timestamp,
     const aasdk::common::DataConstBuffer& buffer)
 {
-    // Hot path — video frame. Send ACK immediately (flow control).
+    // Hot path Ã¢â‚¬â€ video frame. Send ACK immediately (flow control).
     aap_protobuf::service::media::source::message::Ack ack;
     ack.set_session_id(0);
     ack.set_ack(1);
@@ -618,14 +636,14 @@ void JniSession::onVideoFocusRequest(
 }
 
 // ============================================================================
-// startAllHandlers() — begin receiving on all service channels
+// startAllHandlers() Ã¢â‚¬â€ begin receiving on all service channels
 // ============================================================================
 
 void JniSession::startAllHandlers()
 {
     LOGI("Starting all service handlers");
 
-    // Audio handlers (3 instances — same class, different channel types)
+    // Audio handlers (3 instances Ã¢â‚¬â€ same class, different channel types)
     mediaAudioHandler_ = std::make_shared<JniAudioSinkHandler>(
         *strand_, mediaAudioChannel_, *this, JniAudioSinkHandler::AudioType::Media);
     mediaAudioHandler_->start();
@@ -680,158 +698,270 @@ void JniSession::startAllHandlers()
     }
 
     LOGI("All %d handlers started", 9);
+
+    // Send initial VideoFocusIndication to tell phone we want video
+    {
+        aap_protobuf::service::media::video::message::VideoFocusNotification focus;
+        focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+        focus.set_unsolicited(false);
+        auto promise = aasdk::channel::SendPromise::defer(*strand_);
+        promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
+        videoChannel_->sendVideoFocusIndication(focus, std::move(promise));
+        LOGI("Sent initial VideoFocusIndication");
+    }
 }
 
 // ============================================================================
-// buildServiceDiscoveryResponse() — tell phone what we support
+// buildServiceDiscoveryResponse() Ã¢â‚¬â€ tell phone what we support
 // ============================================================================
 
 void JniSession::buildServiceDiscoveryResponse(
     aap_protobuf::service::control::message::ServiceDiscoveryResponse& response)
 {
-    response.set_display_name("OpenAutoLink");
-    response.set_model(sdrConfig_.vehicleModel);
-    response.set_year(sdrConfig_.vehicleYear);
-    response.set_vehicle_id("OAL-JNI-1");
+    response.mutable_channels()->Reserve(256);
+
+    // v1.6 protocol fields (matches bridge-mode live_session.cpp)
     response.set_driver_position(
         sdrConfig_.driverPosition == 1
             ? aap_protobuf::service::control::message::DRIVER_POSITION_RIGHT
             : aap_protobuf::service::control::message::DRIVER_POSITION_LEFT);
-    response.set_head_unit_make(sdrConfig_.vehicleMake);
-    response.set_head_unit_model(sdrConfig_.vehicleModel);
-    response.set_head_unit_software_build("1");
-    response.set_head_unit_software_version("1.0");
+    response.set_display_name("OpenAutoLink");
+    response.set_probe_for_support(false);
     response.set_can_play_native_media_during_vr(false);
 
-    // ---- Video channel ----
-    auto* videoDesc = response.add_channels();
-    auto* videoSink = videoDesc->mutable_media_sink_service();
-    auto* videoConfig = videoSink->add_video_configs();
+    // Connection config with ping
+    auto* connCfg = response.mutable_connection_configuration();
+    auto* ping = connCfg->mutable_ping_configuration();
+    ping->set_timeout_ms(5000);
+    ping->set_interval_ms(1500);
+    ping->set_high_latency_threshold_ms(500);
+    ping->set_tracked_ping_count(5);
 
-    using VRes = aap_protobuf::service::media::sink::message::VideoCodecResolutionType;
-    auto res = VRes::VIDEO_1920x1080;
-    if (sdrConfig_.videoHeight <= 480) res = VRes::VIDEO_800x480;
-    else if (sdrConfig_.videoHeight <= 720) res = VRes::VIDEO_1280x720;
-    else if (sdrConfig_.videoHeight <= 1080) res = VRes::VIDEO_1920x1080;
-    else if (sdrConfig_.videoHeight <= 1440) res = VRes::VIDEO_2560x1440;
-    else res = VRes::VIDEO_3840x2160;
-    videoConfig->set_codec_resolution(res);
+    // HeadUnitInfo (v1.6)
+    auto* hui = response.mutable_headunit_info();
+    hui->set_make(sdrConfig_.vehicleMake);
+    hui->set_model(sdrConfig_.vehicleModel);
+    hui->set_year(sdrConfig_.vehicleYear);
+    hui->set_vehicle_id("OAL-JNI-1");
+    hui->set_head_unit_make("OpenAutoLink");
+    hui->set_head_unit_model("Direct JNI");
+    hui->set_head_unit_software_build("1");
+    hui->set_head_unit_software_version("1.0");
 
-    using VFps = aap_protobuf::service::media::sink::message::VideoFrameRateType;
-    auto fps = VFps::VIDEO_FPS_60;
-    if (sdrConfig_.videoFps <= 30) fps = VFps::VIDEO_FPS_30;
-    videoConfig->set_frame_rate(fps);
-    videoConfig->set_video_codec_type(aap_protobuf::service::media::sink::MEDIA_CODEC_VIDEO_H264_BP);
-    videoConfig->set_density(sdrConfig_.videoDpi);
-    if (sdrConfig_.marginWidth > 0) videoConfig->set_width_margin(sdrConfig_.marginWidth);
-    if (sdrConfig_.marginHeight > 0) videoConfig->set_height_margin(sdrConfig_.marginHeight);
-    if (sdrConfig_.pixelAspectE4 > 0) videoConfig->set_pixel_aspect_ratio_e4(sdrConfig_.pixelAspectE4);
+    // Deprecated fields for backward compat (bridge sets these too)
+    response.set_head_unit_make("OpenAutoLink");
+    response.set_model(sdrConfig_.vehicleModel);
+    response.set_year(sdrConfig_.vehicleYear);
+    response.set_vehicle_id("OAL-JNI-1");
+    response.set_head_unit_model("Direct JNI");
+    response.set_head_unit_software_build("1");
+    response.set_head_unit_software_version("1.0");
 
-    // H.265 + VP9 configs
-    auto* vc265 = videoSink->add_video_configs();
-    *vc265 = *videoConfig;
-    vc265->set_video_codec_type(aap_protobuf::service::media::sink::MEDIA_CODEC_VIDEO_H265);
+    // ---- Video channel (matches bridge exactly — NO audio_type) ----
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_VIDEO));
+      auto* ms = svc->mutable_media_sink_service();
+      ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+      ms->set_available_while_in_call(true);
+      // Workaround: newer AA versions check audio_type on ALL MediaSinkService entries
+      // including video. Without this, audio_type defaults to 0 which crashes the phone.
+      ms->set_audio_type(aap_protobuf::service::media::sink::message::AUDIO_STREAM_MEDIA);
 
-    auto* vcVp9 = videoSink->add_video_configs();
-    *vcVp9 = *videoConfig;
-    vcVp9->set_video_codec_type(aap_protobuf::service::media::sink::MEDIA_CODEC_VIDEO_VP9);
+      using VRes = aap_protobuf::service::media::sink::message::VideoCodecResolutionType;
+      using VFps = aap_protobuf::service::media::sink::message::VideoFrameRateType;
+      auto res = VRes::VIDEO_1920x1080;
+      if (sdrConfig_.videoHeight <= 480) res = VRes::VIDEO_800x480;
+      else if (sdrConfig_.videoHeight <= 720) res = VRes::VIDEO_1280x720;
+      else if (sdrConfig_.videoHeight <= 1080) res = VRes::VIDEO_1920x1080;
+      else if (sdrConfig_.videoHeight <= 1440) res = VRes::VIDEO_2560x1440;
+      else res = VRes::VIDEO_3840x2160;
+      auto fps = sdrConfig_.videoFps >= 60 ? VFps::VIDEO_FPS_60 : VFps::VIDEO_FPS_30;
 
-    videoSink->set_available_while_in_call(true);
+      // H.265 at all tiers, then H.264 fallback (matches bridge auto-negotiate)
+      int tiers[] = {5, 4, 3, 2, 1};
+      for (int t : tiers) {
+          auto* vc = ms->add_video_configs();
+          vc->set_codec_resolution(static_cast<VRes>(t));
+          vc->set_frame_rate(fps);
+          vc->set_density(sdrConfig_.videoDpi);
+          vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+          if (sdrConfig_.marginWidth > 0) vc->set_width_margin(sdrConfig_.marginWidth);
+          if (sdrConfig_.marginHeight > 0) vc->set_height_margin(sdrConfig_.marginHeight);
+          if (sdrConfig_.pixelAspectE4 > 0) vc->set_pixel_aspect_ratio_e4(sdrConfig_.pixelAspectE4);
+      }
+      for (int t : {3, 2, 1}) { // H.264 fallback at ≤1080p
+          auto* vc = ms->add_video_configs();
+          vc->set_codec_resolution(static_cast<VRes>(t));
+          vc->set_frame_rate(fps);
+          vc->set_density(sdrConfig_.videoDpi);
+          vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
+          if (sdrConfig_.marginWidth > 0) vc->set_width_margin(sdrConfig_.marginWidth);
+          if (sdrConfig_.marginHeight > 0) vc->set_height_margin(sdrConfig_.marginHeight);
+          if (sdrConfig_.pixelAspectE4 > 0) vc->set_pixel_aspect_ratio_e4(sdrConfig_.pixelAspectE4);
+      }
+    }
 
     // ---- Media audio (48kHz stereo) ----
-    auto* maDesc = response.add_channels();
-    auto* maSink = maDesc->mutable_media_sink_service();
-    auto* maCfg = maSink->add_audio_configs();
-    maCfg->set_sample_rate(48000);
-    maCfg->set_bit_depth(16);
-    maCfg->set_channel_count(2);
-    maSink->set_audio_type(aap_protobuf::service::media::sink::AUDIO_STREAM_MEDIA);
-    maSink->set_available_while_in_call(true);
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_MEDIA_AUDIO));
+      auto* ms = svc->mutable_media_sink_service();
+      ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_AUDIO_PCM);
+      ms->set_audio_type(aap_protobuf::service::media::sink::message::AUDIO_STREAM_MEDIA);
+      ms->set_available_while_in_call(true);
+      auto* ac = ms->add_audio_configs();
+      ac->set_sampling_rate(48000); ac->set_number_of_bits(16); ac->set_number_of_channels(2);
+    }
 
-    // ---- Guidance audio (16kHz mono) ----
-    auto* gaDesc = response.add_channels();
-    auto* gaSink = gaDesc->mutable_media_sink_service();
-    auto* gaCfg = gaSink->add_audio_configs();
-    gaCfg->set_sample_rate(16000);
-    gaCfg->set_bit_depth(16);
-    gaCfg->set_channel_count(1);
-    gaSink->set_audio_type(aap_protobuf::service::media::sink::AUDIO_STREAM_GUIDANCE);
-    gaSink->set_available_while_in_call(true);
+    // ---- Guidance/Speech audio (16kHz mono) ----
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_GUIDANCE_AUDIO));
+      auto* ms = svc->mutable_media_sink_service();
+      ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_AUDIO_PCM);
+      ms->set_audio_type(aap_protobuf::service::media::sink::message::AUDIO_STREAM_GUIDANCE);
+      ms->set_available_while_in_call(true);
+      auto* ac = ms->add_audio_configs();
+      ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1);
+    }
 
     // ---- System audio (16kHz mono) ----
-    auto* saDesc = response.add_channels();
-    auto* saSink = saDesc->mutable_media_sink_service();
-    auto* saCfg = saSink->add_audio_configs();
-    saCfg->set_sample_rate(16000);
-    saCfg->set_bit_depth(16);
-    saCfg->set_channel_count(1);
-    saSink->set_audio_type(aap_protobuf::service::media::sink::AUDIO_STREAM_SYSTEM_AUDIO);
-    saSink->set_available_while_in_call(true);
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_SYSTEM_AUDIO));
+      auto* ms = svc->mutable_media_sink_service();
+      ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_AUDIO_PCM);
+      ms->set_audio_type(aap_protobuf::service::media::sink::message::AUDIO_STREAM_SYSTEM_AUDIO);
+      ms->set_available_while_in_call(true);
+      auto* ac = ms->add_audio_configs();
+      ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1);
+    }
 
-    // ---- Telephony audio (16kHz mono) ----
-    auto* taDesc = response.add_channels();
-    auto* taSink = taDesc->mutable_media_sink_service();
-    auto* taCfg = taSink->add_audio_configs();
-    taCfg->set_sample_rate(16000);
-    taCfg->set_bit_depth(16);
-    taCfg->set_channel_count(1);
-    taSink->set_audio_type(aap_protobuf::service::media::sink::AUDIO_STREAM_TELEPHONY);
-    taSink->set_available_while_in_call(true);
+    // ---- Telephony audio (16kHz mono) — disabled: crashes AA v16.7 without BT HFP ----
+    // { auto* svc = response.add_channels();
+    //   svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_TELEPHONY_AUDIO));
+    //   auto* ms = svc->mutable_media_sink_service();
+    //   ms->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_AUDIO_PCM);
+    //   ms->set_audio_type(aap_protobuf::service::media::sink::message::AUDIO_STREAM_TELEPHONY);
+    //   ms->set_available_while_in_call(true);
+    //   auto* ac = ms->add_audio_configs();
+    //   ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1);
+    // }
 
     // ---- Mic input (16kHz mono) ----
-    auto* micDesc = response.add_channels();
-    auto* micSrc = micDesc->mutable_media_source_service();
-    auto* micCfg = micSrc->add_audio_configs();
-    micCfg->set_sample_rate(16000);
-    micCfg->set_bit_depth(16);
-    micCfg->set_channel_count(1);
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SOURCE_MICROPHONE));
+      auto* msrc = svc->mutable_media_source_service();
+      msrc->set_available_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_AUDIO_PCM);
+      msrc->set_available_while_in_call(true);
+      auto* ac = msrc->mutable_audio_config();
+      ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1);
+    }
 
     // ---- Sensor channel ----
-    using ST = aap_protobuf::service::sensorsource::SensorType;
-    auto* senDesc = response.add_channels();
-    auto* senSrc = senDesc->mutable_sensor_source_service();
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_LOCATION);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_COMPASS);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_SPEED);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_RPM);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_FUEL);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_GEAR);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_PARKING_BRAKE);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_NIGHT_MODE);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_DRIVING_STATUS_DATA);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_ENVIRONMENT_DATA);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_ACCELEROMETER_DATA);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_GYROSCOPE_DATA);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_GPS_SATELLITE_DATA);
-    senSrc->add_sensors()->set_sensor_type(ST::SENSOR_VEHICLE_ENERGY_MODEL);
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::SENSOR));
+      namespace ST = aap_protobuf::service::sensorsource::message;
+      auto* ss = svc->mutable_sensor_source_service();
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_DRIVING_STATUS_DATA);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_LOCATION);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_NIGHT_MODE);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_SPEED);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_GEAR);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_PARKING_BRAKE);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_FUEL);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_ODOMETER);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_ENVIRONMENT_DATA);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_COMPASS);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_ACCELEROMETER_DATA);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_GYROSCOPE_DATA);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_GPS_SATELLITE_DATA);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_RPM);
+      ss->add_sensors()->set_sensor_type(ST::SENSOR_VEHICLE_ENERGY_MODEL);
+    }
 
     // ---- Input channel ----
-    auto* inDesc = response.add_channels();
-    auto* inSrc = inDesc->mutable_input_source_service();
-    auto* inTouch = inSrc->add_touchscreen();
-    inTouch->set_width(sdrConfig_.videoWidth);
-    inTouch->set_height(sdrConfig_.videoHeight);
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::INPUT_SOURCE));
+      auto* is = svc->mutable_input_source_service();
+      for (int kc : {84, 85, 86, 87, 88, 89, 90, 126, 127}) {
+          is->add_keycodes_supported(kc);
+      }
+      auto* ts = is->add_touchscreen();
+      ts->set_width(sdrConfig_.videoWidth);
+      ts->set_height(sdrConfig_.videoHeight);
+      ts->set_type(aap_protobuf::service::inputsource::message::CAPACITIVE);
+    }
 
     // ---- Bluetooth channel ----
     if (!sdrConfig_.btMac.empty()) {
-        auto* btDesc = response.add_channels();
-        auto* btSvc = btDesc->mutable_bluetooth_service();
-        btSvc->set_car_address(sdrConfig_.btMac);
-        btSvc->add_supported_pairing_methods(
-            aap_protobuf::service::bluetooth::BLUETOOTH_PAIRING_NUMERIC_COMPARISON);
+        auto* svc = response.add_channels();
+        svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::BLUETOOTH));
+        auto* bs = svc->mutable_bluetooth_service();
+        bs->set_car_address(sdrConfig_.btMac);
+        bs->add_supported_pairing_methods(
+            aap_protobuf::service::bluetooth::message::BLUETOOTH_PAIRING_PIN);
+        bs->add_supported_pairing_methods(
+            aap_protobuf::service::bluetooth::message::BLUETOOTH_PAIRING_NUMERIC_COMPARISON);
     }
 
-    // ---- Nav/media/phone status channels ----
-    response.add_channels()->mutable_navigation_status_service();
-    response.add_channels()->mutable_media_playback_service();
-    response.add_channels()->mutable_phone_status_service();
+    // ---- Navigation Status (IMAGE mode, matches bridge) ----
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::NAVIGATION_STATUS));
+      auto* ns = svc->mutable_navigation_status_service();
+      ns->set_minimum_interval_ms(500);
+      ns->set_type(aap_protobuf::service::navigationstatus::NavigationStatusService::IMAGE);
+      auto* img = ns->mutable_image_options();
+      img->set_width(256);
+      img->set_height(256);
+      img->set_colour_depth_bits(32);
+    }
+
+    // ---- Media Playback Status ----
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_PLAYBACK_STATUS));
+      svc->mutable_media_playback_service();
+    }
+
+    // ---- Phone Status ----
+    { auto* svc = response.add_channels();
+      svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::PHONE_STATUS));
+      svc->mutable_phone_status_service();
+    }
 
     LOGI("SDR built: %d channels, %d bytes", response.channels_size(),
          static_cast<int>(response.ByteSizeLong()));
+
+    // Debug: dump each channel's key fields
+    for (int i = 0; i < response.channels_size(); i++) {
+        const auto& ch = response.channels(i);
+        if (ch.has_media_sink_service()) {
+            const auto& ms = ch.media_sink_service();
+            LOGI("  ch[%d] id=%d media_sink: avail_type=%d audio_type=%d "
+                 "video_configs=%d audio_configs=%d in_call=%d",
+                 i, ch.id(), (int)ms.available_type(),
+                 ms.has_audio_type() ? (int)ms.audio_type() : -1,
+                 ms.video_configs_size(), ms.audio_configs_size(),
+                 (int)ms.available_while_in_call());
+        } else if (ch.has_media_source_service()) {
+            LOGI("  ch[%d] id=%d media_source: avail_type=%d", i, ch.id(),
+                 (int)ch.media_source_service().available_type());
+        } else if (ch.has_sensor_source_service()) {
+            LOGI("  ch[%d] id=%d sensor: %d types", i, ch.id(),
+                 ch.sensor_source_service().sensors_size());
+        } else if (ch.has_input_source_service()) {
+            LOGI("  ch[%d] id=%d input: %d keycodes, %d touch", i, ch.id(),
+                 ch.input_source_service().keycodes_supported_size(),
+                 ch.input_source_service().touchscreen_size());
+        } else if (ch.has_navigation_status_service()) {
+            LOGI("  ch[%d] id=%d nav_status: interval=%d type=%d", i, ch.id(),
+                 ch.navigation_status_service().minimum_interval_ms(),
+                 (int)ch.navigation_status_service().type());
+        } else {
+            LOGI("  ch[%d] id=%d (other service)", i, ch.id());
+        }
+    }
 }
 
 // ============================================================================
-// Input forwarding (app → phone)
+// Input forwarding (app Ã¢â€ â€™ phone)
 // ============================================================================
 
 void JniSession::sendTouchEvent(int action, int pointerId, float x, float y, int pointerCount)
@@ -935,9 +1065,8 @@ void JniSession::requestKeyframe()
     ioService_->post([this]() {
         LOGI("Requesting keyframe (VideoFocusIndication)");
         aap_protobuf::service::media::video::message::VideoFocusNotification focus;
-        focus.set_focus_mode(
-            aap_protobuf::service::media::video::message::VideoFocusNotification::VIDEO_FOCUS_PROJECTED);
-        focus.set_unrequested(false);
+        focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+        focus.set_unsolicited(false);
         auto promise = aasdk::channel::SendPromise::defer(*strand_);
         promise->then([]() {}, [](const auto&) {});
         videoChannel_->sendVideoFocusIndication(focus, std::move(promise));
@@ -945,7 +1074,7 @@ void JniSession::requestKeyframe()
 }
 
 // ============================================================================
-// Typed vehicle sensor methods — each builds SensorBatch and sends
+// Typed vehicle sensor methods Ã¢â‚¬â€ each builds SensorBatch and sends
 // ============================================================================
 
 void JniSession::sendSpeedSensor(int speedMmPerS)
@@ -1087,7 +1216,7 @@ void JniSession::sendRpmSensor(int rpmE3)
 }
 
 // ============================================================================
-// Dispatch methods — called by handler classes to fire JNI callbacks
+// Dispatch methods Ã¢â‚¬â€ called by handler classes to fire JNI callbacks
 // ============================================================================
 
 void JniSession::dispatchAudioFrame(const uint8_t* data, size_t size,

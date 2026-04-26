@@ -67,6 +67,12 @@ if(EXISTS "${AASDK_DIR}/lib/libprotobuf.a")
     set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${AASDK_DIR}/lib/libprotobuf.a")
 endif()
 
+# utf8_validity (protobuf dependency)
+if(EXISTS "${AASDK_DIR}/lib/libutf8_validity.a")
+    add_library(utf8_validity STATIC IMPORTED)
+    set_target_properties(utf8_validity PROPERTIES IMPORTED_LOCATION "${AASDK_DIR}/lib/libutf8_validity.a")
+endif()
+
 # Abseil — glob all libabsl_*.a into a list
 file(GLOB ABSEIL_LIBS "${AASDK_DIR}/lib/libabsl_*.a")
 set(ABSEIL_IMPORTED_TARGETS "")
@@ -104,14 +110,19 @@ target_include_directories(openautolink-jni PRIVATE
 )
 
 # Link against prebuilt static libs + Android system libs
+# Use --whole-archive for protobuf to ensure all symbols are available,
+# and --start-group/--end-group to handle circular deps between static libs.
 target_link_libraries(openautolink-jni PRIVATE
+    -Wl,--start-group
     aasdk
     aap_protobuf
-    $<$<TARGET_EXISTS:protobuf_lib>:protobuf_lib>
+    protobuf_lib
+    $<$<TARGET_EXISTS:utf8_validity>:utf8_validity>
     ${ABSEIL_IMPORTED_TARGETS}
     openssl_ssl
     openssl_crypto
     usb_stub
+    -Wl,--end-group
     log          # Android __android_log_print
     android      # ANativeWindow, etc.
 )

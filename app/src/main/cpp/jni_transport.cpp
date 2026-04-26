@@ -66,6 +66,7 @@ JniTransport::~JniTransport()
 void JniTransport::receive(size_t size, ReceivePromise::Pointer promise)
 {
     strand_.dispatch([this, size, promise = std::move(promise)]() mutable {
+        LOGI("receive() requested %zu bytes, buffer has %zu", size, receiveBuffer_.size());
         if (stopped_) {
             promise->reject(aasdk::error::Error(aasdk::error::ErrorCode::OPERATION_ABORTED));
             return;
@@ -221,6 +222,7 @@ void JniTransport::readThreadFunc()
         env->DeleteLocalRef(jdata);
 
         // Feed into receive buffer
+        LOGI("Read: %d bytes from Java", (int)len);
         onDataReceived(localBuf.data(), static_cast<size_t>(len));
     }
 

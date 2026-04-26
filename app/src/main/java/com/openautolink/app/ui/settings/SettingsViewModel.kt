@@ -136,6 +136,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         SharingStarted.WhileSubscribed(5000),
         SettingsUiState()
     )
+
+    private val _hotspotSsidOverride = MutableStateFlow(AppPreferences.DEFAULT_HOTSPOT_SSID)
+    private val _hotspotPasswordOverride = MutableStateFlow(AppPreferences.DEFAULT_HOTSPOT_PASSWORD)
+    private val _directTransportOverride = MutableStateFlow(AppPreferences.DEFAULT_DIRECT_TRANSPORT)
+
     init {
         viewModelScope.launch {
             preferences.hotspotSsid.collect { _hotspotSsidOverride.value = it }
@@ -147,10 +152,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             preferences.directTransport.collect { _directTransportOverride.value = it }
         }
     }
-
-    private val _hotspotSsidOverride = MutableStateFlow(AppPreferences.DEFAULT_HOTSPOT_SSID)
-    private val _hotspotPasswordOverride = MutableStateFlow(AppPreferences.DEFAULT_HOTSPOT_PASSWORD)
-    private val _directTransportOverride = MutableStateFlow(AppPreferences.DEFAULT_DIRECT_TRANSPORT)
 
     val settingsState: StateFlow<SettingsUiState> = combine(
         uiState,

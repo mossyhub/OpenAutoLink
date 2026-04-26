@@ -167,7 +167,7 @@ class AasdkSession(
         OalLog.i(TAG, "AA session started (native)")
         scope.launch {
             _connectionState.value = ConnectionState.CONNECTED
-            _controlMessages.emit(ControlMessage.PhoneConnected(phoneName = ""))
+            _controlMessages.emit(ControlMessage.PhoneConnected(phoneName = "", phoneType = "wireless"))
         }
     }
 
@@ -201,6 +201,7 @@ class AasdkSession(
             else -> AudioPurpose.MEDIA
         }
         val frame = AudioFrame(
+            direction = AudioFrame.DIRECTION_PLAYBACK,
             data = data,
             purpose = audioPurpose,
             sampleRate = sampleRate,
@@ -273,13 +274,13 @@ class AasdkSession(
 
     override fun onPhoneStatus(signalStrength: Int, callState: Int) {
         scope.launch {
-            _controlMessages.emit(ControlMessage.PhoneStatus(signalStrength = signalStrength))
+            _controlMessages.emit(ControlMessage.PhoneStatus(signalStrength = signalStrength, calls = emptyList()))
         }
     }
 
     override fun onPhoneBattery(level: Int, charging: Boolean) {
         scope.launch {
-            _controlMessages.emit(ControlMessage.PhoneBattery(level = level, critical = level < 10))
+            _controlMessages.emit(ControlMessage.PhoneBattery(level = level, timeRemainingSeconds = 0, critical = level < 10))
         }
     }
 

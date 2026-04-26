@@ -1,5 +1,5 @@
 /*
- * jni_channel_handlers.cpp â€” Handler implementations for all aasdk channels.
+ * jni_channel_handlers.cpp Ã¢â‚¬â€ Handler implementations for all aasdk channels.
  *
  * Each handler: receives on its channel, responds to AA protocol messages,
  * and dispatches events to JniSession for JNI callbacks to Kotlin.
@@ -80,7 +80,7 @@ void JniAudioSinkHandler::onMediaChannelSetupRequest(
 {
     LOGI("Audio setup (type=%d)", static_cast<int>(type_));
     aap_protobuf::service::media::shared::message::Config config;
-    config.set_status(aap_protobuf::shared::STATUS_SUCCESS);
+    config.set_status(aap_protobuf::service::media::shared::message::Config::STATUS_READY);
     config.set_max_unacked(30);
     config.add_configuration_indices(0);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
@@ -168,7 +168,7 @@ void JniSensorHandler::onSensorStartRequest(
 {
     LOGI("Sensor start request: type=%d", request.type());
 
-    // Respond with OK â€” phone expects acknowledgement before sending sensor polls
+    // Respond with OK Ã¢â‚¬â€ phone expects acknowledgement before sending sensor polls
     aap_protobuf::service::sensorsource::message::SensorStartResponseMessage response;
     response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
@@ -372,7 +372,7 @@ void JniMicHandler::onMediaChannelSetupRequest(
 {
     LOGI("Mic setup");
     aap_protobuf::service::media::shared::message::Config config;
-    config.set_status(aap_protobuf::shared::STATUS_SUCCESS);
+    config.set_status(aap_protobuf::service::media::shared::message::Config::STATUS_READY);
     config.set_max_unacked(30);
     config.add_configuration_indices(0);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
@@ -447,9 +447,9 @@ void JniMediaStatusHandler::onChannelOpenRequest(
 void JniMediaStatusHandler::onMetadataUpdate(
     const aap_protobuf::service::mediaplayback::message::MediaPlaybackMetadata& metadata)
 {
-    std::string title = metadata.has_track_name() ? metadata.track_name() : "";
-    std::string artist = metadata.has_artist_name() ? metadata.artist_name() : "";
-    std::string album = metadata.has_album_name() ? metadata.album_name() : "";
+    std::string title = metadata.has_song() ? metadata.song() : "";
+    std::string artist = metadata.has_artist() ? metadata.artist() : "";
+    std::string album = metadata.has_album() ? metadata.album() : "";
 
     const uint8_t* artData = nullptr;
     size_t artSize = 0;
@@ -466,7 +466,7 @@ void JniMediaStatusHandler::onPlaybackUpdate(
     const aap_protobuf::service::mediaplayback::message::MediaPlaybackStatus& playback)
 {
     int state = playback.has_state() ? static_cast<int>(playback.state()) : 0;
-    long long positionMs = playback.has_media_position_ms() ? playback.media_position_ms() : 0;
+    long long positionMs = playback.has_playback_seconds() ? static_cast<long long>(playback.playback_seconds()) * 1000 : 0;
     session_.dispatchMediaPlayback(state, positionMs);
     channel_->receive(shared_from_this());
 }
@@ -509,7 +509,10 @@ void JniPhoneStatusHandler::onPhoneStatusUpdate(
     const aap_protobuf::service::phonestatus::message::PhoneStatus& status)
 {
     int signal = status.has_signal_strength() ? status.signal_strength() : -1;
-    int callState = status.has_call_state() ? static_cast<int>(status.call_state()) : 0;
+    int callState = 0;
+    if (status.calls_size() > 0) {
+        callState = static_cast<int>(status.calls(0).phone_state());
+    }
     session_.dispatchPhoneStatus(signal, callState);
     channel_->receive(shared_from_this());
 }
@@ -552,7 +555,7 @@ void JniBluetoothHandler::onBluetoothPairingRequest(
     const aap_protobuf::service::bluetooth::message::BluetoothPairingRequest& /*request*/)
 {
     LOGI("Bluetooth pairing request");
-    // In JNI mode, BT pairing is handled by Nearby â€” just acknowledge
+    // In JNI mode, BT pairing is handled by Nearby Ã¢â‚¬â€ just acknowledge
     channel_->receive(shared_from_this());
 }
 
