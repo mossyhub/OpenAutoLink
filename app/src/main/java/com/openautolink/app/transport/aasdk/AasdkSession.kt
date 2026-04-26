@@ -4,8 +4,10 @@ import android.util.Log
 import com.openautolink.app.audio.AudioFrame
 import com.openautolink.app.transport.AudioPurpose
 import com.openautolink.app.transport.ConnectionState
+import com.openautolink.app.transport.ControlMessage
 import com.openautolink.app.video.VideoFrame
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -45,6 +47,9 @@ class AasdkSession(
 
     private val _audioFrames = MutableSharedFlow<AudioFrame>(extraBufferCapacity = 60)
     val audioFrames: SharedFlow<AudioFrame> = _audioFrames.asSharedFlow()
+
+    private val _controlMessages = MutableSharedFlow<ControlMessage>(extraBufferCapacity = 64)
+    val controlMessages: Flow<ControlMessage> = _controlMessages.asSharedFlow()
 
     // Callbacks for SessionManager to wire
     var onMicOpenRequested: ((Boolean) -> Unit)? = null

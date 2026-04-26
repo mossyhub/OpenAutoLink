@@ -19,7 +19,7 @@
 
 static JavaVM* gJvm = nullptr;
 static std::mutex gSessionMutex;
-static std::unique_ptr<openautolink::jni::JniSession> gSession;
+static std::shared_ptr<openautolink::jni::JniSession> gSession;
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
 {
@@ -44,7 +44,7 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeCreateSession(
         gSession->stop();
         gSession.reset();
     }
-    gSession = std::make_unique<openautolink::jni::JniSession>(gJvm);
+    gSession = std::make_shared<openautolink::jni::JniSession>(gJvm);
     LOGI("Native session created");
 }
 

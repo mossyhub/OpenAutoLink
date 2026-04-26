@@ -28,16 +28,19 @@ message(STATUS "OAL JNI: ANDROID_NDK = ${ANDROID_NDK}")
 # --------------------------------------------------------------------------
 include(FetchContent)
 
-FetchContent_Declare(
-    boost_headers
-    URL https://github.com/boostorg/boost/releases/download/boost-1.86.0/boost-1.86.0-cmake.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-
-# We only need headers — disable all Boost library builds
-set(BOOST_INCLUDE_LIBRARIES asio system CACHE STRING "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(BOOST_ENABLE_CMAKE ON CACHE BOOL "" FORCE)
+# --------------------------------------------------------------------------
+# Third-party: Boost headers
+# aasdk requires Boost (system, log_setup, log) via find_package.
+# With DISABLE_MODERN_LOGGING=ON, only Boost.Asio (header-only) and
+# Boost.System are actually used. We provide pre-extracted headers.
+# --------------------------------------------------------------------------
+set(BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost/include")
+if(NOT EXISTS "${BOOST_INCLUDE_DIR}/boost/asio.hpp")
+    message(STATUS "OAL JNI: Boost headers not found at ${BOOST_INCLUDE_DIR}")
+    message(STATUS "OAL JNI: Run: scripts/setup-ndk-deps.sh")
+    message(FATAL_ERROR "Boost headers required. Run scripts/setup-ndk-deps.sh")
+endif()
+message(STATUS "OAL JNI: Using Boost headers from ${BOOST_INCLUDE_DIR}")
 
 # --------------------------------------------------------------------------
 # Third-party: OpenSSL for Android
@@ -83,12 +86,17 @@ target_include_directories(usb_stub PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stubs")
 # --------------------------------------------------------------------------
 # aasdk protobuf library (aap_protobuf)
 # --------------------------------------------------------------------------
-# aasdk's protobuf subdirectory needs protoc for the host platform.
-# NDK builds use the host protoc (not cross-compiled).
-# We let aasdk's FetchContent handle protobuf + abseil download.
+# aasdk's protobuf subdirectory handles protobuf + abseil via FetchContent.
+# SKIP_BUILD_ABSL=ON prevents aasdk from calling find_package(absl) at the
+# top level (which fails since abseil is only available inside FetchContent).
+# SKIP_BUILD_PROTOBUF=OFF lets aasdk build its own protobuf.
 set(SKIP_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
-set(SKIP_BUILD_ABSL OFF CACHE BOOL "" FORCE)
+set(SKIP_BUILD_ABSL ON CACHE BOOL "" FORCE)
 set(BUILD_AASDK_STATIC ON CACHE BOOL "" FORCE)
+
+# Disable aasdk's modern logging — requires Boost.Log compiled libs
+# which aren't available on Android NDK. Use boost fallback (cerr).
+set(DISABLE_MODERN_LOGGING ON CACHE BOOL "" FORCE)
 
 # Override aasdk's libusb requirement — we provide a stub
 set(LIBUSB_1_LIBRARIES usb_stub CACHE STRING "" FORCE)
@@ -97,13 +105,12 @@ set(LIBUSB_1_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/stubs" CACHE STRING "" FO
 # Disable aasdk's compiler override (we use NDK compilers)
 set(TARGET_ARCH "" CACHE STRING "" FORCE)
 
+# Add our cmake shim directory FIRST so our Find*.cmake shims override
+# aasdk's find_package calls for Boost, OpenSSL, and libusb.
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 # Build aasdk as static library for Android
 add_subdirectory("${AASDK_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/aasdk_build" EXCLUDE_FROM_ALL)
-
-# --------------------------------------------------------------------------
-# Boost — fetch and configure (header-only for Asio)
-# --------------------------------------------------------------------------
-FetchContent_MakeAvailable(boost_headers)
 
 # --------------------------------------------------------------------------
 # JNI bridge library
@@ -121,9 +128,10 @@ target_include_directories(openautolink-jni PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/aasdk_build/include"
     "${CMAKE_CURRENT_BINARY_DIR}/aasdk_build/protobuf"
     "${OPENSSL_INCLUDE_DIR}"
+    "${BOOST_INCLUDE_DIR}"
 )
 
-# Link against aasdk (static), protobuf, OpenSSL, Boost, Android log
+# Link against aasdk (static), protobuf, OpenSSL, Android log
 target_link_libraries(openautolink-jni PRIVATE
     aasdk
     aap_protobuf
@@ -133,17 +141,10 @@ target_link_libraries(openautolink-jni PRIVATE
     android      # ANativeWindow, etc.
 )
 
-# If Boost targets are available from FetchContent, link them
-if(TARGET Boost::system)
-    target_link_libraries(openautolink-jni PRIVATE Boost::system)
-endif()
-if(TARGET Boost::asio)
-    target_link_libraries(openautolink-jni PRIVATE Boost::asio)
-endif()
-
 target_compile_definitions(openautolink-jni PRIVATE
     BOOST_ASIO_HAS_STD_INVOKE_RESULT=1
     BOOST_ALL_NO_LIB=1
+    DISABLE_MODERN_LOGGING=1
 )
 
 # Strip in release for smaller APK

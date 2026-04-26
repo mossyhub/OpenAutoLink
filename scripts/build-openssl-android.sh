@@ -19,10 +19,10 @@ OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPEN
 # Detect NDK — prefer ANDROID_NDK_HOME, then common locations
 if [ -n "${ANDROID_NDK_HOME:-}" ]; then
     NDK_ROOT="$ANDROID_NDK_HOME"
+elif [ -d "/opt/android-ndk-r28b" ]; then
+    NDK_ROOT="/opt/android-ndk-r28b"
 elif [ -d "$HOME/Android/Sdk/ndk" ]; then
     NDK_ROOT=$(ls -d "$HOME/Android/Sdk/ndk"/*/ 2>/dev/null | sort -V | tail -1)
-elif [ -d "/mnt/c/Users/lamos/AppData/Local/Android/Sdk/ndk" ]; then
-    NDK_ROOT=$(ls -d "/mnt/c/Users/lamos/AppData/Local/Android/Sdk/ndk"/*/ 2>/dev/null | sort -V | tail -1)
 else
     echo "ERROR: Set ANDROID_NDK_HOME or install NDK"
     exit 1
