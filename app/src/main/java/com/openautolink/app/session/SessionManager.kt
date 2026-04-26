@@ -260,9 +260,21 @@ class SessionManager(
         _vehicleDataForwarder = context?.let { ctx ->
             VehicleDataForwarderImpl(
                 ctx,
-                sendMessage = { vehicleData ->
+                sendMessage = { vd ->
                     val session = aasdkSession ?: return@VehicleDataForwarderImpl
-                    // TODO: Serialize vehicle data and send via session.sendVehicleSensor()
+                    vd.speedKmh?.let { session.sendSpeed((it / 3.6f * 1000).toInt()) }
+                    vd.gearRaw?.let { session.sendGear(it) }
+                    vd.parkingBrake?.let { session.sendParkingBrake(it) }
+                    vd.nightMode?.let { session.sendNightMode(it) }
+                    vd.driving?.let { session.sendDrivingStatus(it) }
+                    if (vd.fuelLevelPct != null || vd.rangeKm != null) {
+                        session.sendFuel(
+                            vd.fuelLevelPct ?: 0,
+                            ((vd.rangeKm ?: 0f) * 1000).toInt(),
+                            vd.lowFuel ?: false
+                        )
+                    }
+                    vd.rpmE3?.let { session.sendRpm(it) }
                 },
                 onIgnitionOn = { /* aasdk mode doesn't need ignition-based reconnect */ }
             )
@@ -273,7 +285,15 @@ class SessionManager(
         _imuForwarder = context?.let { ctx ->
             ImuForwarder(ctx) { imuData ->
                 val session = aasdkSession ?: return@ImuForwarder
-                // TODO: Serialize IMU data and send via session.sendVehicleSensor()
+                imuData.accelXe3?.let { x ->
+                    session.sendAccelerometer(x, imuData.accelYe3 ?: 0, imuData.accelZe3 ?: 0)
+                }
+                imuData.gyroRxe3?.let { rx ->
+                    session.sendGyroscope(rx, imuData.gyroRye3 ?: 0, imuData.gyroRze3 ?: 0)
+                }
+                imuData.compassBearingE6?.let { b ->
+                    session.sendCompass(b, imuData.compassPitchE6 ?: 0, imuData.compassRollE6 ?: 0)
+                }
             }
         }
 
@@ -567,7 +587,11 @@ class SessionManager(
             is ControlMessage.Button -> session.sendKeyEvent(message.keycode, message.down)
             is ControlMessage.KeyframeRequest -> session.requestKeyframe()
             is ControlMessage.VehicleData -> {
-                // TODO: Serialize and send via session.sendVehicleSensor()
+                message.speedKmh?.let { session.sendSpeed((it / 3.6f * 1000).toInt()) }
+                message.gearRaw?.let { session.sendGear(it) }
+                message.parkingBrake?.let { session.sendParkingBrake(it) }
+                message.nightMode?.let { session.sendNightMode(it) }
+                message.driving?.let { session.sendDrivingStatus(it) }
             }
             is ControlMessage.Gnss -> {
                 // GPS forwarded via LocationListener, not control messages

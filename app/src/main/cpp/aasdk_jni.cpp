@@ -179,6 +179,64 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeRequestKeyframe(
     }
 }
 
+// Typed vehicle sensor JNI methods — each calls the corresponding C++ method
+// that builds the correct SensorBatch protobuf and sends via sensorChannel_.
+
+#define SENSOR_JNI(Name, ...) \
+JNIEXPORT void JNICALL \
+Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSend##Name( \
+    JNIEnv* /*env*/, jclass /*clazz*/, __VA_ARGS__)
+
+SENSOR_JNI(Speed, jint speedMmPerS) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendSpeedSensor(speedMmPerS);
+}
+
+SENSOR_JNI(Gear, jint gear) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendGearSensor(gear);
+}
+
+SENSOR_JNI(ParkingBrake, jboolean engaged) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendParkingBrakeSensor(engaged);
+}
+
+SENSOR_JNI(NightMode, jboolean night) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendNightModeSensor(night);
+}
+
+SENSOR_JNI(DrivingStatus, jboolean moving) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendDrivingStatusSensor(moving);
+}
+
+SENSOR_JNI(Fuel, jint levelPct, jint rangeM, jboolean lowFuel) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendFuelSensor(levelPct, rangeM, lowFuel);
+}
+
+SENSOR_JNI(Accelerometer, jint xE3, jint yE3, jint zE3) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendAccelerometerSensor(xE3, yE3, zE3);
+}
+
+SENSOR_JNI(Gyroscope, jint rxE3, jint ryE3, jint rzE3) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendGyroscopeSensor(rxE3, ryE3, rzE3);
+}
+
+SENSOR_JNI(Compass, jint bearingE6, jint pitchE6, jint rollE6) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendCompassSensor(bearingE6, pitchE6, rollE6);
+}
+
+SENSOR_JNI(Rpm, jint rpmE3) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendRpmSensor(rpmE3);
+}
+
 /*
  * Class:     com_openautolink_app_transport_aasdk_AasdkNative
  * Method:    nativeIsStreaming

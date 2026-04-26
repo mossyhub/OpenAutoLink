@@ -59,6 +59,36 @@ object AasdkNative {
     external fun nativeSendVehicleSensor(sensorType: Int, data: ByteArray)
 
     @JvmStatic
+    external fun nativeSendSpeed(speedMmPerS: Int)
+
+    @JvmStatic
+    external fun nativeSendGear(gear: Int)
+
+    @JvmStatic
+    external fun nativeSendParkingBrake(engaged: Boolean)
+
+    @JvmStatic
+    external fun nativeSendNightMode(night: Boolean)
+
+    @JvmStatic
+    external fun nativeSendDrivingStatus(moving: Boolean)
+
+    @JvmStatic
+    external fun nativeSendFuel(levelPct: Int, rangeM: Int, lowFuel: Boolean)
+
+    @JvmStatic
+    external fun nativeSendAccelerometer(xE3: Int, yE3: Int, zE3: Int)
+
+    @JvmStatic
+    external fun nativeSendGyroscope(rxE3: Int, ryE3: Int, rzE3: Int)
+
+    @JvmStatic
+    external fun nativeSendCompass(bearingE6: Int, pitchE6: Int, rollE6: Int)
+
+    @JvmStatic
+    external fun nativeSendRpm(rpmE3: Int)
+
+    @JvmStatic
     external fun nativeSendMicAudio(data: ByteArray)
 
     @JvmStatic

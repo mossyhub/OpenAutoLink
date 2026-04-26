@@ -135,6 +135,17 @@ class AasdkSession(
         AasdkNative.nativeSendVehicleSensor(sensorType, data)
     }
 
+    fun sendSpeed(speedMmPerS: Int) = AasdkNative.nativeSendSpeed(speedMmPerS)
+    fun sendGear(gear: Int) = AasdkNative.nativeSendGear(gear)
+    fun sendParkingBrake(engaged: Boolean) = AasdkNative.nativeSendParkingBrake(engaged)
+    fun sendNightMode(night: Boolean) = AasdkNative.nativeSendNightMode(night)
+    fun sendDrivingStatus(moving: Boolean) = AasdkNative.nativeSendDrivingStatus(moving)
+    fun sendFuel(levelPct: Int, rangeM: Int, lowFuel: Boolean) = AasdkNative.nativeSendFuel(levelPct, rangeM, lowFuel)
+    fun sendAccelerometer(xE3: Int, yE3: Int, zE3: Int) = AasdkNative.nativeSendAccelerometer(xE3, yE3, zE3)
+    fun sendGyroscope(rxE3: Int, ryE3: Int, rzE3: Int) = AasdkNative.nativeSendGyroscope(rxE3, ryE3, rzE3)
+    fun sendCompass(bearingE6: Int, pitchE6: Int, rollE6: Int) = AasdkNative.nativeSendCompass(bearingE6, pitchE6, rollE6)
+    fun sendRpm(rpmE3: Int) = AasdkNative.nativeSendRpm(rpmE3)
+
     fun sendMicAudio(data: ByteArray) {
         AasdkNative.nativeSendMicAudio(data)
     }
@@ -197,16 +208,39 @@ class AasdkSession(
         }
     }
 
-    override fun onNavigationStatus(protoData: ByteArray) {
-        // TODO: Parse nav proto and emit ControlMessage.NavState
+    override fun onNavigationStatus(status: Int) {
+        scope.launch {
+            if (status != 1) { // not ACTIVE
+                _controlMessages.emit(ControlMessage.NavStateClear)
+            }
+        }
     }
 
-    override fun onNavigationTurn(protoData: ByteArray) {
-        // TODO: Parse nav turn proto
+    override fun onNavigationTurn(maneuver: String, road: String, iconPng: ByteArray?) {
+        scope.launch {
+            val iconBase64 = iconPng?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            _controlMessages.emit(ControlMessage.NavState(
+                maneuver = maneuver,
+                distanceMeters = null,
+                road = road,
+                etaSeconds = null,
+                navImageBase64 = iconBase64
+            ))
+        }
     }
 
-    override fun onNavigationDistance(protoData: ByteArray) {
-        // TODO: Parse nav distance proto
+    override fun onNavigationDistance(distanceMeters: Int, etaSeconds: Int,
+                                      displayDistance: String?, displayUnit: String?) {
+        scope.launch {
+            _controlMessages.emit(ControlMessage.NavState(
+                maneuver = null,
+                distanceMeters = distanceMeters,
+                road = null,
+                etaSeconds = etaSeconds,
+                displayDistance = displayDistance,
+                displayDistanceUnit = displayUnit
+            ))
+        }
     }
 
     override fun onMediaMetadata(title: String, artist: String, album: String, albumArt: ByteArray?) {
@@ -219,7 +253,14 @@ class AasdkSession(
     }
 
     override fun onMediaPlayback(state: Int, positionMs: Long) {
-        // TODO: Emit media playback state
+        scope.launch {
+            val playing = state == 1 // PLAYING
+            _controlMessages.emit(ControlMessage.MediaMetadata(
+                title = null, artist = null, album = null,
+                durationMs = null, positionMs = positionMs,
+                playing = playing, albumArtBase64 = null
+            ))
+        }
     }
 
     override fun onPhoneStatus(signalStrength: Int, callState: Int) {

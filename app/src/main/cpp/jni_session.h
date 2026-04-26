@@ -40,6 +40,9 @@
 #include <aasdk/Channel/SensorSource/ISensorSourceServiceEventHandler.hpp>
 #include <aasdk/Channel/InputSource/InputSourceService.hpp>
 #include <aasdk/Channel/InputSource/IInputSourceServiceEventHandler.hpp>
+#include <aasdk/Channel/MediaSource/MediaSourceService.hpp>
+#include <aasdk/Channel/MediaSource/IMediaSourceServiceEventHandler.hpp>
+#include <aasdk/Channel/MediaSource/Audio/MicrophoneAudioChannel.hpp>
 #include <aasdk/Channel/Bluetooth/BluetoothService.hpp>
 #include <aasdk/Channel/Bluetooth/IBluetoothServiceEventHandler.hpp>
 #include <aasdk/Channel/NavigationStatus/NavigationStatusService.hpp>
@@ -111,6 +114,18 @@ public:
 
     /** Request a video keyframe (IDR). */
     void requestKeyframe();
+
+    // Typed vehicle sensor methods — each builds a SensorBatch and sends
+    void sendSpeedSensor(int speedMmPerS);
+    void sendGearSensor(int gear);
+    void sendParkingBrakeSensor(bool engaged);
+    void sendNightModeSensor(bool night);
+    void sendDrivingStatusSensor(bool moving);
+    void sendFuelSensor(int levelPct, int rangeM, bool lowFuel);
+    void sendAccelerometerSensor(int xE3, int yE3, int zE3);
+    void sendGyroscopeSensor(int rxE3, int ryE3, int rzE3);
+    void sendCompassSensor(int bearingE6, int pitchE6, int rollE6);
+    void sendRpmSensor(int rpmE3);
 
     /** Is session actively streaming? */
     bool isStreaming() const { return streaming_; }
@@ -190,9 +205,11 @@ private:
     std::shared_ptr<aasdk::channel::inputsource::InputSourceService> inputChannel_;
     std::shared_ptr<aasdk::channel::sensorsource::SensorSourceService> sensorChannel_;
     std::shared_ptr<aasdk::channel::navigationstatus::NavigationStatusService> navChannel_;
+    std::shared_ptr<aasdk::channel::mediasource::MediaSourceService> micChannel_;
 
     std::atomic<bool> stopped_{false};
     std::atomic<bool> streaming_{false};
+    std::atomic<bool> micOpen_{false};
 
     // SDR config (from Kotlin)
     struct SdrConfig {

@@ -41,14 +41,15 @@ interface AasdkSessionCallback {
      */
     fun onMicRequest(open: Boolean)
 
-    /** Navigation status update (serialized protobuf). */
-    fun onNavigationStatus(protoData: ByteArray)
+    /** Navigation status change (active/inactive/rerouting). */
+    fun onNavigationStatus(status: Int)
 
-    /** Navigation next turn event (serialized protobuf). */
-    fun onNavigationTurn(protoData: ByteArray)
+    /** Navigation turn event — parsed fields from protobuf. */
+    fun onNavigationTurn(maneuver: String, road: String, iconPng: ByteArray?)
 
-    /** Navigation distance to next turn (serialized protobuf). */
-    fun onNavigationDistance(protoData: ByteArray)
+    /** Navigation distance update. */
+    fun onNavigationDistance(distanceMeters: Int, etaSeconds: Int,
+                            displayDistance: String?, displayUnit: String?)
 
     /** Media metadata update (track info). */
     fun onMediaMetadata(title: String, artist: String, album: String, albumArt: ByteArray?)
