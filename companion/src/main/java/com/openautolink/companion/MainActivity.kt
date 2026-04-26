@@ -106,4 +106,9 @@ object CompanionPrefs {
     const val AUTO_START_BT = 1
     const val AUTO_START_WIFI = 2
     const val AUTO_START_APP_OPEN = 3
+
+    const val TRANSPORT_MODE = "transport_mode"
+    const val TRANSPORT_NEARBY = "nearby"
+    const val TRANSPORT_TCP = "tcp"
+    const val DEFAULT_TRANSPORT = TRANSPORT_TCP
 }

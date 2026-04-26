@@ -156,7 +156,11 @@ class SessionManager(
     // WiFi frequency (from Nearby's underlying WiFi Direct)
     val wifiFrequencyMhz: StateFlow<Int> = AaNearbyManager.wifiFrequencyMhz
 
-    // Multi-phone
+    // Current transport mode — UI uses this to show/hide Nearby-specific features
+    private val _transportMode = MutableStateFlow("hotspot")
+    val transportMode: StateFlow<String> = _transportMode.asStateFlow()
+
+    // Multi-phone (only active in Nearby mode)
     private val _phoneName = MutableStateFlow<String?>(null)
     val phoneName: StateFlow<String?> = _phoneName.asStateFlow()
     val connectedPhoneName: StateFlow<String?> = AaNearbyManager.connectedPhoneName
@@ -360,6 +364,7 @@ class SessionManager(
         scalingMode: String = "letterbox",
     ) {
         aasdkSession?.stop()
+        _transportMode.value = directTransport
         val ctx = context ?: return
 
         // Map resolution string to pixel dimensions
@@ -431,6 +436,7 @@ class SessionManager(
         }
 
         val session = AasdkSession(scope, ctx)
+        session.transportMode = directTransport
         session.sdrConfig = AasdkSdrConfig(
             videoWidth = resW,
             videoHeight = resH,
@@ -449,16 +455,18 @@ class SessionManager(
             hideBattery = hideBattery,
         )
 
-        // Multi-phone: set default phone name for auto-connect
-        session.defaultPhoneName = _defaultPhoneName
-        session.onPhoneConnected = { phoneName ->
-            _phoneName.value = phoneName
-            if (_defaultPhoneName.isEmpty()) {
-                _defaultPhoneName = phoneName
-                scope.launch {
-                    val c = context ?: return@launch
-                    AppPreferences.getInstance(c).setDefaultPhoneName(phoneName)
-                    OalLog.i(TAG, "Default phone saved: $phoneName")
+        // Multi-phone: only relevant in nearby mode
+        if (directTransport == "nearby") {
+            session.defaultPhoneName = _defaultPhoneName
+            session.onPhoneConnected = { phoneName ->
+                _phoneName.value = phoneName
+                if (_defaultPhoneName.isEmpty()) {
+                    _defaultPhoneName = phoneName
+                    scope.launch {
+                        val c = context ?: return@launch
+                        AppPreferences.getInstance(c).setDefaultPhoneName(phoneName)
+                        OalLog.i(TAG, "Default phone saved: $phoneName")
+                    }
                 }
             }
         }
@@ -471,7 +479,10 @@ class SessionManager(
                 val newState = connState.toSessionState()
                 _sessionState.value = newState
                 _statusMessage.value = when (newState) {
-                    SessionState.IDLE -> "Nearby: ${AaNearbyManager.status.value}"
+                    SessionState.IDLE -> if (directTransport == "nearby")
+                        "Nearby: ${AaNearbyManager.status.value}"
+                    else
+                        "TCP: connecting to phone hotspot..."
                     SessionState.CONNECTING -> "Phone connecting..."
                     SessionState.CONNECTED -> "Handshake..."
                     SessionState.STREAMING -> "Streaming"

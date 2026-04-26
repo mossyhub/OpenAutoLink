@@ -8,6 +8,7 @@ import com.openautolink.app.transport.AudioPurpose
 import com.openautolink.app.transport.ConnectionState
 import com.openautolink.app.transport.ControlMessage
 import com.openautolink.app.transport.direct.AaNearbyManager
+import com.openautolink.app.transport.direct.TcpConnector
 import com.openautolink.app.video.VideoFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,9 +68,15 @@ class AasdkSession(
     /** Callback when a phone connects via Nearby */
     var onPhoneConnected: ((String) -> Unit)? = null
 
-    // Nearby manager — reuse the existing one from direct mode
+    // Nearby manager — only used in "nearby" transport mode
     private var _nearbyManager: AaNearbyManager? = null
     val nearbyManager: AaNearbyManager? get() = _nearbyManager
+
+    // TCP connector — only used in "hotspot" transport mode
+    private var _tcpConnector: TcpConnector? = null
+
+    /** Current transport mode: "nearby" or "hotspot" */
+    var transportMode: String = "hotspot"
 
     private var transportPipe: AasdkTransportPipe? = null
 
@@ -77,9 +84,15 @@ class AasdkSession(
 
     fun start() {
         _connectionState.value = ConnectionState.DISCONNECTED
-        OalLog.i(TAG, "Starting aasdk session (Nearby transport)")
 
-        // Start Nearby discovery — when phone connects, we get streams
+        when (transportMode) {
+            "hotspot" -> startTcp()
+            else -> startNearby()
+        }
+    }
+
+    private fun startNearby() {
+        OalLog.i(TAG, "Starting aasdk session (Nearby transport)")
         _nearbyManager?.stop()
         _nearbyManager = AaNearbyManager(context, scope) { nearbySocket ->
             scope.launch(Dispatchers.IO) {
@@ -90,6 +103,18 @@ class AasdkSession(
         _nearbyManager?.defaultPhoneName = defaultPhoneName
         _nearbyManager?.onPhoneConnected = onPhoneConnected
         _nearbyManager?.start()
+    }
+
+    private fun startTcp() {
+        OalLog.i(TAG, "Starting aasdk session (TCP/hotspot transport)")
+        _tcpConnector?.stop()
+        _tcpConnector = TcpConnector(context, scope) { tcpSocket ->
+            scope.launch(Dispatchers.IO) {
+                OalLog.i(TAG, "TCP socket ready — starting aasdk native session")
+                handleConnection(tcpSocket)
+            }
+        }
+        _tcpConnector?.start()
     }
 
     private fun handleConnection(socket: Socket) {
@@ -117,6 +142,8 @@ class AasdkSession(
         OalLog.i(TAG, "Stopping aasdk session")
         _nearbyManager?.stop()
         _nearbyManager = null
+        _tcpConnector?.stop()
+        _tcpConnector = null
         AasdkNative.nativeStopSession()
         transportPipe?.close()
         transportPipe = null

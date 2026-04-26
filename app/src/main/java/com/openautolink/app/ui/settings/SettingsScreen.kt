@@ -293,8 +293,8 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
 
         Text(
             text = when (uiState.directTransport) {
-                "nearby" -> "Connect via Google Nearby Connections. Requires Wireless Helper companion app on phone."
-                "hotspot" -> "Connect via phone's WiFi hotspot. Enter hotspot SSID/password below. Car must be connected to phone hotspot in WiFi settings."
+                "nearby" -> "Connect via Google Nearby Connections (Bluetooth → WiFi Direct). Requires companion app on phone. Supports multi-phone selection."
+                "hotspot" -> "Connect via phone's WiFi hotspot (TCP). Car must be on the phone's hotspot network. Companion app listens on port 5277."
                 else -> ""
             },
             style = MaterialTheme.typography.bodySmall,
@@ -346,47 +346,9 @@ private fun ConnectionTab(viewModel: SettingsViewModel, uiState: SettingsUiState
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // --- Hotspot Credentials (hotspot transport only) ---
-        if (uiState.directTransport == "hotspot") {
-            SectionHeader("Phone Hotspot Credentials")
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Enter your phone's hotspot SSID and password. These are sent to the phone during the Bluetooth handshake so it knows which WiFi network to use. Leave blank to test without credentials.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            var ssidInput by remember(uiState.hotspotSsid) { mutableStateOf(uiState.hotspotSsid) }
-            OutlinedTextField(
-                value = ssidInput,
-                onValueChange = { ssidInput = it; viewModel.updateHotspotSsid(it) },
-                label = { Text("Hotspot SSID") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            var pskInput by remember(uiState.hotspotPassword) { mutableStateOf(uiState.hotspotPassword) }
-            OutlinedTextField(
-                value = pskInput,
-                onValueChange = { pskInput = it; viewModel.updateHotspotPassword(it) },
-                label = { Text("Hotspot Password") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            HorizontalDivider(modifier = Modifier.fillMaxWidth(0.5f))
-
-            Spacer(modifier = Modifier.height(24.dp))
-        }
+        // --- Hotspot Credentials removed ---
+        // TCP transport connects to phone's WiFi gateway automatically.
+        // User connects to the phone's hotspot via Android WiFi settings.
     }
 }
 

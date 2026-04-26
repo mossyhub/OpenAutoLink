@@ -168,6 +168,64 @@ fun MainScreen(
             HorizontalDivider()
             Spacer(Modifier.height(20.dp))
 
+            // ── Transport Mode ─────────────────────────────────────
+            Text(
+                text = "Transport Mode",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+
+            var transportMode by remember {
+                mutableStateOf(
+                    prefs.getString(CompanionPrefs.TRANSPORT_MODE, CompanionPrefs.DEFAULT_TRANSPORT)
+                        ?: CompanionPrefs.DEFAULT_TRANSPORT
+                )
+            }
+
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                SegmentedButton(
+                    selected = transportMode == CompanionPrefs.TRANSPORT_TCP,
+                    onClick = {
+                        transportMode = CompanionPrefs.TRANSPORT_TCP
+                        prefs.edit().putString(CompanionPrefs.TRANSPORT_MODE, CompanionPrefs.TRANSPORT_TCP).apply()
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(0, 2),
+                ) { Text("WiFi Hotspot") }
+                SegmentedButton(
+                    selected = transportMode == CompanionPrefs.TRANSPORT_NEARBY,
+                    onClick = {
+                        transportMode = CompanionPrefs.TRANSPORT_NEARBY
+                        prefs.edit().putString(CompanionPrefs.TRANSPORT_MODE, CompanionPrefs.TRANSPORT_NEARBY).apply()
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(1, 2),
+                ) { Text("Nearby") }
+            }
+
+            Text(
+                text = if (transportMode == CompanionPrefs.TRANSPORT_TCP)
+                    "Car connects to this phone's hotspot via TCP. Enable your phone's WiFi hotspot and connect the car to it."
+                else
+                    "Car discovers this phone via Google Nearby Connections (Bluetooth → WiFi Direct).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+
+            Text(
+                text = "⚠ Restart the service after changing transport mode.",
+                style = MaterialTheme.typography.bodySmall,
+                color = OalOrange,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(20.dp))
+
             // ── Auto-Start Section ─────────────────────────────────
             Text(
                 text = "Auto-Start",

@@ -32,6 +32,7 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var nearbyAdvertiser: NearbyAdvertiser? = null
+    private var tcpAdvertiser: TcpAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
@@ -72,10 +73,25 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
     private fun startNearby() {
         acquireWakeLock()
         nearbyAdvertiser?.stop()
+        tcpAdvertiser?.stop()
 
-        nearbyAdvertiser = NearbyAdvertiser(this, serviceScope, this)
-        nearbyAdvertiser?.start()
-        updateNotification("Searching for car...")
+        val prefs = getSharedPreferences(CompanionPrefs.NAME, MODE_PRIVATE)
+        val mode = prefs.getString(CompanionPrefs.TRANSPORT_MODE, CompanionPrefs.DEFAULT_TRANSPORT)
+
+        when (mode) {
+            CompanionPrefs.TRANSPORT_TCP -> {
+                Log.i(TAG, "Transport mode: TCP (hotspot)")
+                tcpAdvertiser = TcpAdvertiser(this, this)
+                tcpAdvertiser?.start()
+                updateNotification("TCP: waiting for car on port ${TcpAdvertiser.PORT}...")
+            }
+            else -> {
+                Log.i(TAG, "Transport mode: Nearby")
+                nearbyAdvertiser = NearbyAdvertiser(this, serviceScope, this)
+                nearbyAdvertiser?.start()
+                updateNotification("Nearby: searching for car...")
+            }
+        }
     }
 
     // ── NearbyAdvertiser.StateListener ─────────────────────────────────
@@ -114,6 +130,7 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
         _statusText.value = "Timeout — retrying..."
         updateNotification("Searching for car...")
         nearbyAdvertiser?.stop()
+        tcpAdvertiser?.stop()
         startNearby()
     }
 
@@ -180,6 +197,7 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
         _isConnected.value = false
         _statusText.value = "Stopped"
         nearbyAdvertiser?.stop()
+        tcpAdvertiser?.stop()
         releaseWakeLock()
         serviceScope.cancel()
         super.onDestroy()
