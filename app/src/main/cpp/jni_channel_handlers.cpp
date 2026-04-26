@@ -1,5 +1,5 @@
 /*
- * jni_channel_handlers.cpp — Handler implementations for all aasdk channels.
+ * jni_channel_handlers.cpp â€” Handler implementations for all aasdk channels.
  *
  * Each handler: receives on its channel, responds to AA protocol messages,
  * and dispatches events to JniSession for JNI callbacks to Kotlin.
@@ -68,7 +68,7 @@ void JniAudioSinkHandler::onChannelOpenRequest(
 {
     LOGI("Audio channel open (type=%d)", static_cast<int>(type_));
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -80,7 +80,7 @@ void JniAudioSinkHandler::onMediaChannelSetupRequest(
 {
     LOGI("Audio setup (type=%d)", static_cast<int>(type_));
     aap_protobuf::service::media::shared::message::Config config;
-    config.set_status(aap_protobuf::shared::STATUS_OK);
+    config.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     config.set_max_unacked(30);
     config.add_configuration_indices(0);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
@@ -110,7 +110,7 @@ void JniAudioSinkHandler::onMediaWithTimestampIndication(
     // ACK immediately for flow control
     aap_protobuf::service::media::source::message::Ack ack;
     ack.set_session_id(0);
-    ack.set_value(1);
+    ack.set_ack(1);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [](const auto&) {});
     channel_->sendMediaAckIndication(ack, std::move(promise));
@@ -156,7 +156,7 @@ void JniSensorHandler::onChannelOpenRequest(
 {
     LOGI("Sensor channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -168,9 +168,9 @@ void JniSensorHandler::onSensorStartRequest(
 {
     LOGI("Sensor start request: type=%d", request.type());
 
-    // Respond with OK — phone expects acknowledgement before sending sensor polls
+    // Respond with OK â€” phone expects acknowledgement before sending sensor polls
     aap_protobuf::service::sensorsource::message::SensorStartResponseMessage response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendSensorStartResponse(response, std::move(promise));
@@ -205,7 +205,7 @@ void JniInputHandler::onChannelOpenRequest(
 {
     LOGI("Input channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -246,7 +246,7 @@ void JniNavStatusHandler::onChannelOpenRequest(
 {
     LOGI("Nav status channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -322,11 +322,11 @@ void JniNavStatusHandler::onDistanceEvent(
 
     std::string displayDistance;
     std::string displayUnit;
-    if (distanceEvent.has_display_value()) {
-        displayDistance = distanceEvent.display_value();
+    if (distanceEvent.has_display_distance_e3()) {
+        displayDistance = std::to_string(distanceEvent.display_distance_e3());
     }
-    if (distanceEvent.has_display_units()) {
-        displayUnit = distanceEvent.display_units();
+    if (distanceEvent.has_display_distance_unit()) {
+        displayUnit = std::to_string(static_cast<int>(distanceEvent.display_distance_unit()));
     }
 
     session_.dispatchNavDistance(distanceMeters, etaSeconds, displayDistance, displayUnit);
@@ -360,7 +360,7 @@ void JniMicHandler::onChannelOpenRequest(
 {
     LOGI("Mic channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -372,7 +372,7 @@ void JniMicHandler::onMediaChannelSetupRequest(
 {
     LOGI("Mic setup");
     aap_protobuf::service::media::shared::message::Config config;
-    config.set_status(aap_protobuf::shared::STATUS_OK);
+    config.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     config.set_max_unacked(30);
     config.add_configuration_indices(0);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
@@ -437,7 +437,7 @@ void JniMediaStatusHandler::onChannelOpenRequest(
 {
     LOGI("Media status channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -498,7 +498,7 @@ void JniPhoneStatusHandler::onChannelOpenRequest(
 {
     LOGI("Phone status channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -541,7 +541,7 @@ void JniBluetoothHandler::onChannelOpenRequest(
 {
     LOGI("Bluetooth channel open");
     aap_protobuf::service::control::message::ChannelOpenResponse response;
-    response.set_status(aap_protobuf::shared::STATUS_OK);
+    response.set_status(aap_protobuf::shared::STATUS_SUCCESS);
     auto promise = aasdk::channel::SendPromise::defer(strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelOpenResponse(response, std::move(promise));
@@ -552,7 +552,7 @@ void JniBluetoothHandler::onBluetoothPairingRequest(
     const aap_protobuf::service::bluetooth::message::BluetoothPairingRequest& /*request*/)
 {
     LOGI("Bluetooth pairing request");
-    // In JNI mode, BT pairing is handled by Nearby — just acknowledge
+    // In JNI mode, BT pairing is handled by Nearby â€” just acknowledge
     channel_->receive(shared_from_this());
 }
 
