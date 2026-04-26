@@ -422,9 +422,12 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Forward a touch event from the projection surface to the bridge. */
     fun onTouchEvent(event: MotionEvent, surfaceWidth: Int, surfaceHeight: Int) {
-        val stats = _videoStats.value
-        if (stats.width <= 0 || stats.height <= 0) return
-        touchForwarder.onTouch(event, surfaceWidth, surfaceHeight, stats.width, stats.height)
+        // Use SDR touchscreen dimensions, not video codec output dimensions.
+        // The phone expects touch in the coordinate space declared in the SDR input channel.
+        val tw = sessionManager.touchWidth.value
+        val th = sessionManager.touchHeight.value
+        if (tw <= 0 || th <= 0) return
+        touchForwarder.onTouch(event, surfaceWidth, surfaceHeight, tw, th)
     }
 
     /** Handle a steering wheel key event. Returns true if consumed. */

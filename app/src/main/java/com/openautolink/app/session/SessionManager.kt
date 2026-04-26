@@ -102,6 +102,13 @@ class SessionManager(
     val videoStats: StateFlow<VideoStats>? get() = _videoDecoder?.stats
     val decoderState: StateFlow<DecoderState>? get() = _videoDecoder?.decoderState
 
+    // Touch coordinate space — matches the SDR input channel touchscreen dimensions.
+    // NOT the video codec output dimensions (which may differ due to phone auto-negotiation).
+    private val _touchWidth = MutableStateFlow(1920)
+    private val _touchHeight = MutableStateFlow(1080)
+    val touchWidth: StateFlow<Int> = _touchWidth.asStateFlow()
+    val touchHeight: StateFlow<Int> = _touchHeight.asStateFlow()
+
     // Audio player
     private var _audioPlayer: AudioPlayer? = null
     val audioPlayer: AudioPlayer? get() = _audioPlayer
@@ -454,6 +461,8 @@ class SessionManager(
             hideSignal = hideSignal,
             hideBattery = hideBattery,
         )
+        _touchWidth.value = resW
+        _touchHeight.value = resH
 
         // Multi-phone: only relevant in nearby mode
         if (directTransport == "nearby") {
