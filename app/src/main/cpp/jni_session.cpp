@@ -761,16 +761,8 @@ void JniSession::startAllHandlers()
     sendPing();
     schedulePing();
 
-    // Send initial VideoFocusIndication to tell phone we want video
-    {
-        aap_protobuf::service::media::video::message::VideoFocusNotification focus;
-        focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
-        focus.set_unsolicited(false);
-        auto promise = aasdk::channel::SendPromise::defer(*strand_);
-        promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
-        videoChannel_->sendVideoFocusIndication(focus, std::move(promise));
-        LOGI("Sent initial VideoFocusIndication");
-    }
+    // Don't send VideoFocusIndication here — wait for phone to open the video channel first.
+    // The phone's projection state machine expects to control video focus timing.
 }
 
 // ============================================================================
