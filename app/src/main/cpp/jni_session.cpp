@@ -420,6 +420,17 @@ void JniSession::onAudioFocusRequest(
     }
 }
 
+void JniSession::sendUnsolicitedAudioFocusGain()
+{
+    LOGI("Sending unsolicited AUDIO_FOCUS_STATE_GAIN");
+    aap_protobuf::service::control::message::AudioFocusNotification notification;
+    notification.set_focus_state(aap_protobuf::service::control::message::AUDIO_FOCUS_STATE_GAIN);
+    notification.set_unsolicited(true);
+    auto promise = aasdk::channel::SendPromise::defer(*strand_);
+    promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
+    controlChannel_->sendAudioFocusResponse(notification, std::move(promise));
+}
+
 void JniSession::onNavigationFocusRequest(
     const aap_protobuf::service::control::message::NavFocusRequestNotification& /*request*/)
 {

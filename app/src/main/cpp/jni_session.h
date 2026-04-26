@@ -170,6 +170,7 @@ public:
 
     // ---- Dispatch methods (called by handler classes → JNI) ----
     void dispatchAudioFrame(const uint8_t* data, size_t size, int purpose, int sampleRate, int channels);
+    void sendUnsolicitedAudioFocusGain(); // called by audio handlers after setup
     void dispatchMicRequest(bool open);
     void dispatchNavStatus(int status);
     void dispatchNavTurn(const std::string& maneuver, const std::string& road,

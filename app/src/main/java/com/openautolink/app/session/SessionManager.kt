@@ -305,11 +305,20 @@ class SessionManager(
             OalMediaBrowserService.updateSessionToken(token)
         }
 
-        // Enable cluster service
+        // Enable cluster service (AAOS only — on regular Android, CarAppActivity
+        // steals focus from MainActivity and causes display issues)
+        val isAaos = context?.packageManager?.hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_AUTOMOTIVE) == true
         _clusterManager?.release()
-        _clusterManager = context?.let { com.openautolink.app.cluster.ClusterManager(it) }
-        _clusterManager?.setClusterEnabled(true)
-        _clusterManager?.launchClusterBinding()
+        if (isAaos) {
+            _clusterManager = context?.let { com.openautolink.app.cluster.ClusterManager(it) }
+            _clusterManager?.setClusterEnabled(true)
+            // Don't call launchClusterBinding() — let Templates Host discover the service
+            // via intent filter. This avoids CarAppActivity popping up on the main display.
+        } else {
+            OalLog.i(TAG, "Non-AAOS device — cluster service disabled")
+            _clusterManager = null
+        }
 
         // Create diagnostics (local-only)
         _telemetryCollector?.stop()

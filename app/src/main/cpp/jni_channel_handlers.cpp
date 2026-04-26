@@ -87,6 +87,9 @@ void JniAudioSinkHandler::onMediaChannelSetupRequest(
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     channel_->sendChannelSetupResponse(config, std::move(promise));
     channel_->receive(shared_from_this());
+
+    // Send unsolicited audio focus GAIN (headunit-revived does this on every audio setup)
+    session_.sendUnsolicitedAudioFocusGain();
 }
 
 void JniAudioSinkHandler::onMediaChannelStartIndication(
