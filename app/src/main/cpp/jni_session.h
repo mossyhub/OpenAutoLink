@@ -240,6 +240,7 @@ private:
     std::atomic<bool> stopped_{false};
     std::atomic<bool> streaming_{false};
     std::atomic<bool> micOpen_{false};
+    std::atomic<int> negotiatedCodecType_{0}; // 3=H.264, 7=H.265
     std::atomic<bool> pingOutstanding_{false};
 
     void sendPing();

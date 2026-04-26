@@ -596,6 +596,7 @@ void JniSession::onMediaChannelSetupRequest(
     const aap_protobuf::service::media::shared::message::Setup& request)
 {
     LOGI("Video setup: type=%d", request.type());
+    negotiatedCodecType_ = request.type();
 
     // Notify Kotlin of the negotiated codec type so the decoder configures correctly
     if (cbMethods_.onVideoCodecConfigured && callbackRef_) {
@@ -667,23 +668,29 @@ void JniSession::onMediaWithTimestampIndication(
     promise->then([]() {}, [](const auto&) {});
     videoChannel_->sendMediaAckIndication(ack, std::move(promise));
 
-    // Detect IDR (keyframe) and codec config from H.264/H.265 NAL headers
+    // Detect IDR (keyframe) and codec config from NAL headers.
+    // Use the negotiated codec type to avoid false positives — H.265 NAL bytes
+    // can accidentally match H.264 types (e.g., H.265 IDR_N_LP 0x28 matches H.264 PPS 8).
     bool isKeyFrame = false;
     bool isCodecConfig = false;
+    int codec = negotiatedCodecType_.load();
     if (buffer.size >= 5) {
         const uint8_t* d = buffer.cdata;
-        // Find start code (0x00 0x00 0x00 0x01 or 0x00 0x00 0x01)
         size_t offset = 0;
         if (d[0] == 0 && d[1] == 0 && d[2] == 0 && d[3] == 1) offset = 4;
         else if (d[0] == 0 && d[1] == 0 && d[2] == 1) offset = 3;
         if (offset > 0 && offset < buffer.size) {
-            uint8_t nalType = d[offset] & 0x1F; // H.264 NAL type
-            if (nalType == 5) isKeyFrame = true;  // IDR slice
-            if (nalType == 7 || nalType == 8) isCodecConfig = true; // SPS or PPS
-            // H.265: NAL type is bits 1-6 of first byte after start code
-            uint8_t hevcNalType = (d[offset] >> 1) & 0x3F;
-            if (hevcNalType >= 16 && hevcNalType <= 21) isKeyFrame = true; // IRAP
-            if (hevcNalType == 32 || hevcNalType == 33 || hevcNalType == 34) isCodecConfig = true; // VPS/SPS/PPS
+            if (codec == 7) {
+                // H.265: NAL type is bits 1-6 of first byte (2-byte NAL header)
+                uint8_t hevcNalType = (d[offset] >> 1) & 0x3F;
+                if (hevcNalType >= 16 && hevcNalType <= 21) isKeyFrame = true; // IRAP (IDR/CRA/BLA)
+                if (hevcNalType == 32 || hevcNalType == 33 || hevcNalType == 34) isCodecConfig = true; // VPS/SPS/PPS
+            } else {
+                // H.264: NAL type is bits 0-4 of first byte (1-byte NAL header)
+                uint8_t nalType = d[offset] & 0x1F;
+                if (nalType == 5) isKeyFrame = true;  // IDR slice
+                if (nalType == 7 || nalType == 8) isCodecConfig = true; // SPS or PPS
+            }
         }
     }
 
