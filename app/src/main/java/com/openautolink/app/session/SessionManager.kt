@@ -511,6 +511,16 @@ class SessionManager(
             }
         }
 
+        // Update decoder when phone negotiates codec type
+        scope.launch {
+            session.negotiatedCodecType.collect { codecType ->
+                if (codecType > 0) {
+                    (_videoDecoder as? com.openautolink.app.video.MediaCodecDecoder)
+                        ?.setNegotiatedCodec(codecType)
+                }
+            }
+        }
+
         // Collect audio frames
         scope.launch(audioDispatcher) {
             session.audioFrames.collect { frame ->

@@ -55,6 +55,25 @@ class MediaCodecDecoder(
     private var mimeType: String = CodecSelector.codecToMime(codecPreference)
     private var detectedCodec: String = codecPreference
 
+    /**
+     * Set the negotiated codec type from the AA protocol (video setup response).
+     * Must be called before video frames arrive.
+     * @param aaCodecType aasdk MediaCodecType: 3=H.264, 5=H.264_BP, 7=H.265
+     */
+    fun setNegotiatedCodec(aaCodecType: Int) {
+        val newCodec = when (aaCodecType) {
+            7 -> "h265"
+            3, 5 -> "h264"
+            else -> return
+        }
+        if (newCodec != detectedCodec) {
+            val newMime = CodecSelector.codecToMime(newCodec)
+            Log.i(TAG, "Negotiated codec from AA protocol: $newCodec ($newMime) — was $detectedCodec ($mimeType)")
+            detectedCodec = newCodec
+            mimeType = newMime
+        }
+    }
+
     // Output drain thread
     private var drainThread: Thread? = null
     private val drainRunning = AtomicBoolean(false)

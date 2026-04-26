@@ -136,7 +136,8 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
     jclass cbClass = env->GetObjectClass(callback);
     cbMethods_.onSessionStarted = env->GetMethodID(cbClass, "onSessionStarted", "()V");
     cbMethods_.onSessionStopped = env->GetMethodID(cbClass, "onSessionStopped", "(Ljava/lang/String;)V");
-    cbMethods_.onVideoFrame = env->GetMethodID(cbClass, "onVideoFrame", "([BJIIZ)V");
+    cbMethods_.onVideoFrame = env->GetMethodID(cbClass, "onVideoFrame", "([BJIII)V");
+    cbMethods_.onVideoCodecConfigured = env->GetMethodID(cbClass, "onVideoCodecConfigured", "(I)V");
     cbMethods_.onAudioFrame = env->GetMethodID(cbClass, "onAudioFrame", "([BIII)V");
     cbMethods_.onMicRequest = env->GetMethodID(cbClass, "onMicRequest", "(Z)V");
     cbMethods_.onNavigationStatus = env->GetMethodID(cbClass, "onNavigationStatus", "(I)V");
@@ -596,10 +597,25 @@ void JniSession::onMediaChannelSetupRequest(
 {
     LOGI("Video setup: type=%d", request.type());
 
+    // Notify Kotlin of the negotiated codec type so the decoder configures correctly
+    if (cbMethods_.onVideoCodecConfigured && callbackRef_) {
+        bool attached;
+        JNIEnv* env = getEnv(attached);
+        if (env) {
+            env->CallVoidMethod(callbackRef_, cbMethods_.onVideoCodecConfigured,
+                                static_cast<jint>(request.type()));
+        }
+        releaseEnv(attached);
+    }
+
     aap_protobuf::service::media::shared::message::Config config;
     config.set_status(aap_protobuf::service::media::shared::message::Config::STATUS_READY);
     config.set_max_unacked(30);
-    config.add_configuration_indices(0);
+    // Send ALL configuration indices — let the phone pick what it supports.
+    // The SDR has 5 H.265 configs (tiers 5-1) + 3 H.264 configs (tiers 3-1) = 8 total.
+    for (int i = 0; i < 8; i++) {
+        config.add_configuration_indices(i);
+    }
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
     videoChannel_->sendChannelSetupResponse(config, std::move(promise));
@@ -651,8 +667,9 @@ void JniSession::onMediaWithTimestampIndication(
     promise->then([]() {}, [](const auto&) {});
     videoChannel_->sendMediaAckIndication(ack, std::move(promise));
 
-    // Detect IDR (keyframe) from H.264/H.265 NAL headers
+    // Detect IDR (keyframe) and codec config from H.264/H.265 NAL headers
     bool isKeyFrame = false;
+    bool isCodecConfig = false;
     if (buffer.size >= 5) {
         const uint8_t* d = buffer.cdata;
         // Find start code (0x00 0x00 0x00 0x01 or 0x00 0x00 0x01)
@@ -661,16 +678,19 @@ void JniSession::onMediaWithTimestampIndication(
         else if (d[0] == 0 && d[1] == 0 && d[2] == 1) offset = 3;
         if (offset > 0 && offset < buffer.size) {
             uint8_t nalType = d[offset] & 0x1F; // H.264 NAL type
-            if (nalType == 5 || nalType == 7) { // IDR slice or SPS
-                isKeyFrame = true;
-            }
-            // H.265: NAL type is bits 1-6 of first byte
+            if (nalType == 5) isKeyFrame = true;  // IDR slice
+            if (nalType == 7 || nalType == 8) isCodecConfig = true; // SPS or PPS
+            // H.265: NAL type is bits 1-6 of first byte after start code
             uint8_t hevcNalType = (d[offset] >> 1) & 0x3F;
-            if (hevcNalType >= 16 && hevcNalType <= 21) { // IRAP NAL types
-                isKeyFrame = true;
-            }
+            if (hevcNalType >= 16 && hevcNalType <= 21) isKeyFrame = true; // IRAP
+            if (hevcNalType == 32 || hevcNalType == 33 || hevcNalType == 34) isCodecConfig = true; // VPS/SPS/PPS
         }
     }
+
+    // Build flags matching VideoFrame.FLAG_* constants
+    jint flags = 0;
+    if (isKeyFrame) flags |= 0x0001;     // FLAG_KEYFRAME
+    if (isCodecConfig) flags |= 0x0002;  // FLAG_CODEC_CONFIG
 
     // Dispatch to Kotlin
     if (cbMethods_.onVideoFrame && callbackRef_) {
@@ -684,7 +704,7 @@ void JniSession::onMediaWithTimestampIndication(
                                 jdata, static_cast<jlong>(timestamp),
                                 static_cast<jint>(sdrConfig_.videoWidth),
                                 static_cast<jint>(sdrConfig_.videoHeight),
-                                static_cast<jboolean>(isKeyFrame));
+                                flags);
             env->DeleteLocalRef(jdata);
         }
         releaseEnv(attached);

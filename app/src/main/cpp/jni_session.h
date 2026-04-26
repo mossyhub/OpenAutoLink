@@ -270,6 +270,7 @@ private:
         jmethodID onSessionStarted = nullptr;
         jmethodID onSessionStopped = nullptr;
         jmethodID onVideoFrame = nullptr;
+        jmethodID onVideoCodecConfigured = nullptr;
         jmethodID onAudioFrame = nullptr;
         jmethodID onMicRequest = nullptr;
         jmethodID onNavigationStatus = nullptr;

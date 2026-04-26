@@ -24,7 +24,13 @@ interface AasdkSessionCallback {
      * @param width Video width (from setup)
      * @param height Video height (from setup)
      */
-    fun onVideoFrame(data: ByteArray, timestampUs: Long, width: Int, height: Int, isKeyFrame: Boolean)
+    fun onVideoFrame(data: ByteArray, timestampUs: Long, width: Int, height: Int, flags: Int)
+
+    /**
+     * Phone negotiated a video codec during channel setup.
+     * @param codecType aasdk MediaCodecType: 3=H.264, 5=H.264_BP, 7=H.265
+     */
+    fun onVideoCodecConfigured(codecType: Int)
 
     /**
      * Audio frame received from phone.

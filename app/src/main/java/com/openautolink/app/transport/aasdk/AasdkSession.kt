@@ -52,6 +52,10 @@ class AasdkSession(
     private val _videoFrames = MutableSharedFlow<VideoFrame>(extraBufferCapacity = 30)
     val videoFrames: SharedFlow<VideoFrame> = _videoFrames.asSharedFlow()
 
+    /** Negotiated video codec type from phone. 3=H.264, 5=H.264_BP, 7=H.265 */
+    private val _negotiatedCodecType = MutableStateFlow(0)
+    val negotiatedCodecType: StateFlow<Int> = _negotiatedCodecType.asStateFlow()
+
     private val _audioFrames = MutableSharedFlow<AudioFrame>(extraBufferCapacity = 60)
     val audioFrames: SharedFlow<AudioFrame> = _audioFrames.asSharedFlow()
 
@@ -206,8 +210,7 @@ class AasdkSession(
         }
     }
 
-    override fun onVideoFrame(data: ByteArray, timestampUs: Long, width: Int, height: Int, isKeyFrame: Boolean) {
-        val flags = if (isKeyFrame) VideoFrame.FLAG_KEYFRAME else 0
+    override fun onVideoFrame(data: ByteArray, timestampUs: Long, width: Int, height: Int, flags: Int) {
         val frame = VideoFrame(
             width = width,
             height = height,
@@ -216,6 +219,11 @@ class AasdkSession(
             data = data
         )
         _videoFrames.tryEmit(frame)
+    }
+
+    override fun onVideoCodecConfigured(codecType: Int) {
+        OalLog.i(TAG, "Phone negotiated codec type: $codecType")
+        _negotiatedCodecType.value = codecType
     }
 
     override fun onAudioFrame(data: ByteArray, purpose: Int, sampleRate: Int, channels: Int) {
