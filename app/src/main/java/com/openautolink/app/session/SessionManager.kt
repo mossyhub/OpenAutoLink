@@ -337,7 +337,7 @@ class SessionManager(
             startSession(directTransport, hotspotSsid, hotspotPassword,
                 videoAutoNegotiate, codecPreference, aaResolution, aaDpi,
                 aaWidthMargin, aaHeightMargin, aaPixelAspect, videoFps,
-                driveSide, hideClock, hideSignal, hideBattery)
+                driveSide, hideClock, hideSignal, hideBattery, scalingMode)
         }
     }
 
@@ -348,6 +348,7 @@ class SessionManager(
         aaWidthMargin: Int = 0, aaHeightMargin: Int = 0, aaPixelAspect: Int = 0, videoFps: Int = 60,
         driveSide: String = "left",
         hideClock: Boolean = false, hideSignal: Boolean = false, hideBattery: Boolean = false,
+        scalingMode: String = "letterbox",
     ) {
         aasdkSession?.stop()
         val ctx = context ?: return
@@ -373,6 +374,44 @@ class SessionManager(
         val vd = _vehicleDataForwarder?.latestVehicleData?.value
         val driverPos = if (driveSide == "right") 1 else 0
 
+        // Auto-compute pixel_aspect if requested (aaPixelAspect == -1)
+        // or use manual value. 0 = off (square pixels).
+        //
+        // pixel_aspect_ratio_e4 tells the phone how wide each pixel is relative
+        // to its height on the physical display. This compensates for non-16:9
+        // displays so AA pre-distorts its UI to appear correct when stretched.
+        //
+        // Only useful in crop mode (fillMaxSize stretches video to fill display).
+        // In letterbox mode the SurfaceView is constrained to 16:9, no stretching.
+        //
+        // Formula: (displayAR / videoAR) × 10000
+        //   e.g. Blazer EV 2914×1134 (2.57:1) at 1920×1080 (1.78:1):
+        //   (2914/1134) / (1920/1080) × 10000 = 14454
+        val computedPixelAspect = when {
+            aaPixelAspect > 0 -> aaPixelAspect  // Manual override
+            aaPixelAspect == -1 && scalingMode == "crop" -> {
+                // Auto-compute from display dimensions
+                val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
+                val bounds = wm.currentWindowMetrics.bounds
+                val displayW = bounds.width().toFloat()
+                val displayH = bounds.height().toFloat()
+                val displayAr = displayW / displayH
+                val videoAr = resW.toFloat() / resH.toFloat()
+                if (displayAr > videoAr * 1.02f) {
+                    // Display is wider than video — compensation needed
+                    val pa = ((displayAr / videoAr) * 10000).toInt()
+                    OalLog.i(TAG, "Auto pixel_aspect: display=${displayW.toInt()}x${displayH.toInt()} " +
+                            "(${String.format("%.2f", displayAr)}:1) video=${resW}x${resH} " +
+                            "(${String.format("%.2f", videoAr)}:1) → pixel_aspect=$pa")
+                    pa
+                } else {
+                    OalLog.i(TAG, "Auto pixel_aspect: display is ≤16:9, no compensation needed")
+                    0
+                }
+            }
+            else -> 0  // Off
+        }
+
         val session = AasdkSession(scope, ctx)
         session.sdrConfig = AasdkSdrConfig(
             videoWidth = resW,
@@ -381,7 +420,7 @@ class SessionManager(
             videoDpi = aaDpi,
             marginWidth = aaWidthMargin,
             marginHeight = aaHeightMargin,
-            pixelAspectE4 = aaPixelAspect,
+            pixelAspectE4 = computedPixelAspect,
             btMacAddress = btMac,
             vehicleMake = vd?.carMake ?: "OpenAutoLink",
             vehicleModel = vd?.carModel ?: "Direct",

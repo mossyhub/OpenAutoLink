@@ -1243,35 +1243,85 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Compensates for wide displays (non-16:9). 0 = auto-compute from your display's " +
-                    "aspect ratio vs video aspect ratio. When AA renders into a letterboxed area, " +
-                    "pixel aspect pre-distorts the layout so circles stay circular. " +
-                    "Value is in 1/10000 units (e.g. 14454 ≈ 1.45:1 for the Blazer EV's 2914×1134 display at 1080p).",
+            text = "Compensates for wide displays in Crop mode. Off = square pixels (no compensation). " +
+                    "Auto = computed from your display's aspect ratio vs video aspect ratio. " +
+                    "Manual = enter a specific value. " +
+                    "Only matters in Crop mode — Letterbox constrains to 16:9 so no stretching occurs.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        // Pixel aspect mode: -1=auto, 0=off, >0=manual
+        val pixelAspectMode = when {
+            uiState.aaPixelAspect == -1 -> "auto"
+            uiState.aaPixelAspect == 0 -> "off"
+            else -> "manual"
+        }
+        val pixelAspectModes = mapOf(
+            "off" to "Off (square pixels — no compensation)",
+            "auto" to "Auto (compute from display size, crop mode only)",
+            "manual" to "Manual (enter value)"
+        )
+
+        pixelAspectModes.forEach { (key, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .clickable {
+                        when (key) {
+                            "off" -> viewModel.updateAaPixelAspect(0)
+                            "auto" -> viewModel.updateAaPixelAspect(-1)
+                            "manual" -> viewModel.updateAaPixelAspect(10000)
+                        }
+                    }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = pixelAspectMode == key,
+                    onClick = {
+                        when (key) {
+                            "off" -> viewModel.updateAaPixelAspect(0)
+                            "auto" -> viewModel.updateAaPixelAspect(-1)
+                            "manual" -> viewModel.updateAaPixelAspect(10000)
+                        }
+                    },
+                )
+                Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+
+        // Show manual input only when manual mode selected
+        if (pixelAspectMode == "manual") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Value (×10⁴)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.width(180.dp),
+                )
+                OutlinedTextField(
+                    value = uiState.aaPixelAspect.toString(),
+                    onValueChange = { value ->
+                        val pa = value.filter { it.isDigit() }.toIntOrNull() ?: 10000
+                        viewModel.updateAaPixelAspect(pa.coerceIn(1, 30000))
+                    },
+                    placeholder = { Text("10000") },
+                    singleLine = true,
+                    modifier = Modifier.width(140.dp).testTag("aaPixelAspect"),
+                )
+            }
             Text(
-                text = "Pixel Aspect (×10⁴)",
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.width(180.dp),
-            )
-            OutlinedTextField(
-                value = if (uiState.aaPixelAspect == 0) "" else uiState.aaPixelAspect.toString(),
-                onValueChange = { value ->
-                    val pa = value.filter { it.isDigit() }.toIntOrNull() ?: 0
-                    viewModel.updateAaPixelAspect(pa.coerceIn(0, 30000))
-                },
-                placeholder = { Text("0 (auto)") },
-                singleLine = true,
-                modifier = Modifier.width(140.dp).testTag("aaPixelAspect"),
+                text = "10000 = 1:1 (no compensation). " +
+                        "Blazer EV 2914×1134 at 1080p ≈ 14454. " +
+                        "Higher = wider pixel compensation.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
