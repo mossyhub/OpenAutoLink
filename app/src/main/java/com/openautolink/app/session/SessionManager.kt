@@ -285,6 +285,15 @@ class SessionManager(
                             vd.lowFuel ?: false
                         )
                     }
+                    // EV energy model — battery level, capacity, range for Maps
+                    if (vd.evBatteryLevelWh != null && vd.evBatteryCapacityWh != null) {
+                        session.sendEnergyModel(
+                            vd.evBatteryLevelWh.toInt(),
+                            vd.evBatteryCapacityWh.toInt(),
+                            ((vd.rangeKm ?: 0f) * 1000).toInt(),
+                            (vd.evChargeRateW ?: 0f).toInt()
+                        )
+                    }
                     vd.rpmE3?.let { session.sendRpm(it) }
                 },
                 onIgnitionOn = { /* aasdk mode doesn't need ignition-based reconnect */ }

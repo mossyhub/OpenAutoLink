@@ -82,6 +82,9 @@ object AasdkNative {
     external fun nativeSendFuel(levelPct: Int, rangeM: Int, lowFuel: Boolean)
 
     @JvmStatic
+    external fun nativeSendEnergyModel(batteryLevelWh: Int, batteryCapacityWh: Int, rangeM: Int, chargeRateW: Int)
+
+    @JvmStatic
     external fun nativeSendAccelerometer(xE3: Int, yE3: Int, zE3: Int)
 
     @JvmStatic

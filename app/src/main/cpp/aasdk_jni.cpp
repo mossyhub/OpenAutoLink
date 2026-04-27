@@ -99,34 +99,10 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendTouchEvent(
     JNIEnv* /*env*/, jclass /*clazz*/,
     jint action, jint pointerId, jfloat x, jfloat y, jint pointerCount)
 {
-    auto session = getSession();
-    if (session) {
-        session->sendTouchEvent(action, pointerId, x, y, pointerCount);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) {
+        gSession->sendTouchEvent(action, pointerId, x, y, pointerCount);
     }
-}
-
-/*
- * Class:     com_openautolink_app_transport_aasdk_AasdkNative
- * Method:    nativeSendMultiTouchEvent
- */
-JNIEXPORT void JNICALL
-Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendMultiTouchEvent(
-    JNIEnv* env, jclass /*clazz*/,
-    jint action, jint actionIndex, jintArray ids, jfloatArray xs, jfloatArray ys)
-{
-    auto session = getSession();
-    if (!session) return;
-
-    jsize count = env->GetArrayLength(ids);
-    jint* idArr = env->GetIntArrayElements(ids, nullptr);
-    jfloat* xArr = env->GetFloatArrayElements(xs, nullptr);
-    jfloat* yArr = env->GetFloatArrayElements(ys, nullptr);
-
-    session->sendMultiTouchEvent(action, actionIndex, idArr, xArr, yArr, count);
-
-    env->ReleaseIntArrayElements(ids, idArr, JNI_ABORT);
-    env->ReleaseFloatArrayElements(xs, xArr, JNI_ABORT);
-    env->ReleaseFloatArrayElements(ys, yArr, JNI_ABORT);
 }
 
 /*
@@ -138,9 +114,9 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendKeyEvent(
     JNIEnv* /*env*/, jclass /*clazz*/,
     jint keyCode, jboolean isDown)
 {
-    auto session = getSession();
-    if (session) {
-        session->sendKeyEvent(keyCode, isDown);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) {
+        gSession->sendKeyEvent(keyCode, isDown);
     }
 }
 
@@ -154,9 +130,9 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendGpsLocation(
     jdouble lat, jdouble lon, jdouble alt,
     jfloat speed, jfloat bearing, jlong timestampMs)
 {
-    auto session = getSession();
-    if (session) {
-        session->sendGpsLocation(lat, lon, alt, speed, bearing, timestampMs);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) {
+        gSession->sendGpsLocation(lat, lon, alt, speed, bearing, timestampMs);
     }
 }
 
@@ -169,12 +145,12 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendVehicleSensor(
     JNIEnv* env, jclass /*clazz*/,
     jint sensorType, jbyteArray data)
 {
-    auto session = getSession();
-    if (!session) return;
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (!gSession) return;
 
     jsize len = env->GetArrayLength(data);
     auto* bytes = env->GetByteArrayElements(data, nullptr);
-    session->sendVehicleSensor(sensorType,
+    gSession->sendVehicleSensor(sensorType,
         reinterpret_cast<const uint8_t*>(bytes), static_cast<size_t>(len));
     env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
 }
@@ -188,12 +164,12 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSendMicAudio(
     JNIEnv* env, jclass /*clazz*/,
     jbyteArray data)
 {
-    auto session = getSession();
-    if (!session) return;
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (!gSession) return;
 
     jsize len = env->GetArrayLength(data);
     auto* bytes = env->GetByteArrayElements(data, nullptr);
-    session->sendMicAudio(
+    gSession->sendMicAudio(
         reinterpret_cast<const uint8_t*>(bytes), static_cast<size_t>(len));
     env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
 }
@@ -206,9 +182,9 @@ JNIEXPORT void JNICALL
 Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeRequestKeyframe(
     JNIEnv* /*env*/, jclass /*clazz*/)
 {
-    auto session = getSession();
-    if (session) {
-        session->requestKeyframe();
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) {
+        gSession->requestKeyframe();
     }
 }
 
@@ -221,53 +197,58 @@ Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeSend##Name( \
     JNIEnv* /*env*/, jclass /*clazz*/, __VA_ARGS__)
 
 SENSOR_JNI(Speed, jint speedMmPerS) {
-    auto s = getSession();
-    if (s) s->sendSpeedSensor(speedMmPerS);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendSpeedSensor(speedMmPerS);
 }
 
 SENSOR_JNI(Gear, jint gear) {
-    auto s = getSession();
-    if (s) s->sendGearSensor(gear);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendGearSensor(gear);
 }
 
 SENSOR_JNI(ParkingBrake, jboolean engaged) {
-    auto s = getSession();
-    if (s) s->sendParkingBrakeSensor(engaged);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendParkingBrakeSensor(engaged);
 }
 
 SENSOR_JNI(NightMode, jboolean night) {
-    auto s = getSession();
-    if (s) s->sendNightModeSensor(night);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendNightModeSensor(night);
 }
 
 SENSOR_JNI(DrivingStatus, jboolean moving) {
-    auto s = getSession();
-    if (s) s->sendDrivingStatusSensor(moving);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendDrivingStatusSensor(moving);
 }
 
 SENSOR_JNI(Fuel, jint levelPct, jint rangeM, jboolean lowFuel) {
-    auto s = getSession();
-    if (s) s->sendFuelSensor(levelPct, rangeM, lowFuel);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendFuelSensor(levelPct, rangeM, lowFuel);
+}
+
+SENSOR_JNI(EnergyModel, jint batteryLevelWh, jint batteryCapacityWh, jint rangeM, jint chargeRateW) {
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendEnergyModelSensor(batteryLevelWh, batteryCapacityWh, rangeM, chargeRateW);
 }
 
 SENSOR_JNI(Accelerometer, jint xE3, jint yE3, jint zE3) {
-    auto s = getSession();
-    if (s) s->sendAccelerometerSensor(xE3, yE3, zE3);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendAccelerometerSensor(xE3, yE3, zE3);
 }
 
 SENSOR_JNI(Gyroscope, jint rxE3, jint ryE3, jint rzE3) {
-    auto s = getSession();
-    if (s) s->sendGyroscopeSensor(rxE3, ryE3, rzE3);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendGyroscopeSensor(rxE3, ryE3, rzE3);
 }
 
 SENSOR_JNI(Compass, jint bearingE6, jint pitchE6, jint rollE6) {
-    auto s = getSession();
-    if (s) s->sendCompassSensor(bearingE6, pitchE6, rollE6);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendCompassSensor(bearingE6, pitchE6, rollE6);
 }
 
 SENSOR_JNI(Rpm, jint rpmE3) {
-    auto s = getSession();
-    if (s) s->sendRpmSensor(rpmE3);
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    if (gSession) gSession->sendRpmSensor(rpmE3);
 }
 
 /*
@@ -278,8 +259,8 @@ JNIEXPORT jboolean JNICALL
 Java_com_openautolink_app_transport_aasdk_AasdkNative_nativeIsStreaming(
     JNIEnv* /*env*/, jclass /*clazz*/)
 {
-    auto session = getSession();
-    return session ? session->isStreaming() : JNI_FALSE;
+    std::lock_guard<std::mutex> lock(gSessionMutex);
+    return gSession ? gSession->isStreaming() : JNI_FALSE;
 }
 
 } // extern "C"

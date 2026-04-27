@@ -96,10 +96,6 @@ public:
     /** Send touch event to phone. */
     void sendTouchEvent(int action, int pointerId, float x, float y, int pointerCount);
 
-    /** Send multi-touch event to phone (all pointers in one InputReport). */
-    void sendMultiTouchEvent(int action, int actionIndex,
-        const int* ids, const float* xs, const float* ys, int count);
-
     /** Send key event to phone. */
     void sendKeyEvent(int keyCode, bool isDown);
 
@@ -123,6 +119,7 @@ public:
     void sendNightModeSensor(bool night);
     void sendDrivingStatusSensor(bool moving);
     void sendFuelSensor(int levelPct, int rangeM, bool lowFuel);
+    void sendEnergyModelSensor(int batteryLevelWh, int batteryCapacityWh, int rangeM, int chargeRateW);
     void sendAccelerometerSensor(int xE3, int yE3, int zE3);
     void sendGyroscopeSensor(int rxE3, int ryE3, int rzE3);
     void sendCompassSensor(int bearingE6, int pitchE6, int rollE6);
@@ -131,7 +128,7 @@ public:
     /** Is session actively streaming? */
     bool isStreaming() const { return streaming_; }
 
-    /** Send unsolicited AUDIO_FOCUS_STATE_GAIN to phone (called from audio handlers). */
+    /** Send unsolicited AUDIO_FOCUS_STATE_GAIN to phone. */
     void sendUnsolicitedAudioFocusGain();
 
     // ---- IControlServiceChannelEventHandler ----
@@ -244,8 +241,8 @@ private:
     std::atomic<bool> stopped_{false};
     std::atomic<bool> streaming_{false};
     std::atomic<bool> micOpen_{false};
-    std::atomic<int> negotiatedCodecType_{0}; // 3=H.264, 7=H.265
     std::atomic<bool> pingOutstanding_{false};
+    std::atomic<int> negotiatedCodecType_{0};
 
     void sendPing();
     void schedulePing();
@@ -276,7 +273,6 @@ private:
         jmethodID onSessionStarted = nullptr;
         jmethodID onSessionStopped = nullptr;
         jmethodID onVideoFrame = nullptr;
-        jmethodID onVideoCodecConfigured = nullptr;
         jmethodID onAudioFrame = nullptr;
         jmethodID onMicRequest = nullptr;
         jmethodID onNavigationStatus = nullptr;
