@@ -466,7 +466,7 @@ class SessionManager(
             hideBattery = hideBattery,
             autoNegotiate = videoAutoNegotiate,
             videoCodec = codec,
-            realDensity = ctx.resources.displayMetrics.densityDpi,
+            // realDensity removed — interferes with pixel_aspect_ratio_e4 on some AA versions
         )
         _touchWidth.value = resW
         _touchHeight.value = resH
