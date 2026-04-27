@@ -136,7 +136,7 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
     jclass cbClass = env->GetObjectClass(callback);
     cbMethods_.onSessionStarted = env->GetMethodID(cbClass, "onSessionStarted", "()V");
     cbMethods_.onSessionStopped = env->GetMethodID(cbClass, "onSessionStopped", "(Ljava/lang/String;)V");
-    cbMethods_.onVideoFrame = env->GetMethodID(cbClass, "onVideoFrame", "([BJIIZ)V");
+    cbMethods_.onVideoFrame = env->GetMethodID(cbClass, "onVideoFrame", "([BJIII)V");
     cbMethods_.onAudioFrame = env->GetMethodID(cbClass, "onAudioFrame", "([BIII)V");
     cbMethods_.onMicRequest = env->GetMethodID(cbClass, "onMicRequest", "(Z)V");
     cbMethods_.onNavigationStatus = env->GetMethodID(cbClass, "onNavigationStatus", "(I)V");
@@ -669,11 +669,12 @@ void JniSession::onMediaWithTimestampIndication(
             jbyteArray jdata = env->NewByteArray(static_cast<jsize>(buffer.size));
             env->SetByteArrayRegion(jdata, 0, static_cast<jsize>(buffer.size),
                                     reinterpret_cast<const jbyte*>(buffer.cdata));
+            jint flags = isKeyFrame ? 0x0001 : 0;  // FLAG_KEYFRAME = 0x0001
             env->CallVoidMethod(callbackRef_, cbMethods_.onVideoFrame,
                                 jdata, static_cast<jlong>(timestamp),
                                 static_cast<jint>(sdrConfig_.videoWidth),
                                 static_cast<jint>(sdrConfig_.videoHeight),
-                                static_cast<jboolean>(isKeyFrame));
+                                flags);
             env->DeleteLocalRef(jdata);
         }
         releaseEnv(attached);
