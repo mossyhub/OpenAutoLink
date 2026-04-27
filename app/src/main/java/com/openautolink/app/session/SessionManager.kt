@@ -325,15 +325,15 @@ class SessionManager(
             OalMediaBrowserService.updateSessionToken(token)
         }
 
-        // Cluster service — defer until streaming to avoid CarAppActivity stealing
-        // focus during the connection phase. On real GM AAOS, enabling the component
-        // causes Templates Host to auto-bind, which can push MainActivity to background.
+        // Enable and launch cluster service binding (AAOS only — on regular Android,
+        // CarAppActivity steals focus from MainActivity and causes display issues)
         val isAaos = context?.packageManager?.hasSystemFeature(
             android.content.pm.PackageManager.FEATURE_AUTOMOTIVE) == true
         _clusterManager?.release()
         if (isAaos) {
             _clusterManager = context?.let { com.openautolink.app.cluster.ClusterManager(it) }
-            // Don't enable yet — will enable when session reaches STREAMING state
+            _clusterManager?.setClusterEnabled(true)
+            _clusterManager?.launchClusterBinding()
         } else {
             OalLog.i(TAG, "Non-AAOS device — cluster service disabled")
             _clusterManager = null
@@ -510,11 +510,6 @@ class SessionManager(
                     startLocationForwarding(session)
                     _vehicleDataForwarder?.start()
                     _imuForwarder?.start()
-                    // Enable cluster component — Templates Host auto-discovers and binds
-                    // via intent filter on real AAOS. No CarAppActivity launch needed;
-                    // that Activity is only a workaround for platforms where Templates Host
-                    // doesn't auto-discover, and it steals focus from MainActivity.
-                    _clusterManager?.setClusterEnabled(true)
                 } else if (newState == SessionState.IDLE) {
                     // Connection lost — clean up forwarders and cluster
                     stopDirectLocationForwarding()
@@ -666,8 +661,9 @@ class SessionManager(
 
         OalLog.i(TAG, "System wake detected (${elapsed / 1000}s gap, state=$state)")
         DiagnosticLog.i("transport", "System wake detected (${elapsed / 1000}s gap)")
-        // aasdk mode: the Nearby manager handles reconnection
-        // No explicit force-reconnect needed
+        // The native session's read thread will detect the dead socket and fire
+        // onSessionStopped, which triggers auto-reconnect in AasdkSession.
+        // No manual intervention needed here.
     }
 
     suspend fun requestKeyframe() {

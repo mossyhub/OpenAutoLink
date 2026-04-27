@@ -82,11 +82,16 @@ class AasdkSession(
     /** Current transport mode: "nearby" or "hotspot" */
     var transportMode: String = "hotspot"
 
+    /** True when stop() was called explicitly (user-initiated). False when session died on its own. */
+    @Volatile
+    private var explicitStop = false
+
     private var transportPipe: AasdkTransportPipe? = null
 
     // -- Lifecycle --
 
     fun start() {
+        explicitStop = false
         _connectionState.value = ConnectionState.DISCONNECTED
 
         when (transportMode) {
@@ -143,6 +148,7 @@ class AasdkSession(
     }
 
     fun stop() {
+        explicitStop = true
         OalLog.i(TAG, "Stopping aasdk session")
         _nearbyManager?.stop()
         _nearbyManager = null
@@ -210,9 +216,28 @@ class AasdkSession(
 
     override fun onSessionStopped(reason: String) {
         OalLog.i(TAG, "AA session stopped: $reason")
+        // Clean up dead transport
+        transportPipe?.close()
+        transportPipe = null
+
         scope.launch {
             _connectionState.value = ConnectionState.DISCONNECTED
             _controlMessages.emit(ControlMessage.PhoneDisconnected(reason = reason))
+
+            // Auto-reconnect if this wasn't an explicit stop (e.g., car sleep/wake,
+            // phone disconnect). Restart the transport connector after a delay so it
+            // retries connecting once WiFi comes back.
+            if (!explicitStop) {
+                OalLog.i(TAG, "Session died unexpectedly — will retry connection in 3s")
+                kotlinx.coroutines.delay(3000)
+                if (!explicitStop) {
+                    OalLog.i(TAG, "Restarting transport connector")
+                    when (transportMode) {
+                        "hotspot" -> startTcp()
+                        else -> startNearby()
+                    }
+                }
+            }
         }
     }
 
