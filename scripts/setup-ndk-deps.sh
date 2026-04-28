@@ -45,9 +45,15 @@ if [ ! -f "$BOOST_STAGING/boost/asio.hpp" ]; then
             echo "Downloading Boost ${BOOST_VERSION}..."
             curl -fSL "$BOOST_URL" -o "$TARBALL"
         fi
-        echo "Extracting Boost headers on native fs..."
-        tar xzf "$TARBALL" "boost_${BOOST_VERSION_UNDERSCORE}/boost" \
-            --strip-components=1 -C "$BOOST_STAGING"
+        echo "Extracting Boost headers..."
+        # Extract boost headers to temp dir and move (avoids tar --strip-components
+        # + member filter interaction that silently extracts nothing on some tar versions)
+        EXTRACT_TMP="$WORK_DIR/boost_extract"
+        rm -rf "$EXTRACT_TMP"
+        mkdir -p "$EXTRACT_TMP"
+        tar xzf "$TARBALL" -C "$EXTRACT_TMP" "boost_${BOOST_VERSION_UNDERSCORE}/boost"
+        mv "$EXTRACT_TMP/boost_${BOOST_VERSION_UNDERSCORE}/boost" "$BOOST_STAGING/"
+        rm -rf "$EXTRACT_TMP"
     fi
     echo "Boost headers staged: $(find "$BOOST_STAGING/boost" -type f | wc -l) files"
 fi
