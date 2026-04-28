@@ -5,6 +5,8 @@
 # OpenAutoLink
 
 > Wireless Android Auto for AAOS head units. No extra hardware.
+>
+> **⚠️ Under active development — not yet stable.** The aasdk JNI layer is new and still crashing during real-car connections. Give it some time.
 
 [![CI](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml/badge.svg)](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml)
 [![Release](https://github.com/mossyhub/openautolink/actions/workflows/release-apk.yml/badge.svg)](https://github.com/mossyhub/openautolink/releases/latest)
