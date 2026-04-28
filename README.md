@@ -6,7 +6,7 @@
 
 > Wireless Android Auto for AAOS head units. No extra hardware.
 >
-> **⚠️ Under active development — not yet stable.** The aasdk JNI layer is new and still crashing during real-car connections. Give it some time.
+> **⚠️ Under active development.** Core car connections and AA functionality are working. See [Known Issues](#known-issues) for current limitations.
 
 [![CI](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml/badge.svg)](https://github.com/mossyhub/openautolink/actions/workflows/ci.yml)
 [![Release](https://github.com/mossyhub/openautolink/actions/workflows/release-apk.yml/badge.svg)](https://github.com/mossyhub/openautolink/releases/latest)
@@ -258,7 +258,11 @@ Active development, stable for daily driving on a 2024 Chevrolet Blazer EV.
 
 ## Known Issues
 
-No critical issues at this time. If you encounter problems, please [open an issue](https://github.com/mossyhub/openautolink/issues).
+- **H.265 video may appear green-tinted** on first connection for 30–45 seconds. May be Qualcomm-specific — not yet confirmed on other SoCs
+- **VHAL data and sensors** not flowing into AA properly — vehicle speed, gear, parking brake etc. not reaching the phone
+- **Cluster service** not working — navigation turn-by-turn data not appearing on the instrument cluster
+
+If you encounter other problems, please [open an issue](https://github.com/mossyhub/openautolink/issues).
 
 ## Compatibility
 

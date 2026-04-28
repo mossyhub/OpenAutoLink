@@ -22,6 +22,14 @@
 -keep class com.openautolink.app.proto.** { *; }
 -keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
 
+# JNI — native code accesses these classes by field/method name via GetFieldID/GetMethodID.
+# R8 must not rename or strip them.
+-keep class com.openautolink.app.transport.aasdk.AasdkSdrConfig { *; }
+-keep class com.openautolink.app.transport.aasdk.AasdkTransportPipe { *; }
+-keep class com.openautolink.app.transport.aasdk.AasdkSessionCallback { *; }
+-keep class * implements com.openautolink.app.transport.aasdk.AasdkSessionCallback { *; }
+-keep class com.openautolink.app.transport.aasdk.AasdkNative { *; }
+
 # Conscrypt SSL provider — suppress warnings for optional platform classes
 -dontwarn com.android.org.conscrypt.SSLParametersImpl
 -dontwarn org.apache.harmony.xnet.provider.jsse.SSLParametersImpl
