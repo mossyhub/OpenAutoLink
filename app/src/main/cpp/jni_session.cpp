@@ -333,7 +333,7 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
             *strand_, messenger_);
         systemAudioChannel_ = std::make_shared<aasdk::channel::mediasink::audio::channel::SystemAudioChannel>(
             *strand_, messenger_);
-        // Telephony audio disabled — crashes AA v16.7 without BT HFP
+        // Telephony audio disabled — crashes AA without BT HFP
         // telephonyAudioChannel_ = ...
         inputChannel_ = std::make_shared<aasdk::channel::inputsource::InputSourceService>(
             *strand_, messenger_);
@@ -893,7 +893,7 @@ void JniSession::startAllHandlers()
         *strand_, systemAudioChannel_, *this, JniAudioSinkHandler::AudioType::System);
     systemAudioHandler_->start();
 
-    // Telephony audio disabled — crashes AA v16.7 without BT HFP
+    // Telephony audio disabled — crashes AA without BT HFP
     // telephonyAudioHandler_ = ...
     // telephonyAudioHandler_->start();
 
@@ -1115,7 +1115,7 @@ void JniSession::buildServiceDiscoveryResponse(
       ac->set_sampling_rate(16000); ac->set_number_of_bits(16); ac->set_number_of_channels(1);
     }
 
-    // ---- Telephony audio (16kHz mono) — disabled: crashes AA v16.7 without BT HFP ----
+    // ---- Telephony audio (16kHz mono) — disabled: crashes AA without BT HFP ----
     // { auto* svc = response.add_channels();
     //   svc->set_id(static_cast<int32_t>(aasdk::messenger::ChannelId::MEDIA_SINK_TELEPHONY_AUDIO));
     //   auto* ms = svc->mutable_media_sink_service();
