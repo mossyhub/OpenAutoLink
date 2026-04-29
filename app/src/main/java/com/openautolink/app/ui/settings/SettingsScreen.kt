@@ -1799,6 +1799,48 @@ private fun DiagnosticsSettingsTab(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Open Diagnostics Dashboard")
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        SectionHeader("File Logging")
+
+        Row(
+            modifier = Modifier.fillMaxWidth(0.7f).padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Log to File", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Write diagnostic logs to USB stick or internal storage. " +
+                        "Files saved to openautolink/logs/.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(
+                checked = uiState.fileLoggingEnabled,
+                onCheckedChange = { viewModel.updateFileLoggingEnabled(it) },
+                modifier = Modifier.testTag("fileLoggingToggle"),
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(0.7f).padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Include Full Logcat", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Also capture full Android logcat (native C++, system, " +
+                        "framework) to a separate file. Larger output.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(
+                checked = uiState.logcatCaptureEnabled,
+                onCheckedChange = { viewModel.updateLogcatCaptureEnabled(it) },
+                modifier = Modifier.testTag("logcatCaptureToggle"),
+            )
+        }
     }
 }
 

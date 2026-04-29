@@ -59,6 +59,8 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val CLUSTER_NAVIGATION = booleanPreferencesKey("cluster_navigation")
         val OVERLAY_SETTINGS_BUTTON = booleanPreferencesKey("overlay_settings_button")
         val OVERLAY_STATS_BUTTON = booleanPreferencesKey("overlay_stats_button")
+        val FILE_LOGGING_ENABLED = booleanPreferencesKey("file_logging_enabled")
+        val LOGCAT_CAPTURE_ENABLED = booleanPreferencesKey("logcat_capture_enabled")
 
         // AA safe area (stable) insets — maps render, UI stays inside
         val SAFE_AREA_TOP = intPreferencesKey("safe_area_top")
@@ -111,6 +113,8 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_CLUSTER_NAVIGATION = true
         const val DEFAULT_OVERLAY_SETTINGS_BUTTON = true
         const val DEFAULT_OVERLAY_STATS_BUTTON = true
+        const val DEFAULT_FILE_LOGGING_ENABLED = false
+        const val DEFAULT_LOGCAT_CAPTURE_ENABLED = false
         const val DEFAULT_SAFE_AREA_TOP = 0
         const val DEFAULT_SAFE_AREA_BOTTOM = 0
         const val DEFAULT_SAFE_AREA_LEFT = 0
@@ -231,6 +235,14 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     val overlayStatsButton: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[OVERLAY_STATS_BUTTON] ?: DEFAULT_OVERLAY_STATS_BUTTON
+    }
+
+    val fileLoggingEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[FILE_LOGGING_ENABLED] ?: DEFAULT_FILE_LOGGING_ENABLED
+    }
+
+    val logcatCaptureEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[LOGCAT_CAPTURE_ENABLED] ?: DEFAULT_LOGCAT_CAPTURE_ENABLED
     }
 
     val safeAreaTop: Flow<Int> = dataStore.data.map { prefs ->
@@ -367,6 +379,14 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     suspend fun setOverlayStatsButton(visible: Boolean) {
         dataStore.edit { it[OVERLAY_STATS_BUTTON] = visible }
+    }
+
+    suspend fun setFileLoggingEnabled(enabled: Boolean) {
+        dataStore.edit { it[FILE_LOGGING_ENABLED] = enabled }
+    }
+
+    suspend fun setLogcatCaptureEnabled(enabled: Boolean) {
+        dataStore.edit { it[LOGCAT_CAPTURE_ENABLED] = enabled }
     }
 
     suspend fun setSafeAreaTop(value: Int) {

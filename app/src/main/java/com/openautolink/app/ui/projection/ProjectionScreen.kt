@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Settings
@@ -273,6 +274,27 @@ fun ProjectionScreen(
                     MaterialTheme.colorScheme.onSurface
                 },
                 modifier = Modifier.testTag("statsButton"),
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // File logging button — draggable, toggles USB/file log capture
+            DraggableOverlayButton(
+                icon = Icons.Default.FiberManualRecord,
+                contentDescription = "File Logging",
+                onClick = { viewModel.toggleFileLogging() },
+                positionKey = "overlay_file_log",
+                containerColor = if (uiState.fileLoggingActive) {
+                    Color.Red.copy(alpha = 0.7f)
+                } else {
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                },
+                tint = if (uiState.fileLoggingActive) {
+                    Color.White
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.testTag("fileLogButton"),
             )
 
         }
