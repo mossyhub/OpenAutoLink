@@ -93,12 +93,22 @@ class AasdkSession(
     @Volatile
     private var explicitStop = false
 
+    /** Consecutive reconnect failures — drives exponential backoff. */
+    @Volatile
+    private var consecutiveReconnectFailures = 0
+
+    /** True when the last failure was an AA protocol/handshake error (Error 30). */
+    @Volatile
+    private var lastFailureWasProtocolError = false
+
     private var transportPipe: AasdkTransportPipe? = null
 
     // -- Lifecycle --
 
     fun start() {
         explicitStop = false
+        consecutiveReconnectFailures = 0
+        lastFailureWasProtocolError = false
         _connectionState.value = ConnectionState.DISCONNECTED
 
         when (transportMode) {
@@ -249,6 +259,8 @@ class AasdkSession(
 
     override fun onSessionStarted() {
         OalLog.i(TAG, "AA session started (native)")
+        consecutiveReconnectFailures = 0
+        lastFailureWasProtocolError = false
         scope.launch {
             _connectionState.value = ConnectionState.CONNECTED
             _controlMessages.emit(ControlMessage.PhoneConnected(phoneName = "", phoneType = "wireless"))
@@ -269,8 +281,18 @@ class AasdkSession(
             // phone disconnect). Restart the transport connector after a delay so it
             // retries connecting once WiFi comes back.
             if (!explicitStop) {
-                OalLog.i(TAG, "Session died unexpectedly — will retry connection in 3s")
-                kotlinx.coroutines.delay(3000)
+                consecutiveReconnectFailures++
+
+                // Exponential backoff: 3s base, longer if protocol error (phone
+                // needs time to tear down old SSL session). Cap at 30s.
+                val baseDelayMs = if (lastFailureWasProtocolError) 5000L else 3000L
+                val backoffMs = (baseDelayMs * (1L shl (consecutiveReconnectFailures - 1).coerceAtMost(3)))
+                    .coerceAtMost(30_000L)
+                OalLog.i(TAG, "Session died unexpectedly — retry #$consecutiveReconnectFailures in ${backoffMs}ms" +
+                    if (lastFailureWasProtocolError) " (protocol error, extended backoff)" else "")
+                lastFailureWasProtocolError = false
+
+                kotlinx.coroutines.delay(backoffMs)
                 if (!explicitStop) {
                     OalLog.i(TAG, "Restarting transport connector")
                     when (transportMode) {
@@ -464,6 +486,11 @@ class AasdkSession(
 
     override fun onError(message: String) {
         OalLog.e(TAG, "Native error: $message")
+        // Flag protocol/handshake errors so reconnect uses extended backoff.
+        // AASDK Error 30 = SSL handshake rejected (phone still holds old session).
+        if ("AASDK Error: 30" in message) {
+            lastFailureWasProtocolError = true
+        }
         scope.launch {
             _controlMessages.emit(ControlMessage.Error(code = -1, message = message))
         }

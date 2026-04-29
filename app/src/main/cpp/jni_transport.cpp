@@ -44,6 +44,13 @@ JniTransport::~JniTransport()
 {
     stop();
 
+    // Safety net: if readThread self-exited (set stopped_ directly),
+    // stop() early-returned without joining. Join here to prevent
+    // ~std::thread calling std::terminate on a joinable thread.
+    if (readThread_.joinable()) {
+        readThread_.join();
+    }
+
     // Release JNI global ref
     if (javaTransport_) {
         JNIEnv* env = nullptr;
@@ -229,18 +236,18 @@ void JniTransport::readThreadFunc()
     LOGI("Read thread exiting");
     jvm_->DetachCurrentThread();
 
-    // Signal stop to aasdk
-    if (!stopped_) {
-        stopped_ = true;
-        strand_.post([this]() {
-            std::lock_guard<std::mutex> lock(receiveMutex_);
-            while (!receiveQueue_.empty()) {
-                auto& [size, promise] = receiveQueue_.front();
-                promise->reject(aasdk::error::Error(aasdk::error::ErrorCode::OPERATION_ABORTED));
-                receiveQueue_.pop();
-            }
-        });
-    }
+    // Signal that the transport is dead so consumers stop sending.
+    // Do NOT set stopped_ here — that would cause stop() to skip
+    // joining this thread, leading to ~thread calling std::terminate.
+    // Instead, reject pending promises and let stop() handle the flag.
+    strand_.post([this]() {
+        std::lock_guard<std::mutex> lock(receiveMutex_);
+        while (!receiveQueue_.empty()) {
+            auto& [size, promise] = receiveQueue_.front();
+            promise->reject(aasdk::error::Error(aasdk::error::ErrorCode::OPERATION_ABORTED));
+            receiveQueue_.pop();
+        }
+    });
 }
 
 void JniTransport::processReceiveQueue()
