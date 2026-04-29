@@ -1,4 +1,4 @@
-/*
+﻿/*
  * jni_session.cpp Ã¢â‚¬â€ aasdk session lifecycle + JNI callback dispatch.
  *
  * This is the core integration: creates the aasdk pipeline, implements
@@ -472,9 +472,19 @@ void JniSession::onHandshake(const aasdk::common::DataConstBuffer& payload)
 }
 
 void JniSession::onServiceDiscoveryRequest(
-    const aap_protobuf::service::control::message::ServiceDiscoveryRequest& /*request*/)
+    const aap_protobuf::service::control::message::ServiceDiscoveryRequest& request)
 {
-    LOGI("Service discovery request Ã¢â‚¬â€ building response");
+    LOGI("Service discovery request -- building response");
+    // Log phone SDR request -- device identity + potential unknown fields
+    if (request.has_device_name()) LOGI("  device_name: %s", request.device_name().c_str());
+    if (request.has_label_text()) LOGI("  label_text: %s", request.label_text().c_str());
+    if (request.has_phone_info()) {
+        const auto& pi = request.phone_info();
+        if (pi.has_instance_id()) LOGI("  phone instance_id: %s", pi.instance_id().c_str());
+        if (pi.has_connectivity_lifetime_id()) LOGI("  phone connectivity_id: %s", pi.connectivity_lifetime_id().c_str());
+        logProtoRaw("PhoneInfo", pi);
+    }
+    logProtoRaw("SDR-Request", request);
 
     aap_protobuf::service::control::message::ServiceDiscoveryResponse response;
     buildServiceDiscoveryResponse(response);
