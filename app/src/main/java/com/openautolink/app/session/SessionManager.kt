@@ -337,8 +337,10 @@ class SessionManager(
         _clusterManager?.release()
         _clusterManager = context?.let { com.openautolink.app.cluster.ClusterManager(it) }
         _clusterManager?.setClusterEnabled(true)
-        // Don't call launchClusterBinding() — let Templates Host discover the service
-        // via intent filter. This avoids CarAppActivity popping up on the main display.
+        // Proactively launch cluster binding — Templates Host on GM doesn't auto-discover
+        // the service via intent filter; it requires CarAppActivity to be launched first.
+        _clusterManager?.launchClusterBinding()
+        OalLog.i(TAG, "Cluster manager initialized and binding launched")
 
         // Create diagnostics (local-only)
         _telemetryCollector?.stop()

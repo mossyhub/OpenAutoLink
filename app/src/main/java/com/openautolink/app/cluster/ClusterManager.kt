@@ -64,8 +64,10 @@ class ClusterManager(private val context: Context) {
                 PackageManager.DONT_KILL_APP
             )
             Log.i(TAG, "Cluster service ${if (enabled) "enabled" else "disabled"}")
+            DiagnosticLog.i("cluster", "Cluster service ${if (enabled) "enabled" else "disabled"}")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to set cluster component state: ${e.message}")
+            DiagnosticLog.w("cluster", "Failed to set cluster component: ${e.message}")
         }
     }
 
