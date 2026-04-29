@@ -33,12 +33,33 @@ object DiagnosticLog {
 
     private const val MAX_LOCAL_ENTRIES = 500
 
+    /**
+     * Called from native C++ via JNI to route native log lines into the
+     * Kotlin diagnostic pipeline (ring buffer, file logger, TCP server).
+     * Registered in aasdk_jni.cpp JNI_OnLoad.
+     */
+    @JvmStatic
+    fun nativeLog(level: Int, tag: String, msg: String) {
+        val diagLevel = when (level) {
+            3 -> DiagnosticLevel.DEBUG   // ANDROID_LOG_DEBUG
+            4 -> DiagnosticLevel.INFO    // ANDROID_LOG_INFO
+            5 -> DiagnosticLevel.WARN    // ANDROID_LOG_WARN
+            else -> DiagnosticLevel.ERROR // ANDROID_LOG_ERROR + anything else
+        }
+        addLocal(diagLevel, tag, msg)
+        instance?.log(diagLevel, tag, msg)
+    }
+
     @Volatile
     var instance: RemoteDiagnostics? = null
 
     /** Remote log server for TCP streaming to laptop. Set by DiagnosticsViewModel. */
     @Volatile
     var remoteLogServer: RemoteLogServer? = null
+
+    /** File log writer for USB stick logging. Set by ProjectionViewModel. */
+    @Volatile
+    var fileLogWriter: FileLogWriter? = null
 
     private val ring = ArrayDeque<LocalLogEntry>(MAX_LOCAL_ENTRIES)
     private val _localLogs = MutableStateFlow<List<LocalLogEntry>>(emptyList())
@@ -89,5 +110,7 @@ object DiagnosticLog {
         }
         // Stream to TCP clients if remote log server is active
         remoteLogServer?.broadcast(entry)
+        // Write to file if file logging is active
+        fileLogWriter?.write(entry)
     }
 }

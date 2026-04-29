@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include "jni_session.h"
+#include "jni_log_bridge.h"
 #include "native_crash_handler.h"
 
 #define LOG_TAG "OAL-AasdkJni"
@@ -31,6 +32,11 @@ static std::shared_ptr<openautolink::jni::JniSession> getSession() {
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/)
 {
     gJvm = vm;
+    JNIEnv* env = nullptr;
+    vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (env) {
+        openautolink::jni::oal_jni_log_init(env, vm);
+    }
     LOGI("openautolink-jni loaded");
     return JNI_VERSION_1_6;
 }
