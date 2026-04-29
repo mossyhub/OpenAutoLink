@@ -183,7 +183,17 @@ class MediaCodecDecoder(
                     Log.w(TAG, "Frame flagged as codec_config+keyframe but no IDR NAL found (${frame.data.size} bytes)")
                 }
             }
-            frame.isCodecConfig -> handleCodecConfig(frame)
+            frame.isCodecConfig -> {
+                handleCodecConfig(frame)
+                // H.265 phones often send VPS+SPS+PPS+IDR in one buffer.
+                // C++ scans all NALs now, but as defense-in-depth: if the
+                // codec is ready and the buffer contains an IDR, process it.
+                if (codec != null && !receivedIdr && NalParser.containsIdr(frame.data)) {
+                    Log.i(TAG, "Config frame contains embedded IDR — processing as keyframe")
+                    DiagnosticLog.i("video", "Config frame has embedded IDR, processing")
+                    handleKeyframe(frame)
+                }
+            }
             frame.isEndOfStream -> handleEndOfStream()
             frame.isKeyframe -> handleKeyframe(frame)
             else -> handleRegularFrame(frame)
@@ -317,6 +327,24 @@ class MediaCodecDecoder(
                 }
             }
         }
+        // Guard against tiny "seed" IDRs from the phone's encoder startup.
+        // H.265 encoders often emit an 800-1500 byte placeholder IDR as their first
+        // output before producing a real picture. This decodes to green (empty chroma
+        // planes) and corrupts the display for 30-70 seconds until the next real IDR.
+        // Queue it to the decoder (maintains codec state) but DON'T enable rendering.
+        val minIdrBytes = 4096  // Real IDRs at any supported resolution are 50KB+
+        if (frame.data.size < minIdrBytes) {
+            Log.w(TAG, "IDR too small (${frame.data.size} bytes < $minIdrBytes) — likely encoder startup seed, queuing but not enabling render")
+            DiagnosticLog.w("video", "Tiny IDR rejected: ${frame.data.size}B < ${minIdrBytes}B, waiting for real IDR")
+            queueFrame(frame)  // Feed to decoder to maintain state
+            // Keep requesting a real IDR — don't set receivedIdr or renderingEnabled
+            if (!_needsKeyframe) {
+                _needsKeyframe = true
+                _needsKeyframeFlow.value = true
+            }
+            return
+        }
+
         Log.i(TAG, "IDR keyframe received: ${frame.data.size} bytes, renderGate: false->true")
         DiagnosticLog.i("video", "IDR received: ${frame.data.size}B, codecActive=${codec != null}, enabling render")
         receivedIdr = true
@@ -461,7 +489,13 @@ class MediaCodecDecoder(
             catch (_: Exception) {}
             codec = mc
             firstFrameRendered = false
-            outputFormatReceived = false
+            // Set outputFormatReceived based on whether we have reliable dimensions.
+            // When SPS was successfully parsed, dimensions match the stream — no
+            // resolution transition will occur, so INFO_OUTPUT_FORMAT_CHANGED may
+            // not fire on some Qualcomm H.265 decoders. Waiting for it would block
+            // rendering indefinitely, showing green (uninitialized surface).
+            // Only gate on format change when using fallback dimensions.
+            outputFormatReceived = (spsDims != null)
             decodeStartTimeMs = System.currentTimeMillis()
             renderingEnabled = false  // Don't render until first IDR is queued
 
