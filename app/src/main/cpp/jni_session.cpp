@@ -146,6 +146,10 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
         "(Ljava/lang/String;Ljava/lang/String;[B)V");
     cbMethods_.onNavigationDistance = env->GetMethodID(cbClass, "onNavigationDistance",
         "(IILjava/lang/String;Ljava/lang/String;)V");
+    cbMethods_.onNavigationFullState = env->GetMethodID(cbClass, "onNavigationFullState",
+        "(Ljava/lang/String;Ljava/lang/String;[BIILjava/lang/String;Ljava/lang/String;"
+        "Ljava/lang/String;Ljava/lang/String;I"
+        "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V");
     cbMethods_.onMediaMetadata = env->GetMethodID(cbClass, "onMediaMetadata",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[B)V");
     cbMethods_.onMediaPlayback = env->GetMethodID(cbClass, "onMediaPlayback", "(IJ)V");
@@ -685,23 +689,42 @@ void JniSession::onMediaWithTimestampIndication(
     bool isKeyFrame = false;
     bool isCodecConfig = false;
     int codec = negotiatedCodecType_.load();
+    // Scan ALL NAL units in the buffer, not just the first one.
+    // H.265 phones often send VPS+SPS+PPS+IDR combined in a single buffer.
+    // Only checking the first NAL (VPS) would miss the embedded IDR, causing
+    // the Kotlin side to never queue the keyframe → green video for 30-45s
+    // until the phone's natural GOP interval sends a standalone IDR.
     if (buffer.size >= 5) {
         const uint8_t* d = buffer.cdata;
-        size_t offset = 0;
-        if (d[0] == 0 && d[1] == 0 && d[2] == 0 && d[3] == 1) offset = 4;
-        else if (d[0] == 0 && d[1] == 0 && d[2] == 1) offset = 3;
-        if (offset > 0 && offset < buffer.size) {
-            if (codec == 7) {
-                // H.265: NAL type is bits 1-6 of first byte (2-byte NAL header)
-                uint8_t hevcNalType = (d[offset] >> 1) & 0x3F;
-                if (hevcNalType >= 16 && hevcNalType <= 21) isKeyFrame = true; // IRAP (IDR/CRA/BLA)
-                if (hevcNalType == 32 || hevcNalType == 33 || hevcNalType == 34) isCodecConfig = true; // VPS/SPS/PPS
-            } else {
-                // H.264: NAL type is bits 0-4 of first byte (1-byte NAL header)
-                uint8_t nalType = d[offset] & 0x1F;
-                if (nalType == 5) isKeyFrame = true;  // IDR slice
-                if (nalType == 7 || nalType == 8) isCodecConfig = true; // SPS or PPS
+        size_t pos = 0;
+        while (pos < buffer.size - 3) {
+            // Find next start code (0x000001 or 0x00000001)
+            size_t nalStart = 0;
+            bool found = false;
+            if (d[pos] == 0 && d[pos+1] == 0) {
+                if (pos + 3 < buffer.size && d[pos+2] == 0 && d[pos+3] == 1) {
+                    nalStart = pos + 4;
+                    found = true;
+                } else if (d[pos+2] == 1) {
+                    nalStart = pos + 3;
+                    found = true;
+                }
             }
+            if (!found) { pos++; continue; }
+            if (nalStart >= buffer.size) break;
+
+            if (codec == 7) {
+                uint8_t hevcNalType = (d[nalStart] >> 1) & 0x3F;
+                if (hevcNalType >= 16 && hevcNalType <= 21) isKeyFrame = true;
+                if (hevcNalType == 32 || hevcNalType == 33 || hevcNalType == 34) isCodecConfig = true;
+            } else {
+                uint8_t nalType = d[nalStart] & 0x1F;
+                if (nalType == 5) isKeyFrame = true;
+                if (nalType == 7 || nalType == 8) isCodecConfig = true;
+            }
+            // Early exit if both flags found
+            if (isKeyFrame && isCodecConfig) break;
+            pos = nalStart + 1;
         }
     }
 
@@ -709,6 +732,12 @@ void JniSession::onMediaWithTimestampIndication(
     jint flags = 0;
     if (isKeyFrame) flags |= 0x0001;     // FLAG_KEYFRAME
     if (isCodecConfig) flags |= 0x0002;  // FLAG_CODEC_CONFIG
+
+    // Log combined config+keyframe detection (H.265 VPS+SPS+PPS+IDR in one buffer)
+    if (isKeyFrame && isCodecConfig) {
+        LOGI("Video frame: combined config+keyframe detected (%zu bytes, codec=%d)",
+             buffer.size, codec);
+    }
 
     // Dispatch to Kotlin
     if (cbMethods_.onVideoFrame && callbackRef_) {
@@ -1508,6 +1537,66 @@ void JniSession::dispatchNavDistance(int distanceMeters, int etaSeconds,
                             jdist, junit);
         if (jdist) env->DeleteLocalRef(jdist);
         if (junit) env->DeleteLocalRef(junit);
+    }
+    releaseEnv(attached);
+}
+
+void JniSession::dispatchNavFullState(
+    const std::string& maneuver, const std::string& road,
+    const uint8_t* iconData, size_t iconSize,
+    int distanceMeters, int etaSeconds,
+    const std::string& displayDistance, const std::string& displayUnit,
+    const std::string& lanes, const std::string& cue,
+    int roundaboutExitNumber,
+    const std::string& currentRoad, const std::string& destination,
+    const std::string& etaFormatted, long long timeToArrivalSeconds,
+    int destDistanceMeters, const std::string& destDistDisplay,
+    const std::string& destDistUnit)
+{
+    if (!cbMethods_.onNavigationFullState || !callbackRef_) return;
+    bool attached;
+    JNIEnv* env = getEnv(attached);
+    if (env) {
+        jstring jmaneuver = maneuver.empty() ? nullptr : env->NewStringUTF(maneuver.c_str());
+        jstring jroad = road.empty() ? nullptr : env->NewStringUTF(road.c_str());
+        jbyteArray jicon = nullptr;
+        if (iconData && iconSize > 0) {
+            jicon = env->NewByteArray(static_cast<jsize>(iconSize));
+            env->SetByteArrayRegion(jicon, 0, static_cast<jsize>(iconSize),
+                                    reinterpret_cast<const jbyte*>(iconData));
+        }
+        jstring jdisplayDist = displayDistance.empty() ? nullptr : env->NewStringUTF(displayDistance.c_str());
+        jstring jdisplayUnit = displayUnit.empty() ? nullptr : env->NewStringUTF(displayUnit.c_str());
+        jstring jlanes = lanes.empty() ? nullptr : env->NewStringUTF(lanes.c_str());
+        jstring jcue = cue.empty() ? nullptr : env->NewStringUTF(cue.c_str());
+        jstring jcurrentRoad = currentRoad.empty() ? nullptr : env->NewStringUTF(currentRoad.c_str());
+        jstring jdestination = destination.empty() ? nullptr : env->NewStringUTF(destination.c_str());
+        jstring jetaFormatted = etaFormatted.empty() ? nullptr : env->NewStringUTF(etaFormatted.c_str());
+        jstring jdestDistDisplay = destDistDisplay.empty() ? nullptr : env->NewStringUTF(destDistDisplay.c_str());
+        jstring jdestDistUnit = destDistUnit.empty() ? nullptr : env->NewStringUTF(destDistUnit.c_str());
+
+        env->CallVoidMethod(callbackRef_, cbMethods_.onNavigationFullState,
+            jmaneuver, jroad, jicon,
+            static_cast<jint>(distanceMeters), static_cast<jint>(etaSeconds),
+            jdisplayDist, jdisplayUnit,
+            jlanes, jcue, static_cast<jint>(roundaboutExitNumber),
+            jcurrentRoad, jdestination, jetaFormatted,
+            static_cast<jlong>(timeToArrivalSeconds),
+            static_cast<jint>(destDistanceMeters),
+            jdestDistDisplay, jdestDistUnit);
+
+        if (jmaneuver) env->DeleteLocalRef(jmaneuver);
+        if (jroad) env->DeleteLocalRef(jroad);
+        if (jicon) env->DeleteLocalRef(jicon);
+        if (jdisplayDist) env->DeleteLocalRef(jdisplayDist);
+        if (jdisplayUnit) env->DeleteLocalRef(jdisplayUnit);
+        if (jlanes) env->DeleteLocalRef(jlanes);
+        if (jcue) env->DeleteLocalRef(jcue);
+        if (jcurrentRoad) env->DeleteLocalRef(jcurrentRoad);
+        if (jdestination) env->DeleteLocalRef(jdestination);
+        if (jetaFormatted) env->DeleteLocalRef(jetaFormatted);
+        if (jdestDistDisplay) env->DeleteLocalRef(jdestDistDisplay);
+        if (jdestDistUnit) env->DeleteLocalRef(jdestDistUnit);
     }
     releaseEnv(attached);
 }

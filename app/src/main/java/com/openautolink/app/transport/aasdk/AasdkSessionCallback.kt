@@ -57,6 +57,23 @@ interface AasdkSessionCallback {
     fun onNavigationDistance(distanceMeters: Int, etaSeconds: Int,
                             displayDistance: String?, displayUnit: String?)
 
+    /**
+     * Full navigation state update from modern NavigationState proto (msg 32774).
+     * Contains maneuver, road, lanes, cue, destination — all in one callback.
+     * Lane data is serialized as pipe-separated lanes with comma-separated directions:
+     * "shape:highlighted,shape:highlighted|shape:highlighted,..."
+     * @param roundaboutExitNumber -1 if not applicable
+     */
+    fun onNavigationFullState(
+        maneuver: String?, road: String?, iconPng: ByteArray?,
+        distanceMeters: Int, etaSeconds: Int,
+        displayDistance: String?, displayUnit: String?,
+        lanes: String?, cue: String?, roundaboutExitNumber: Int,
+        currentRoad: String?, destination: String?, etaFormatted: String?,
+        timeToArrivalSeconds: Long, destDistanceMeters: Int,
+        destDistDisplay: String?, destDistUnit: String?
+    )
+
     /** Media metadata update (track info). */
     fun onMediaMetadata(title: String, artist: String, album: String, albumArt: ByteArray?)
 

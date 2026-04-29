@@ -183,6 +183,16 @@ public:
                          const uint8_t* iconData, size_t iconSize);
     void dispatchNavDistance(int distanceMeters, int etaSeconds,
                             const std::string& displayDistance, const std::string& displayUnit);
+    void dispatchNavFullState(const std::string& maneuver, const std::string& road,
+                              const uint8_t* iconData, size_t iconSize,
+                              int distanceMeters, int etaSeconds,
+                              const std::string& displayDistance, const std::string& displayUnit,
+                              const std::string& lanes, const std::string& cue,
+                              int roundaboutExitNumber,
+                              const std::string& currentRoad, const std::string& destination,
+                              const std::string& etaFormatted, long long timeToArrivalSeconds,
+                              int destDistanceMeters, const std::string& destDistDisplay,
+                              const std::string& destDistUnit);
     void dispatchMediaMetadata(const std::string& title, const std::string& artist,
                                const std::string& album, const uint8_t* artData, size_t artSize);
     void dispatchMediaPlayback(int state, long long positionMs);
@@ -285,6 +295,7 @@ private:
         jmethodID onNavigationStatus = nullptr;
         jmethodID onNavigationTurn = nullptr;
         jmethodID onNavigationDistance = nullptr;
+        jmethodID onNavigationFullState = nullptr;
         jmethodID onMediaMetadata = nullptr;
         jmethodID onMediaPlayback = nullptr;
         jmethodID onPhoneStatus = nullptr;

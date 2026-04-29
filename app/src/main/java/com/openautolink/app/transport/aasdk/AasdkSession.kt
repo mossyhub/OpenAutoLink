@@ -327,6 +327,7 @@ class AasdkSession(
 
     override fun onNavigationStatus(status: Int) {
         scope.launch {
+            com.openautolink.app.diagnostics.DiagnosticLog.i("nav", "Status: $status (${if (status == 1) "ACTIVE" else "INACTIVE"})")
             if (status != 1) { // not ACTIVE
                 _controlMessages.emit(ControlMessage.NavStateClear)
             }
@@ -336,6 +337,7 @@ class AasdkSession(
     override fun onNavigationTurn(maneuver: String, road: String, iconPng: ByteArray?) {
         scope.launch {
             val iconBase64 = iconPng?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            com.openautolink.app.diagnostics.DiagnosticLog.d("nav", "Turn: $maneuver road=$road icon=${iconPng?.size ?: 0}B")
             _controlMessages.emit(ControlMessage.NavState(
                 maneuver = maneuver,
                 distanceMeters = null,
@@ -349,6 +351,7 @@ class AasdkSession(
     override fun onNavigationDistance(distanceMeters: Int, etaSeconds: Int,
                                       displayDistance: String?, displayUnit: String?) {
         scope.launch {
+            com.openautolink.app.diagnostics.DiagnosticLog.d("nav", "Distance: ${distanceMeters}m eta=${etaSeconds}s display=$displayDistance $displayUnit")
             _controlMessages.emit(ControlMessage.NavState(
                 maneuver = null,
                 distanceMeters = distanceMeters,
@@ -360,11 +363,67 @@ class AasdkSession(
         }
     }
 
+    override fun onNavigationFullState(
+        maneuver: String?, road: String?, iconPng: ByteArray?,
+        distanceMeters: Int, etaSeconds: Int,
+        displayDistance: String?, displayUnit: String?,
+        lanes: String?, cue: String?, roundaboutExitNumber: Int,
+        currentRoad: String?, destination: String?, etaFormatted: String?,
+        timeToArrivalSeconds: Long, destDistanceMeters: Int,
+        destDistDisplay: String?, destDistUnit: String?
+    ) {
+        scope.launch {
+            val iconBase64 = iconPng?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            val parsedLanes = parseLanesString(lanes)
+            com.openautolink.app.diagnostics.DiagnosticLog.d("nav", "FullState: $maneuver road=$road cue=$cue lanes=${parsedLanes?.size ?: 0} dest=$destination dist=${distanceMeters}m")
+            _controlMessages.emit(ControlMessage.NavState(
+                maneuver = maneuver,
+                distanceMeters = if (distanceMeters > 0) distanceMeters else null,
+                road = road,
+                etaSeconds = if (etaSeconds > 0) etaSeconds else null,
+                navImageBase64 = iconBase64,
+                lanes = parsedLanes,
+                cue = cue,
+                roundaboutExitNumber = if (roundaboutExitNumber >= 0) roundaboutExitNumber else null,
+                displayDistance = displayDistance,
+                displayDistanceUnit = displayUnit,
+                currentRoad = currentRoad,
+                destination = destination,
+                etaFormatted = etaFormatted,
+                timeToArrivalSeconds = if (timeToArrivalSeconds > 0) timeToArrivalSeconds else null,
+                destDistanceMeters = if (destDistanceMeters > 0) destDistanceMeters else null,
+                destDistanceDisplay = destDistDisplay,
+                destDistanceUnit = destDistUnit
+            ))
+        }
+    }
+
+    /**
+     * Parse serialized lane string from C++ JNI.
+     * Format: "shape:highlighted,shape:highlighted|shape:highlighted,..."
+     * Pipes separate lanes, commas separate directions within a lane.
+     */
+    private fun parseLanesString(lanes: String?): List<ControlMessage.NavLane>? {
+        if (lanes.isNullOrEmpty()) return null
+        return lanes.split('|').map { laneStr ->
+            val directions = laneStr.split(',').map { dirStr ->
+                val parts = dirStr.split(':')
+                ControlMessage.NavLaneDirection(
+                    shape = parts.getOrElse(0) { "unknown" },
+                    highlighted = parts.getOrElse(1) { "0" } == "1"
+                )
+            }
+            ControlMessage.NavLane(directions)
+        }
+    }
+
     override fun onMediaMetadata(title: String, artist: String, album: String, albumArt: ByteArray?) {
         scope.launch {
+            val artBase64 = albumArt?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+            com.openautolink.app.diagnostics.DiagnosticLog.i("media", "Metadata: title=$title artist=$artist art=${albumArt?.size ?: 0}B")
             _controlMessages.emit(ControlMessage.MediaMetadata(
                 title = title, artist = artist, album = album,
-                albumArtBase64 = null, playing = null, positionMs = null, durationMs = null
+                albumArtBase64 = artBase64, playing = null, positionMs = null, durationMs = null
             ))
         }
     }
@@ -372,6 +431,7 @@ class AasdkSession(
     override fun onMediaPlayback(state: Int, positionMs: Long) {
         scope.launch {
             val playing = state == 1 // PLAYING
+            com.openautolink.app.diagnostics.DiagnosticLog.d("media", "Playback: ${if (playing) "PLAYING" else "PAUSED"} pos=${positionMs}ms")
             _controlMessages.emit(ControlMessage.MediaMetadata(
                 title = null, artist = null, album = null,
                 durationMs = null, positionMs = positionMs,
