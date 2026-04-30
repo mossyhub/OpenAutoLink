@@ -55,7 +55,7 @@ OpenAutoLink embeds the [aasdk](https://github.com/opencardev/aasdk) v1.6 C++ li
 
 Two connection methods:
 
-**Wireless (phone hotspot):** The user assure the car is already on the phones wifi hotspot. User presses Start (or uses automatic modes available in the app. The companion app on the phone starts mDNS and a TCP server. The OpenAutoLink car app find the phones TCP server and connects and runs the AA session over that TCP connection.
+**Wireless (phone hotspot):** The user gets the car onto the phones wifi hotspot within the cars won Wifi setting pages. User presses Start on the phone companion app (or uses automatic modes available in the app). The companion app on the phone then starts mDNS and a TCP server. The OpenAutoLink car app finds the phones TCP server, connects then runs the AA session over that TCP connection.
 
 **USB (AOA v2):** Plug the phone directly into the head unit's USB port. The app performs the Android Open Accessory handshake and runs the AA session over bulk USB endpoints. Not that you will get multiple USB access prompts every time. This is a GM bug.
 
