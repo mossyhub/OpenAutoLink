@@ -9,11 +9,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.openautolink.companion"
+        applicationId = findProperty("appId") as? String ?: "com.openautolink.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = (findProperty("appVersionCode") as? String)?.toIntOrNull() ?: 1
+        versionName = (findProperty("appVersionName") as? String) ?: "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

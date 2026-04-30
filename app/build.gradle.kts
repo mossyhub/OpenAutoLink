@@ -11,7 +11,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = findProperty("appId") as? String ?: "com.openautolink.app"
+        applicationId = findProperty("oalAppId") as? String ?: "com.openautolink.app"
         minSdk = 32
         targetSdk = 36
         versionCode = (findProperty("oalVersionCode") as? String)?.toIntOrNull() ?: 1
