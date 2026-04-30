@@ -27,6 +27,12 @@ OpenAutoLink runs the full Android Auto protocol stack natively on an AAOS head 
 
 > **First-of-its-kind EV integration:** OpenAutoLink forwards real EV battery percentage, range, fuel type, and charge port data from the car into Android Auto. Google Maps uses this to show battery level alongside navigation — something no other aftermarket solution provides.
 
+## Walkthrough
+
+See the full installation and setup walkthrough video on YouTube:
+
+[![OpenAutoLink Walkthrough](https://img.youtube.com/vi/AmQOL05EM5k/0.jpg)](https://www.youtube.com/watch?v=AmQOL05EM5k)
+
 > **Discuss on XDA:** [OpenAutoLink — Wireless Android Auto for AAOS (GM EVs)](https://xdaforums.com/t/open-source-openautolink-wireless-android-auto-bridge-for-aaos-gm-evs.4785192/)
 
 ## Contents
