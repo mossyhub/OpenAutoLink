@@ -174,21 +174,9 @@ Because this is an AAOS app, installation on the car goes through your own Googl
 - **Uninstall or disable music apps on the head unit.** If Spotify, YouTube Music, or another music app is installed on both the AAOS head unit and the phone, media controls (steering wheel buttons, play/pause, skip) can get confused — the car may try to control the AAOS app and the AA app simultaneously. Uninstall or disable the AAOS versions (Settings → Apps) so media controls go exclusively to the phone's AA session.
 - **Disable the car's "Hey Google" detection.** The AAOS built-in Google Assistant and Android Auto's assistant will both try to respond to "Hey Google," causing conflicts. Turn off "Hey Google" detection in the car's Settings → Google → Google Assistant. The steering wheel voice button will still trigger the car's built-in assistant (this can't be changed), but "Hey Google" will go exclusively to the AA session on the phone.
 
-## Video and Display
+### Video and Display
 
-### Native Dependencies
-
-The C++ JNI layer links against prebuilt static libraries (OpenSSL, Boost, aasdk + protobuf + abseil). These are built once and cached:
-
-- **CI builds** download them automatically from a [GitHub Release](https://github.com/mossyhub/openautolink/releases/tag/native-deps).
-- **Local builds** (WSL): run the build scripts once, then Gradle finds them:
-  ```bash
-  scripts/build-openssl-android.sh    # OpenSSL for ARM64
-  scripts/setup-ndk-deps.sh           # Boost headers
-  scripts/build-aasdk-android.sh      # aasdk + protobuf + abseil
-  ```
-
-### Resolution Tiers
+## Resolution Tiers
 
 | Resolution | Codec | Notes |
 |-----------|-------|-------|
@@ -200,34 +188,11 @@ The C++ JNI layer links against prebuilt static libraries (OpenSSL, Boost, aasdk
 
 By default, the app uses auto-negotiation — the phone picks the best codec and resolution it supports.
 
-### Display Adaptation
+## Display Adaptation
 
-OpenAutoLink auto-computes `width_margin` (or `height_margin` for portrait displays) to tell the phone to render a wider viewport matching the display's aspect ratio. This avoids stretched circles and distorted UI that `pixel_aspect_ratio_e4` cannot fix (Qualcomm decoders ignore `MediaCodec` scaling modes). A safe area editor lets you push UI inward from screen edges to avoid curved bezels.
+OpenAutoLink tries to auto-compute a good  scale for AA UI to use for your screen, but you will want to play with and adjust it for your cars screen. This can be done using the DPI setting in the app. this controls the scale of the AA UI. There is no way to directly tell AA what layout to use, but you will notice by making changes to the DPI there are certain scales at which AA will change the layout...so choose a scale that is visually good on your screen, but also makes AA choose the wide side-by-side layout vs portrait layout (maps is a single wide banner at the top).
 
-> **Blazer EV tip:** 1440p at 230 DPI works well. Pull the top safe area inset down ~50px.
-
-## Repository Layout
-
-| Component | Language | Location | Purpose |
-|-----------|----------|----------|---------|
-| **Car App** | Kotlin / Compose | `app/` | AAOS app — UI, video, audio, sensors |
-| **C++ JNI Layer** | C++20 | `app/src/main/cpp/` | aasdk v1.6 AA protocol via JNI |
-| **Companion App** | Kotlin / Compose | `companion/` | Phone-side Nearby Connections advertiser |
-| **aasdk (submodule)** | C++ | `external/opencardev-aasdk/` | AA protocol library ([fork](https://github.com/mossyhub/aasdk)) |
-| **Native build scripts** | Bash | `scripts/` | Cross-compile OpenSSL, Boost, aasdk for Android |
-| **Documentation** | Markdown | `docs/` | Architecture, protocol, embedded knowledge |
-| **Build/Deploy scripts** | PowerShell | `scripts/` | Release bundling, deployment, testing |
-
-### C++ JNI Layer
-
-The app embeds aasdk as a prebuilt static library (`.a`) and links it via CMake/NDK. The JNI bridge files handle the boundary between Kotlin and C++:
-
-| File | Purpose |
-|------|---------|
-| `aasdk_jni.cpp` | JNI entry point — native method registration |
-| `jni_session.{h,cpp}` | aasdk pipeline: SSLWrapper → Cryptor → Messenger → channels |
-| `jni_channel_handlers.{h,cpp}` | Per-channel handler classes (audio, sensor, input, nav, mic, media, phone, BT) |
-| `jni_transport.{h,cpp}` | `ITransport` backed by Kotlin byte streams (Nearby or USB) |
+> **Blazer EV tip:** Pull the top safe area inset down ~50px.
 
 ### Historical
 
@@ -245,32 +210,10 @@ The original architecture used an SBC (single-board computer) running a C++ brid
 | [Multi-Phone Plan](docs/multi-phone-nearby.md) | Multi-phone Nearby Connections design |
 | [HUR Feature Comparison](docs/headunit-revived-feature-comparison.md) | Feature parity tracking vs Headunit Revived |
 
-## Status
-
-Active development, stable for daily driving on a 2024 Chevrolet Blazer EV.
-
-**Working:**
-- aasdk v1.6 AA protocol via C++ JNI (SSL, Cryptor, Messenger, all channels)
-- Wireless connection via Nearby Connections (companion app)
-- USB connection via AOA v2
-- Video (H.264/H.265/VP9, up to 4K)
-- Audio (PCM and AAC-LC, 5-purpose routing)
-- Touch input with multi-touch
-- Microphone (with NS + AGC + AEC)
-- Vehicle data forwarding (VHAL → AA, 21 sensor types)
-- EV energy model (battery %, range, fuel type, charge port)
-- Cluster navigation (turn-by-turn) and media metadata
-- Steering wheel controls
-- Multi-phone (default + chooser)
-- Automatic reconnect on car wake
-- Built-in diagnostics and remote log server
-- CI/CD: native deps build, unit tests, signed release APKs
-
 ## Known Issues
 
 - **H.265 video may appear green-tinted** on first connection for 30–45 seconds. May be Qualcomm-specific — not yet confirmed on other SoCs
-- **VHAL data and sensors** not flowing into AA properly — vehicle speed, gear, parking brake etc. not reaching the phone
-- **Cluster service** not working — navigation turn-by-turn data not appearing on the instrument cluster
+- **Connection/Reconnecting** this is still buggy. sometimes it will just work, sometimes the app may freeze and require somewhat of a dance to get connected. WIP.
 
 If you encounter other problems, please [open an issue](https://github.com/mossyhub/openautolink/issues).
 
