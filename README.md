@@ -55,9 +55,9 @@ OpenAutoLink embeds the [aasdk](https://github.com/opencardev/aasdk) v1.6 C++ li
 
 Two connection methods:
 
-**Wireless (phone hotspot):** A companion app on the phone uses Google Nearby Connections for discovery, then the car joins the phone's WiFi hotspot and runs the AA session over TCP. The phone hotspot is the primary transport — no router or home WiFi needed.
+**Wireless (phone hotspot):** The user assure the car is already on the phones wifi hotspot. User presses Start (or uses automatic modes available in the app. The companion app on the phone starts mDNS and a TCP server. The OpenAutoLink car app find the phones TCP server and connects and runs the AA session over that TCP connection.
 
-**USB (AOA v2):** Plug the phone directly into the head unit's USB port. The app performs the Android Open Accessory handshake and runs the AA session over bulk USB endpoints.
+**USB (AOA v2):** Plug the phone directly into the head unit's USB port. The app performs the Android Open Accessory handshake and runs the AA session over bulk USB endpoints. Not that you will get multiple USB access prompts every time. This is a GM bug.
 
 ```
 ┌─────────────────┐                              ┌──────────────────────────────┐
@@ -82,8 +82,7 @@ Two connection methods:
 - **EV battery data in Android Auto** — battery %, range, fuel type, charge port forwarded from VHAL into AA. Google Maps shows battery level alongside navigation
 - **H.264, H.265, and VP9** video with auto-negotiation. Up to 4K with AA Developer Mode
 - **PCM and AAC-LC audio** — PCM for compatibility, AAC-LC for ~10× WiFi bandwidth reduction
-- **Multi-phone support** — set a default phone, switch between phones with an overlay chooser
-- **Pixel-perfect display adaptation** — `width_margin` / `height_margin` auto-computed for wide and ultra-wide AAOS screens
+- **Pixel-perfect display adaptation** — (Still a work in progress) auto-computed AA scaling for wide and ultra-wide AAOS screens to the full screen isused without stretching UI.
 - **Per-purpose audio volume** — separate sliders for media, navigation, and assistant
 - **Custom key remapping** — map any physical button to any AA action
 - **Microphone enhancement** — NoiseSuppressor, AGC, AcousticEchoCanceler
@@ -94,7 +93,6 @@ Two connection methods:
 - **Stats overlay** — codec, resolution, FPS, bitrate, WiFi band, decoder info
 - **Automatic reconnect** — car sleep → wake → projection resumes with no user interaction
 - **Built-in diagnostics** — USB device scanner, network probe, remote log server (TCP 6555), VHAL browser
-- **CI/CD** — GitHub Actions builds native deps, runs tests, and produces signed APKs on release
 
 ## What You Need
 
@@ -109,9 +107,8 @@ That's it. No SBC, no Ethernet adapter, no extra hardware.
 ### Phone Setup
 
 Install the **OpenAutoLink Companion** app on your phone. It handles:
-- Nearby Connections advertising (phone discovery)
-- Android Auto Service auto-start detection
-- Custom device name for multi-phone identification
+- Starting the TCP server for the head unit to discover and connect to automatically.
+- Android Auto auto-start once TCP connection from the car is made.
 
 You can either download a prebuilt APK from [GitHub Actions](https://github.com/mossyhub/openautolink/actions/workflows/build-companion.yml) (click the latest run → Artifacts → `companion-debug-apk`) or build it yourself from the `companion/` directory.
 
@@ -154,13 +151,13 @@ Because this is an AAOS app, installation on the car goes through your own Googl
 
 ### 3. Connect
 
-**Wireless (Nearby + phone hotspot):**
+**Wireless Hotspot (preferred method):**
 1. **Turn on your phone's WiFi hotspot** (Settings → Hotspot / Tethering).
 2. **Connect the car to the hotspot.** On the head unit, go to Settings → Network & Internet → WiFi and join the phone's hotspot network. The car needs an active WiFi connection to the phone before OpenAutoLink can stream.
 3. Open the **Companion app** on the phone and tap **Start**.
-4. Open **OpenAutoLink** on the car — it discovers the phone via Nearby Connections and starts the AA session over the hotspot WiFi.
+4. Open **OpenAutoLink** on the car — the car app discovers the phones IP, connects via TCP, then the companion app starts AA directly pointing it to the car app through the existing WiFi connection over TCP.
 
-> **Hotspot reconnect note:** When the car wakes from sleep, it should automatically rejoin the phone's hotspot — but in practice this can take 30+ seconds or occasionally fail to reconnect on its own. This appears to be a GM / AAOS WiFi behavior. If the car doesn't reconnect, toggle the phone hotspot off and back on, or manually reconnect from the car's WiFi settings. Once WiFi is back, OpenAutoLink reconnects automatically if you have pressed the "Start" button or have one of the auto connect options configured.
+> **Hotspot reconnect note:** When the car wakes from sleep, it should automatically rejoin the phone's hotspot — but in practice this can take 30+ seconds or occasionally fail to reconnect on its own. This appears to be a GM / AAOS WiFi behavior. If the car doesn't reconnect, toggle the phone hotspot off and back on, or manually reconnect from the car's WiFi settings. Once WiFi is back, OpenAutoLink should reconnect automatically if you have pressed the "Start" button or have one of the auto connect options configured.
 
 **USB:**
 1. Plug the phone into the head unit's USB port.
@@ -173,6 +170,7 @@ Because this is an AAOS app, installation on the car goes through your own Googl
 
 - **Uninstall or disable music apps on the head unit.** If Spotify, YouTube Music, or another music app is installed on both the AAOS head unit and the phone, media controls (steering wheel buttons, play/pause, skip) can get confused — the car may try to control the AAOS app and the AA app simultaneously. Uninstall or disable the AAOS versions (Settings → Apps) so media controls go exclusively to the phone's AA session.
 - **Disable the car's "Hey Google" detection.** The AAOS built-in Google Assistant and Android Auto's assistant will both try to respond to "Hey Google," causing conflicts. Turn off "Hey Google" detection in the car's Settings → Google → Google Assistant. The steering wheel voice button will still trigger the car's built-in assistant (this can't be changed), but "Hey Google" will go exclusively to the AA session on the phone.
+- You can either unpaid your phone entirely from the car BT, or what I do is leave it paired, but if you do: go into your phones BT setting for the car specific connection and toggle off Media and Phone Calls. those now flow through AA natively. leaving them on will cause GM's built in apps to take over rather than AA.
 
 ### Video and Display
 
