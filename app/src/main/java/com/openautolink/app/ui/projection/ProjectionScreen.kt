@@ -246,16 +246,18 @@ fun ProjectionScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Switch Phone button
-            DraggableOverlayButton(
-                icon = Icons.Default.PhoneAndroid,
-                contentDescription = "Switch Phone",
-                onClick = { viewModel.showPhoneChooser() },
-                positionKey = "overlay_switch_phone",
-                modifier = Modifier.testTag("switchPhoneButton"),
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
+            // Switch Phone button — hidden for now; multi-phone UX is incomplete
+            // and the bridge-mode switching flow doesn't apply to the direct/JNI
+            // path. Re-enable once a single coherent flow exists.
+            // DraggableOverlayButton(
+            //     icon = Icons.Default.PhoneAndroid,
+            //     contentDescription = "Switch Phone",
+            //     onClick = { viewModel.showPhoneChooser() },
+            //     positionKey = "overlay_switch_phone",
+            //     modifier = Modifier.testTag("switchPhoneButton"),
+            // )
+            //
+            // Spacer(modifier = Modifier.height(8.dp))
 
             // Stats button — draggable
             DraggableOverlayButton(

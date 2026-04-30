@@ -53,6 +53,11 @@ else
 fi
 echo "Using NDK: $NDK_ROOT"
 
+# CMake 4.x removed compat with cmake_minimum_required(VERSION <3.5).
+# aasdk and some FetchContent sub-projects still declare older minimums.
+# Export the policy override so it propagates into all sub-builds. See issue #11.
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+
 ANDROID_API=32
 TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake"
 if [ ! -f "$TOOLCHAIN_FILE" ]; then
@@ -167,6 +172,7 @@ if [ ! -f "$HOST_PROTOC" ]; then
 
     cmake3 "$AASDK_NATIVE" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_AASDK_STATIC=ON \
         -DSKIP_BUILD_PROTOBUF=OFF \
         -DSKIP_BUILD_ABSL=OFF \
@@ -202,6 +208,7 @@ cmake3 "$AASDK_NATIVE" \
     -DANDROID_ABI=$TARGET_ABI \
     -DANDROID_PLATFORM=android-$ANDROID_API \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_MODULE_PATH="$SHIM_DIR" \
     -DBUILD_AASDK_STATIC=ON \
     -DSKIP_BUILD_PROTOBUF=OFF \

@@ -107,6 +107,8 @@ echo "  Build source: local"
 
 if [ ! -f CMakeCache.txt ]; then
     echo ">>> Configuring CMake..."
+    # CMake 4.x policy compat for older sub-projects (issue #11)
+    export CMAKE_POLICY_VERSION_MINIMUM=3.5
     cmake "$HEADLESS_DIR" \
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
         -DCMAKE_BUILD_TYPE=Release \

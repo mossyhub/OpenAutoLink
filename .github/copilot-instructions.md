@@ -99,6 +99,11 @@ The bridge binary is not used on this branch. It is preserved on the `bridge-mod
 .\gradlew :app:connectedDebugAndroidTest  # Instrumentation tests
 ```
 
+> **Linux contributors**: Use `scripts/linux/build-android.sh` and
+> `scripts/linux/bundle-release.sh`. The `.ps1` scripts in `scripts/` are
+> the **Windows-authoritative** path; do not duplicate logic — keep both
+> in sync when changing release workflows. See [scripts/linux/README.md](scripts/linux/README.md).
+
 ### Native Dependencies (one-time setup in WSL)
 ```bash
 scripts/build-openssl-android.sh   # OpenSSL static libs for ARM64

@@ -130,8 +130,15 @@ You can either download a prebuilt APK from [GitHub Actions](https://github.com/
 
 **Option B — Build from source:**
 ```powershell
+# Windows
 cd companion
 ..\gradlew assembleDebug
+adb install -r build/outputs/apk/debug/*.apk
+```
+```bash
+# Linux / macOS
+cd companion
+../gradlew assembleDebug
 adb install -r build/outputs/apk/debug/*.apk
 ```
 
@@ -150,7 +157,14 @@ Because this is an AAOS app, installation on the car goes through your own Googl
    ```
 5. Build and sign the release AAB:
    ```powershell
+   # Windows (uses DPAPI-saved credentials)
    .\scripts\bundle-release.ps1
+   ```
+   ```bash
+   # Linux / macOS (uses env-var credentials — see scripts/linux/README.md)
+   export OAL_KEYSTORE_PASS='...'
+   export OAL_KEY_PASS='...'
+   scripts/linux/bundle-release.sh
    ```
 6. Upload the AAB to Play Console, publish, and install on the car via Play Store.
 7. Grant the **Car Information** permission: Settings → Apps → OpenAutoLink → Permissions.

@@ -35,6 +35,9 @@ if [ ! -f "$BOOST_STAGING/boost/asio.hpp" ]; then
     rm -rf "$BOOST_STAGING"
     mkdir -p "$BOOST_STAGING"
 
+    # Always download the pinned Boost version. Do NOT use system /usr/include/boost
+    # — distros (e.g. Arch) ship Boost >=1.74 which removed boost::asio::io_service,
+    # required by aasdk. See issue #10.
     BOOST_URL="https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
     TARBALL="$WORK_DIR/boost_${BOOST_VERSION_UNDERSCORE}.tar.gz"
     if [ ! -f "$TARBALL" ]; then
@@ -50,7 +53,6 @@ if [ ! -f "$BOOST_STAGING/boost/asio.hpp" ]; then
     tar xzf "$TARBALL" -C "$EXTRACT_TMP" "boost_${BOOST_VERSION_UNDERSCORE}/boost"
     mv "$EXTRACT_TMP/boost_${BOOST_VERSION_UNDERSCORE}/boost" "$BOOST_STAGING/"
     rm -rf "$EXTRACT_TMP"
-
     echo "Boost headers staged: $(find "$BOOST_STAGING/boost" -type f | wc -l) files"
 fi
 
