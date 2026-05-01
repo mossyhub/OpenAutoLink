@@ -26,6 +26,9 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -34,6 +37,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -107,13 +112,17 @@ fun MainScreen(
     var stopOnWifiDisconnect by remember {
         mutableStateOf(prefs.getBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, false))
     }
+    var carWifiEntries by remember {
+        mutableStateOf(com.openautolink.companion.wifi.CarWifiEntry.loadAll(prefs))
+    }
 
     fun saveAutoStartMode(mode: Int) {
         autoStartMode = mode
         prefs.edit().putInt(CompanionPrefs.AUTO_START_MODE, mode).apply()
 
         // Schedule/cancel WiFi monitoring
-        if (mode == CompanionPrefs.AUTO_START_WIFI) {
+        if (mode == CompanionPrefs.AUTO_START_WIFI ||
+            mode == CompanionPrefs.AUTO_START_BT_AND_WIFI) {
             WifiJobService.schedule(context)
         } else {
             WifiJobService.cancel(context)
@@ -213,42 +222,112 @@ fun MainScreen(
                     ) ?: CompanionPrefs.DEFAULT_CONNECTION_MODE
                 )
             }
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = connectionMode == CompanionPrefs.MODE_PHONE_HOTSPOT,
-                    onClick = {
-                        connectionMode = CompanionPrefs.MODE_PHONE_HOTSPOT
-                        prefs.edit().putString(
-                            CompanionPrefs.CONNECTION_MODE,
-                            CompanionPrefs.MODE_PHONE_HOTSPOT,
-                        ).apply()
-                    },
-                    shape = SegmentedButtonDefaults.itemShape(0, 2),
-                ) { Text("Phone Hotspot") }
-                SegmentedButton(
-                    selected = connectionMode == CompanionPrefs.MODE_CAR_HOTSPOT,
-                    onClick = {
-                        connectionMode = CompanionPrefs.MODE_CAR_HOTSPOT
-                        prefs.edit().putString(
-                            CompanionPrefs.CONNECTION_MODE,
-                            CompanionPrefs.MODE_CAR_HOTSPOT,
-                        ).apply()
-                    },
-                    shape = SegmentedButtonDefaults.itemShape(1, 2),
-                ) { Text("Car Hotspot") }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    if (connectionMode == CompanionPrefs.MODE_CAR_HOTSPOT) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Wifi, null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Car Hotspot",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Phone joins the car's WiFi. Multiple phones can connect at once — " +
+                                "the car automatically connects to your default phone, or you can " +
+                                "switch between connected phones with one tap.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        var showPhoneHotspotConfirm by remember { mutableStateOf(false) }
+                        Text(
+                            "Use Phone Hotspot instead",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clickable { showPhoneHotspotConfirm = true }
+                                .padding(vertical = 4.dp),
+                        )
+                        if (showPhoneHotspotConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showPhoneHotspotConfirm = false },
+                                title = { Text("Switch to Phone Hotspot?") },
+                                text = {
+                                    Text(
+                                        "Car Hotspot is the recommended mode. It supports multiple " +
+                                            "phones and handles reconnection more reliably.\n\n" +
+                                            "Phone Hotspot mode requires you to manually manage your " +
+                                            "phone's hotspot and only supports a single phone.",
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        connectionMode = CompanionPrefs.MODE_PHONE_HOTSPOT
+                                        prefs.edit().putString(
+                                            CompanionPrefs.CONNECTION_MODE,
+                                            CompanionPrefs.MODE_PHONE_HOTSPOT,
+                                        ).apply()
+                                        showPhoneHotspotConfirm = false
+                                    }) { Text("Switch anyway") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showPhoneHotspotConfirm = false }) {
+                                        Text("Keep Car Hotspot")
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Wifi, null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Phone Hotspot",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "This phone hosts the WiFi hotspot. Single-phone only.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = {
+                            connectionMode = CompanionPrefs.MODE_CAR_HOTSPOT
+                            prefs.edit().putString(
+                                CompanionPrefs.CONNECTION_MODE,
+                                CompanionPrefs.MODE_CAR_HOTSPOT,
+                            ).apply()
+                        }) {
+                            Text(
+                                "Switch to Car Hotspot (recommended)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
             }
-            Text(
-                text = when (connectionMode) {
-                    CompanionPrefs.MODE_PHONE_HOTSPOT ->
-                        "This phone hosts the WiFi hotspot. The car connects to this phone."
-                    CompanionPrefs.MODE_CAR_HOTSPOT ->
-                        "Connect this phone to the car's WiFi hotspot. Multiple phones can be connected at once; the car-side app picks the active phone via the floating switcher button."
-                    else -> ""
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
 
             // Phone identity — visible so users know what they look like to
             // the car app. Friendly name is editable; phone_id is read-only.
@@ -301,6 +380,15 @@ fun MainScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "The car app always starts automatically. This setting ensures " +
+                    "the phone's companion service is also ready when you get in the car, " +
+                    "so the connection happens without any interaction.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(12.dp))
 
             AutoStartModeSelector(autoStartMode) { saveAutoStartMode(it) }
@@ -308,7 +396,8 @@ fun MainScreen(
             Spacer(Modifier.height(16.dp))
 
             // ── BT Config ──────────────────────────────────────────
-            if (autoStartMode == CompanionPrefs.AUTO_START_BT) {
+            if (autoStartMode == CompanionPrefs.AUTO_START_BT ||
+                autoStartMode == CompanionPrefs.AUTO_START_BT_AND_WIFI) {
                 BtAutoStartConfig(
                     selectedMacs = selectedBtMacs,
                     onMacsChanged = { macs ->
@@ -325,6 +414,31 @@ fun MainScreen(
                             .apply()
                     },
                 )
+                Spacer(Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                    ),
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Keep Bluetooth paired to the car, but go to your phone's " +
+                                "Bluetooth settings → tap the car's name → turn off Media Audio " +
+                                "and Phone Calls. These flow through Android Auto instead. " +
+                                "Leaving them on causes the car's built-in apps to compete with AA.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                }
             }
 
             // ── WiFi Config ────────────────────────────────────────
@@ -355,6 +469,30 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+
+            if (autoStartMode == CompanionPrefs.AUTO_START_BT_AND_WIFI) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Service starts when car Bluetooth connects OR car WiFi is detected nearby. " +
+                        "Whichever happens first triggers the service.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(20.dp))
+
+            // ── Car WiFi Config ────────────────────────────────────
+            CarWifiConfig(
+                entries = carWifiEntries,
+                onEntriesChanged = { updated ->
+                    carWifiEntries = updated
+                    com.openautolink.companion.wifi.CarWifiEntry.saveAll(prefs, updated)
+                },
+            )
 
             Spacer(Modifier.height(28.dp))
             HorizontalDivider()
@@ -449,16 +587,54 @@ private fun StatusCard(isRunning: Boolean, isConnected: Boolean, statusText: Str
 
 @Composable
 private fun AutoStartModeSelector(selected: Int, onSelected: (Int) -> Unit) {
-    val modes = listOf("Off", "Bluetooth", "WiFi", "App Open")
+    val modes = listOf(
+        CompanionPrefs.AUTO_START_BT_AND_WIFI to "Bluetooth + WiFi Scan (recommended)",
+        CompanionPrefs.AUTO_START_BT to "Bluetooth only",
+        CompanionPrefs.AUTO_START_WIFI to "WiFi SSID only",
+        CompanionPrefs.AUTO_START_APP_OPEN to "When app is opened",
+        CompanionPrefs.AUTO_START_OFF to "Off",
+    )
+    val selectedLabel = modes.firstOrNull { it.first == selected }?.second ?: modes[0].second
+    var expanded by remember { mutableStateOf(false) }
 
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = selected == index,
-                onClick = { onSelected(index) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = selectedLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
             )
+            Icon(
+                imageVector = Icons.Default.ExpandMore,
+                contentDescription = "Change mode",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            modes.forEach { (value, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onSelected(value)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }
@@ -830,6 +1006,269 @@ private fun WifiSsidPickerDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+// ── Car WiFi Config ────────────────────────────────────────────────────
+
+@Composable
+private fun CarWifiConfig(
+    entries: List<com.openautolink.companion.wifi.CarWifiEntry>,
+    onEntriesChanged: (List<com.openautolink.companion.wifi.CarWifiEntry>) -> Unit,
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showSetupGuide by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Car WiFi",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { showSetupGuide = true }) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Setup guide",
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text("Setup Guide", style = MaterialTheme.typography.labelMedium)
+        }
+    }
+    Text(
+        text = "Automatically connects to your car's WiFi when the service starts — " +
+            "even if this phone is currently on another network (e.g. home WiFi).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(8.dp))
+
+    if (showSetupGuide) {
+        AlertDialog(
+            onDismissRequest = { showSetupGuide = false },
+            title = { Text("Car WiFi Setup") },
+            text = {
+                Column {
+                    Text(
+                        "Follow these steps to set up automatic car WiFi connection:",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SetupStep(1, "Enable your car's WiFi hotspot",
+                        "On the head unit: Settings \u2192 Network & Internet \u2192 Hotspot. " +
+                            "Note the SSID and password shown.")
+                    SetupStep(2, "Connect your phone to the car's WiFi first",
+                        "Go to your phone's WiFi settings and join the car's hotspot normally. " +
+                            "This saves the network so Android can auto-reconnect. " +
+                            "You only need to do this once per car.")
+                    SetupStep(3, "Enter the car WiFi details here",
+                        "Tap 'Add Car WiFi' below and enter the same SSID and password. " +
+                            "This allows the app to force-connect to the car's WiFi " +
+                            "even when you're on another network (like home WiFi in the driveway).")
+                    SetupStep(4, "Select your car's Bluetooth",
+                        "Under Auto-Start, pick your car's Bluetooth device. " +
+                            "When the car starts and Bluetooth connects, the companion " +
+                            "service starts automatically and connects to the car's WiFi.")
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "After setup, the daily experience is fully automatic: " +
+                            "get in the car \u2192 Bluetooth pairs \u2192 phone joins car WiFi \u2192 " +
+                            "projection appears. No interaction needed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSetupGuide = false }) { Text("Got it") }
+            },
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (entries.isEmpty()) {
+                Text(
+                    text = "No car WiFi networks configured",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                entries.forEachIndexed { index, entry ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            Icons.Default.Wifi, null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            entry.ssid,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            onEntriesChanged(entries.toMutableList().also { it.removeAt(index) })
+                        }) {
+                            Text("Remove", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showAddDialog = true }) {
+                    Text("Add Car WiFi")
+                }
+                if (entries.isNotEmpty()) {
+                    val isServiceRunning by CompanionService.isRunning.collectAsState()
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Button(
+                        onClick = {
+                            if (isServiceRunning) {
+                                getCompanionService(context)?.restartCarWifi()
+                            } else {
+                                val intent = android.content.Intent(context, CompanionService::class.java).apply {
+                                    action = CompanionService.ACTION_START
+                                }
+                                androidx.core.content.ContextCompat.startForegroundService(context, intent)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Text(if (isServiceRunning) "Reconnect" else "Connect Now")
+                    }
+                }
+            }
+            if (entries.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Tap Connect Now once while near the car to grant the app permission " +
+                        "to manage this WiFi connection. After that, it connects automatically.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        CarWifiAddDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { ssid, password ->
+                val newEntry = com.openautolink.companion.wifi.CarWifiEntry(ssid, password)
+                // Replace if same SSID exists, otherwise append
+                val updated = entries.filter { it.ssid != ssid } + newEntry
+                onEntriesChanged(updated)
+                showAddDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun CarWifiAddDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (ssid: String, password: String) -> Unit,
+) {
+    var ssid by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Car WiFi") },
+        text = {
+            Column {
+                Text(
+                    "This is a one-time setup. Enter the SSID and password of your car's " +
+                        "WiFi hotspot. After the first successful connection, the app handles " +
+                        "everything automatically \u2014 you won't need to do this again.\n\n" +
+                        "Tip: Connect to the car's WiFi normally in your phone's WiFi settings " +
+                        "first so Android already knows the network.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = ssid,
+                    onValueChange = { ssid = it },
+                    label = { Text("WiFi SSID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Your password is stored only on this device in the app's private " +
+                            "storage. It is never sent to any server or shared with anyone. " +
+                            "It is used solely to connect this phone to your car's WiFi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(ssid.trim(), password) },
+                enabled = ssid.isNotBlank() && password.isNotBlank(),
+            ) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SetupStep(number: Int, title: String, description: String) {
+    Row(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            "$number.",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(20.dp),
+        )
+        Column {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

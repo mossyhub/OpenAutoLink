@@ -118,6 +118,13 @@ class WifiJobService : JobService() {
         fun checkWifiAndStart(context: Context): Boolean {
             val prefs = context.getSharedPreferences(CompanionPrefs.NAME, Context.MODE_PRIVATE)
             val mode = prefs.getInt(CompanionPrefs.AUTO_START_MODE, 0)
+
+            // BT+WiFi mode: check if any configured car WiFi SSID is visible
+            // in scan results (phone doesn't need to be connected to it).
+            if (mode == CompanionPrefs.AUTO_START_BT_AND_WIFI) {
+                return checkCarWifiScanAndStart(context, prefs)
+            }
+
             if (mode != CompanionPrefs.AUTO_START_WIFI) return false
 
             val targetSsids = prefs.getStringSet(CompanionPrefs.AUTO_START_WIFI_SSIDS, emptySet())
@@ -152,6 +159,52 @@ class WifiJobService : JobService() {
             if (stopOnDisconnect && CompanionService.isRunning.value) {
                 schedulePendingStop(context)
                 return true
+            }
+            return false
+        }
+
+        /**
+         * For BT+WiFi mode: check if any configured car WiFi SSID is visible
+         * in the latest scan results. Unlike the normal WiFi trigger, the phone
+         * does NOT need to be connected — just seeing the SSID in scan results
+         * is enough to start the service (CarWifiManager will handle connecting).
+         */
+        @Suppress("DEPRECATION")
+        private fun checkCarWifiScanAndStart(
+            context: Context,
+            prefs: android.content.SharedPreferences,
+        ): Boolean {
+            if (CompanionService.isRunning.value) return false // already running
+
+            val entries = com.openautolink.companion.wifi.CarWifiEntry.loadAll(prefs)
+            if (entries.isEmpty()) return false
+
+            val carSsids = entries.map { it.ssid.lowercase() }.toSet()
+
+            val wifiManager = context.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val scanResults = try {
+                wifiManager.scanResults ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            val visible = scanResults.any { result ->
+                val ssid = result.SSID?.takeIf { it.isNotBlank() } ?: return@any false
+                carSsids.contains(ssid.lowercase())
+            }
+
+            if (visible) {
+                CompanionLog.i(TAG, "Car WiFi SSID detected in scan — starting service")
+                val serviceIntent = Intent(context, CompanionService::class.java).apply {
+                    action = CompanionService.ACTION_START
+                }
+                try {
+                    ContextCompat.startForegroundService(context, serviceIntent)
+                    return true
+                } catch (e: Exception) {
+                    CompanionLog.e(TAG, "Start failed: ${e.message}")
+                }
             }
             return false
         }

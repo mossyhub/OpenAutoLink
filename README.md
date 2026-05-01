@@ -202,25 +202,45 @@ Because this is an AAOS app, installation on the car goes through your own Googl
 
 ### 3. Connect
 
-OpenAutoLink defaults to **Car Hotspot mode** on both apps. Pick a mode in Settings → Connection (the choice must match on both ends).
+OpenAutoLink defaults to **Car Hotspot mode** on both apps.
 
-#### Car Hotspot mode (recommended)
+#### One-Time Setup
 
-One-time setup:
-1. **Enable the car's WiFi hotspot.** On the head unit: Settings → Network & Internet → Hotspot (or your manufacturer's equivalent). Note the SSID and password — you'll need them once on each phone.
-2. **Connect each phone to the car's WiFi.** On the phone: Settings → WiFi → join the car's hotspot. Android remembers it like any home network, so this is a one-time tap per phone.
-3. **Open the Companion app** and tap **Start** (or configure auto-start under Auto-Start → WiFi and pick the car's SSID from the multi-select list).
-4. **Open OpenAutoLink on the car.** The phone chooser appears with every phone the car can see. Tap your phone to connect — that phone is now saved as your default and future drives auto-connect to it.
+1. **Enable the car's WiFi hotspot.** On the head unit: Settings → Network & Internet → Hotspot (or your manufacturer's equivalent). Note the SSID and password. **No data plan is required** — OpenAutoLink only uses the WiFi network for local communication between the phone and car. The hotspot does not need an active OnStar or cellular data subscription.
 
-Day-to-day:
-- Get in the car. Phone auto-rejoins the car WiFi. Companion auto-starts (if configured). Car app connects to your default phone automatically. Projection appears.
-- **Multiple drivers?** Both phones can be on the car's WiFi at the same time. The car connects to your default and ignores the others. Tap the floating phone icon on the projection screen to switch — the chooser shows every visible phone with online/offline status.
-- **Changing the default.** Tap a different phone in the chooser to switch to it for this drive, or use Settings → Connection → Known Phones → "Set Default" to change it permanently. Turn on "Always ask which phone to use" if you'd rather pick every time (useful for shared cars).
-- **Forgetting a phone.** Settings → Connection → Known Phones → "Forget" removes a phone. If it was your default, the chooser will appear on the next connect so you can pick a new one.
+2. **Connect your phone to the car's WiFi.** On your phone, go to Settings → WiFi and join the car's hotspot like you would any regular WiFi network. This saves the network so Android can auto-reconnect later. You only need to do this once per car.
 
-#### Phone Hotspot mode
+3. **Open the Companion app** on your phone and configure it:
+   - Under **Car WiFi**, tap **Add Car WiFi** and enter the car's WiFi SSID and password. This allows the app to force-connect your phone to the car's WiFi even when you're already on another network (like your home WiFi in the driveway). Your password is stored locally on the phone only — it is never sent anywhere.
+   - Tap **Connect Now** while near the car. This performs a one-time connection that grants the app permission to manage the car's WiFi automatically in the future. If the car WiFi is already a saved network on your phone, this happens silently. Otherwise, Android will show a one-time prompt — tap the car's WiFi to approve.
+   - Under **Auto-Start**, the default is **Bluetooth + WiFi Scan (recommended)**. Tap **Select Devices** and check your car's Bluetooth name. This way, the companion service starts automatically when your phone connects to the car's Bluetooth.
 
-1. In Settings → Connection on both apps, switch to **Phone Hotspot**.
+4. **Configure Bluetooth for AA (important).** Keep your phone paired to the car's Bluetooth — the Bluetooth connection is what triggers the companion app to start. But go into your **phone's Bluetooth settings → tap the car's name → turn off Media Audio and Phone Calls.** When Android Auto is running, media and phone calls flow through the AA session natively. If you leave the car's Bluetooth media/calls enabled, GM's built-in apps will compete with AA for audio and calls, causing a poor experience (doubled audio, missed calls, steering wheel buttons not working correctly).
+
+5. **Open OpenAutoLink on the car.** The phone chooser appears with every phone the car can see. Tap your phone to connect — that phone is saved as your default for future drives.
+
+#### Day-to-Day
+
+Once setup is complete, the daily experience is fully automatic:
+
+1. Get in the car and start it.
+2. Bluetooth pairs automatically → companion service starts.
+3. The app connects your phone to the car's WiFi (even if you're still on home WiFi).
+4. The car discovers the phone → Android Auto projection appears.
+
+No interaction needed. If your phone was already on the car's WiFi (e.g. you weren't near your home network), it connects even faster since no WiFi switch is needed.
+
+**Multiple drivers?** Both phones can be on the car's WiFi at the same time. The car connects to your default phone automatically. Tap the floating phone icon on the projection screen to switch — the chooser shows every visible phone with online/offline status.
+
+**Changing the default phone.** Tap a different phone in the chooser to switch for this drive, or go to Settings → Connection → Known Phones → "Set Default" to change it permanently.
+
+> **Tip:** The companion app has a built-in **Setup Guide** (tap the info button next to "Car WiFi") that walks you through these steps.
+
+#### Alternative: Phone Hotspot mode
+
+If your car doesn't have a built-in WiFi hotspot:
+
+1. In Settings → Connection on **both** apps, switch to **Phone Hotspot**.
 2. Turn on your phone's WiFi hotspot (Settings → Hotspot / Tethering).
 3. On the head unit: Settings → Network & Internet → WiFi → join the phone's hotspot.
 4. Open the Companion app and tap **Start**.
@@ -240,7 +260,6 @@ Day-to-day:
 
 - **Uninstall or disable music apps on the head unit.** If Spotify, YouTube Music, or another music app is installed on both the AAOS head unit and the phone, media controls (steering wheel buttons, play/pause, skip) can get confused — the car may try to control the AAOS app and the AA app simultaneously. Uninstall or disable the AAOS versions (Settings → Apps) so media controls go exclusively to the phone's AA session.
 - **Disable the car's "Hey Google" detection.** The AAOS built-in Google Assistant and Android Auto's assistant will both try to respond to "Hey Google," causing conflicts. Turn off "Hey Google" detection in the car's Settings → Google → Google Assistant. The steering wheel voice button will still trigger the car's built-in assistant (this can't be changed), but "Hey Google" will go exclusively to the AA session on the phone.
-- You can either unpair your phone entirely from the car BT, or what I do is leave it paired, but if you do: go into your phones BT settings for the car specific connection and toggle off Media and Phone Calls. those now flow through AA natively. leaving them on will cause GM's built in apps to take over rather than AA.
 
 ### Video and Display
 

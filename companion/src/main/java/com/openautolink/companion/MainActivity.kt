@@ -128,6 +128,11 @@ object CompanionPrefs {
     const val AUTO_START_BT = 1
     const val AUTO_START_WIFI = 2
     const val AUTO_START_APP_OPEN = 3
+    const val AUTO_START_BT_AND_WIFI = 4
+
+    // Car Hotspot WiFi credentials for WifiNetworkSpecifier auto-connect.
+    // Stored as Set<String>, each entry formatted as "ssid\tpassword".
+    const val CAR_WIFI_ENTRIES = "car_wifi_entries"
 
     const val TRANSPORT_MODE = "transport_mode"
     const val TRANSPORT_NEARBY = "nearby"

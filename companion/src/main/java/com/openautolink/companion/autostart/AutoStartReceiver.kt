@@ -20,7 +20,8 @@ class AutoStartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val prefs = context.getSharedPreferences(CompanionPrefs.NAME, Context.MODE_PRIVATE)
         val autoStartMode = prefs.getInt(CompanionPrefs.AUTO_START_MODE, 0)
-        if (autoStartMode != CompanionPrefs.AUTO_START_BT) return
+        if (autoStartMode != CompanionPrefs.AUTO_START_BT &&
+            autoStartMode != CompanionPrefs.AUTO_START_BT_AND_WIFI) return
 
         val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
