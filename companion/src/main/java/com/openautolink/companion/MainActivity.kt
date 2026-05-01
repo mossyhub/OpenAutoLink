@@ -121,7 +121,6 @@ object CompanionPrefs {
     const val AUTO_START_MODE = "auto_start_mode"
     const val AUTO_START_BT_MACS = "auto_start_bt_macs"
     const val BT_DISCONNECT_STOP = "bt_disconnect_stop"
-    const val BT_AUTO_RECONNECT = "bt_auto_reconnect"
     const val AUTO_START_WIFI_SSIDS = "auto_start_wifi_ssids"
     const val WIFI_DISCONNECT_STOP = "wifi_disconnect_stop"
 

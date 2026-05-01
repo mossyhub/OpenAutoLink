@@ -13,6 +13,8 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.openautolink.companion.CompanionPrefs
 import com.openautolink.companion.diagnostics.CompanionLog
@@ -45,6 +47,61 @@ class WifiJobService : JobService() {
         private const val TAG = "OAL_WifiJob"
         private const val JOB_ID = 2001
 
+        /** Delay before honoring `stop on disconnect`, to ride out
+         *  brief WiFi flaps when the car/AP hiccups. */
+        private const val STOP_GRACE_MS = 30_000L
+
+        private val mainHandler = Handler(Looper.getMainLooper())
+        @Volatile private var pendingStop: Runnable? = null
+
+        private fun cancelPendingStop() {
+            pendingStop?.let {
+                mainHandler.removeCallbacks(it)
+                pendingStop = null
+                CompanionLog.d(TAG, "Pending WiFi stop cancelled (SSID came back)")
+            }
+        }
+
+        @Suppress("DEPRECATION")
+        private fun schedulePendingStop(context: Context) {
+            cancelPendingStop()
+            val app = context.applicationContext
+            val r = Runnable {
+                pendingStop = null
+                // Re-check at fire time: don't stop if user reconnected
+                // to a target SSID, or if the service was already stopped,
+                // or if the user changed mode in the interim.
+                val prefs = app.getSharedPreferences(CompanionPrefs.NAME, Context.MODE_PRIVATE)
+                if (prefs.getInt(CompanionPrefs.AUTO_START_MODE, 0) != CompanionPrefs.AUTO_START_WIFI) return@Runnable
+                if (!prefs.getBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, false)) return@Runnable
+                if (!CompanionService.isRunning.value) return@Runnable
+
+                val targetSsids = prefs.getStringSet(CompanionPrefs.AUTO_START_WIFI_SSIDS, emptySet())
+                    ?: emptySet()
+                val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                val raw = wm.connectionInfo?.ssid?.replace("\"", "") ?: ""
+                val current = if (raw == "<unknown ssid>") "" else raw
+                val matched = current.isNotBlank() &&
+                    targetSsids.any { it.equals(current, ignoreCase = true) }
+                if (matched) {
+                    CompanionLog.i(TAG, "Grace expired but SSID '$current' matched again; not stopping")
+                    return@Runnable
+                }
+                CompanionLog.i(TAG, "Grace expired, off target SSID — stopping service")
+                val stopIntent = Intent(app, CompanionService::class.java).apply {
+                    action = CompanionService.ACTION_STOP
+                }
+                try {
+                    app.startService(stopIntent)
+                } catch (e: Exception) {
+                    CompanionLog.e(TAG, "Stop failed: ${e.message}")
+                }
+            }
+            pendingStop = r
+            mainHandler.postDelayed(r, STOP_GRACE_MS)
+            CompanionLog.i(TAG, "Stop on disconnect armed (${STOP_GRACE_MS / 1000}s grace)")
+        }
+
         /**
          * Re-check WiFi state. Used on each broadcast from [WifiReceiver]
          * (PendingIntent NetworkCallback) and from the periodic JobScheduler
@@ -52,12 +109,10 @@ class WifiJobService : JobService() {
          *
          * Decisions:
          *   - SSID matches a target → start the foreground service (no-op if
-         *     it's already running).
+         *     it's already running). Cancels any pending stop.
          *   - SSID does NOT match (or no WiFi) AND user has enabled
          *     [CompanionPrefs.WIFI_DISCONNECT_STOP] AND the service is
-         *     running → stop it. Mirrors the BT_DISCONNECT_STOP toggle.
-         *
-         * Always returns true if a state-change action was taken.
+         *     running → schedule a 30s deferred stop (rides out brief flaps).
          */
         @Suppress("DEPRECATION")
         fun checkWifiAndStart(context: Context): Boolean {
@@ -79,6 +134,7 @@ class WifiJobService : JobService() {
             CompanionLog.d(TAG, "Current SSID='$currentSsid', targets=$targetSsids, match=$matched")
 
             if (matched) {
+                cancelPendingStop()
                 CompanionLog.i(TAG, "SSID match — ensuring service is running")
                 val serviceIntent = Intent(context, CompanionService::class.java).apply {
                     action = CompanionService.ACTION_START
@@ -92,21 +148,10 @@ class WifiJobService : JobService() {
                 return false
             }
 
-            // No matching SSID. If the user opted in to "stop on disconnect"
-            // AND the service is currently running, stop it. The check runs
-            // even when the service isn't running (no-op in that case).
             val stopOnDisconnect = prefs.getBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, false)
             if (stopOnDisconnect && CompanionService.isRunning.value) {
-                CompanionLog.i(TAG, "Off target SSID + stop-on-disconnect — stopping service")
-                val stopIntent = Intent(context, CompanionService::class.java).apply {
-                    action = CompanionService.ACTION_STOP
-                }
-                try {
-                    context.startService(stopIntent)
-                    return true
-                } catch (e: Exception) {
-                    CompanionLog.e(TAG, "Stop failed: ${e.message}")
-                }
+                schedulePendingStop(context)
+                return true
             }
             return false
         }
@@ -132,10 +177,9 @@ class WifiJobService : JobService() {
             }
 
             // Fallback: periodic JobScheduler. Android forces a 15-min
-            // minimum on periodic jobs (PeriodicJob.MIN_PERIOD_MILLIS), so
-            // this is the floor. The NetworkCallback above handles real-time
-            // events; this only rescues us from missed callbacks (process
-            // killed, reboot).
+            // minimum on periodic jobs, so this is the floor. The
+            // NetworkCallback above handles real-time events; this only
+            // rescues us from missed callbacks (process killed, reboot).
             val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
             val jobInfo = JobInfo.Builder(JOB_ID, ComponentName(context, WifiJobService::class.java))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
@@ -147,6 +191,7 @@ class WifiJobService : JobService() {
 
         fun cancel(context: Context) {
             CompanionLog.i(TAG, "Cancelling WiFi auto-start triggers")
+            cancelPendingStop()
             val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
             scheduler.cancel(JOB_ID)
 

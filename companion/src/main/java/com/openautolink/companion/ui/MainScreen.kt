@@ -98,14 +98,14 @@ fun MainScreen(
     var stopOnBtDisconnect by remember {
         mutableStateOf(prefs.getBoolean(CompanionPrefs.BT_DISCONNECT_STOP, false))
     }
-    var autoReconnect by remember {
-        mutableStateOf(prefs.getBoolean(CompanionPrefs.BT_AUTO_RECONNECT, false))
-    }
     var selectedSsids by remember {
         mutableStateOf(
             prefs.getStringSet(CompanionPrefs.AUTO_START_WIFI_SSIDS, emptySet())
                 ?.toSet() ?: emptySet()
         )
+    }
+    var stopOnWifiDisconnect by remember {
+        mutableStateOf(prefs.getBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, false))
     }
 
     fun saveAutoStartMode(mode: Int) {
@@ -387,13 +387,6 @@ fun MainScreen(
                             .putBoolean(CompanionPrefs.BT_DISCONNECT_STOP, v)
                             .apply()
                     },
-                    autoReconnect = autoReconnect,
-                    onAutoReconnectChanged = { v ->
-                        autoReconnect = v
-                        prefs.edit()
-                            .putBoolean(CompanionPrefs.BT_AUTO_RECONNECT, v)
-                            .apply()
-                    },
                 )
             }
 
@@ -405,6 +398,13 @@ fun MainScreen(
                         selectedSsids = ssids
                         prefs.edit()
                             .putStringSet(CompanionPrefs.AUTO_START_WIFI_SSIDS, ssids)
+                            .apply()
+                    },
+                    stopOnDisconnect = stopOnWifiDisconnect,
+                    onStopOnDisconnectChanged = { v ->
+                        stopOnWifiDisconnect = v
+                        prefs.edit()
+                            .putBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, v)
                             .apply()
                     },
                 )
@@ -535,8 +535,6 @@ private fun BtAutoStartConfig(
     onMacsChanged: (Set<String>) -> Unit,
     stopOnDisconnect: Boolean,
     onStopOnDisconnectChanged: (Boolean) -> Unit,
-    autoReconnect: Boolean,
-    onAutoReconnectChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var showDevicePicker by remember { mutableStateOf(false) }
@@ -593,7 +591,6 @@ private fun BtAutoStartConfig(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             SwitchRow("Stop on BT disconnect", stopOnDisconnect, onStopOnDisconnectChanged)
-            SwitchRow("Auto-reconnect", autoReconnect, onAutoReconnectChanged)
         }
     }
 
@@ -701,6 +698,8 @@ private fun triggerWifiScan(context: Context) {
 private fun WifiAutoStartConfig(
     selectedSsids: Set<String>,
     onSsidsChanged: (Set<String>) -> Unit,
+    stopOnDisconnect: Boolean,
+    onStopOnDisconnectChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var showPicker by remember { mutableStateOf(false) }
@@ -743,11 +742,13 @@ private fun WifiAutoStartConfig(
             TextButton(onClick = { showPicker = true }) {
                 Text("Select Networks")
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Service starts when phone joins any selected network.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            SwitchRow(
+                "Stop 30s after WiFi disconnect",
+                stopOnDisconnect,
+                onStopOnDisconnectChanged,
             )
         }
     }
