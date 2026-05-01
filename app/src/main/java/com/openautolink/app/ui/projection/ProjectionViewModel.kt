@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -237,6 +238,19 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Save & Reconnect replaces the decoder while the SurfaceView can stay
+        // alive under the settings overlay. Reattach the current Surface to each
+        // new decoder instance even when Android does not emit surfaceCreated.
+        viewModelScope.launch {
+            sessionManager.videoDecoderRevision.collectLatest {
+                attachPendingSurface()
+                val statsFlow = sessionManager.videoStats ?: return@collectLatest
+                statsFlow.collect { stats ->
+                    _videoStats.value = stats
                 }
             }
         }

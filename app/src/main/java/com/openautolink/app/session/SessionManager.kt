@@ -106,6 +106,8 @@ class SessionManager(
     val videoDecoder: VideoDecoder? get() = _videoDecoder
     val videoStats: StateFlow<VideoStats>? get() = _videoDecoder?.stats
     val decoderState: StateFlow<DecoderState>? get() = _videoDecoder?.decoderState
+    private val _videoDecoderRevision = MutableStateFlow(0)
+    val videoDecoderRevision: StateFlow<Int> = _videoDecoderRevision.asStateFlow()
 
     // Touch coordinate space — matches the SDR input channel touchscreen dimensions.
     // NOT the video codec output dimensions (which may differ due to phone auto-negotiation).
@@ -313,6 +315,7 @@ class SessionManager(
         // Create video decoder
         _videoDecoder?.release()
         _videoDecoder = MediaCodecDecoder(codecPreference, scalingMode)
+        _videoDecoderRevision.value++
 
         // Create audio player
         _audioPlayer?.release()
@@ -787,6 +790,7 @@ class SessionManager(
         stopDirectLocationForwarding()
         _videoDecoder?.release()
         _videoDecoder = null
+        _videoDecoderRevision.value++
         _audioPlayer?.release()
         _audioPlayer = null
         _micCaptureManager?.release()
@@ -930,6 +934,7 @@ class SessionManager(
         // 3. Flush video decoder (codec/scaling may have changed)
         _videoDecoder?.release()
         _videoDecoder = MediaCodecDecoder(codecPreference, scalingMode)
+        _videoDecoderRevision.value++
         _telemetryCollector?.videoDecoder = _videoDecoder
 
         // 4. Update audio volume offsets in-place (no release/recreate)
