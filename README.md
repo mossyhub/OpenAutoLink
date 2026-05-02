@@ -209,6 +209,7 @@ OpenAutoLink defaults to **Car Hotspot mode** on both apps.
 1. **Enable the car's WiFi hotspot.** On the head unit: Settings → Network & Internet → Hotspot (or your manufacturer's equivalent). Note the SSID and password. **No data plan is required** — OpenAutoLink only uses the WiFi network for local communication between the phone and car. The hotspot does not need an active OnStar or cellular data subscription.
 
 2. **Connect your phone to the car's WiFi.** On your phone, go to Settings → WiFi and join the car's hotspot like you would any regular WiFi network. This saves the network so Android can auto-reconnect later. You only need to do this once per car.
+   > **Tip:** If your car doesn't have a data plan (e.g. no OnStar subscription), the car's hotspot has no internet. Phones will detect this and pop a notification asking if you want to disconnect or switch networks — tell it to **stay connected**. Modern Android is smart enough to keep the car WiFi for the projection link while routing the phone's own internet traffic over cellular.
 
 3. **Open the Companion app** on your phone and configure it:
    - Under **Car WiFi**, tap **Add Car WiFi** and enter the car's WiFi SSID and password. This allows the app to force-connect your phone to the car's WiFi even when you're already on another network (like your home WiFi in the driveway). Your password is stored locally on the phone only — it is never sent anywhere.
