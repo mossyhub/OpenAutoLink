@@ -209,6 +209,7 @@ OpenAutoLink defaults to **Car Hotspot mode** on both apps. Pick a mode in Setti
 One-time setup:
 1. **Enable the car's WiFi hotspot.** On the head unit: Settings → Network & Internet → Hotspot (or your manufacturer's equivalent). Note the SSID and password — you'll need them once on each phone.
 2. **Connect each phone to the car's WiFi.** On the phone: Settings → WiFi → join the car's hotspot. Android remembers it like any home network, so this is a one-time tap per phone.
+   > **Tip:** If your car doesn't have a data plan (e.g. no OnStar subscription), the car's hotspot has no internet. Phones will detect this and pop a notification asking if you want to disconnect or switch networks — tell it to **stay connected**. Modern Android is smart enough to keep the car WiFi for the projection link while routing the phone's own internet traffic over cellular.
 3. **Open the Companion app** and tap **Start** (or configure auto-start under Auto-Start → WiFi and pick the car's SSID from the multi-select list).
 4. **Open OpenAutoLink on the car.** The phone chooser appears with every phone the car can see. Tap your phone to connect — that phone is now saved as your default and future drives auto-connect to it.
 
