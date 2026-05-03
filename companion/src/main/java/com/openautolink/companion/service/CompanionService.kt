@@ -72,6 +72,14 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
             }
 
             ACTION_START -> {
+                // If already connected (AA bridge active), ignore duplicate starts
+                // (e.g. BT auto-start firing a few hundred ms after the car already
+                // TCP-connected and we fired the AA trigger). Restarting here would
+                // tear down the proxy mid-connection.
+                if (_isConnected.value) {
+                    CompanionLog.i(TAG, "Start requested but already connected — ignoring")
+                    return START_STICKY
+                }
                 CompanionLog.i(TAG, "Start requested")
                 _isRunning.value = true
                 _isConnected.value = false

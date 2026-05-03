@@ -68,13 +68,15 @@ class WifiJobService : JobService() {
             val app = context.applicationContext
             val r = Runnable {
                 pendingStop = null
-                // Re-check at fire time: don't stop if user reconnected
-                // to a target SSID, or if the service was already stopped,
-                // or if the user changed mode in the interim.
                 val prefs = app.getSharedPreferences(CompanionPrefs.NAME, Context.MODE_PRIVATE)
                 if (prefs.getInt(CompanionPrefs.AUTO_START_MODE, 0) != CompanionPrefs.AUTO_START_WIFI) return@Runnable
                 if (!prefs.getBoolean(CompanionPrefs.WIFI_DISCONNECT_STOP, false)) return@Runnable
                 if (!CompanionService.isRunning.value) return@Runnable
+                // Never stop while AA is actively connected.
+                if (CompanionService.isConnected.value) {
+                    CompanionLog.i(TAG, "Grace expired but AA is connected — not stopping")
+                    return@Runnable
+                }
 
                 val targetSsids = prefs.getStringSet(CompanionPrefs.AUTO_START_WIFI_SSIDS, emptySet())
                     ?: emptySet()
