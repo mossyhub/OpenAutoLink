@@ -151,10 +151,10 @@ class CarWifiManager(private val context: Context) {
                 CompanionLog.i(TAG, "Connected to \"${entry.ssid}\" on attempt $attempt")
                 _state.value = State.Connected(entry.ssid)
                 attempt = 0
-                // Unregister immediately — this collapses the "Stay connected?"
-                // / "Searching..." system dialog as soon as we're connected.
-                // The WifiNetworkSuggestion layer keeps the connection alive.
-                releaseCallback()
+                // Keep the callback registered — unregistering here would tear down
+                // the secondary WiFi network, removing the phone's IP on the car's
+                // subnet and making the car unable to reach our server ports.
+                // The callback is released in stop().
             }
 
             override fun onUnavailable() {
