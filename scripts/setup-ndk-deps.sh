@@ -70,9 +70,10 @@ echo "Copying tarball to NTFS..."
 cp "$PACK" "$NTFS_PACK"
 
 # Step 4: Extract on NTFS (use tar — much faster than cp for many files)
+# --warning=no-timestamp suppresses harmless "Cannot utime" errors on NTFS mounts
 echo "Extracting on NTFS..."
 mkdir -p "$OUTPUT_DIR"
-tar xzf "$NTFS_PACK" -C "$OUTPUT_DIR"
+tar xzf "$NTFS_PACK" -C "$OUTPUT_DIR" --warning=no-timestamp 2>/dev/null || true
 rm -f "$NTFS_PACK"
 
 # Verify

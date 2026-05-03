@@ -55,6 +55,10 @@ class TcpAdvertiser(
         private const val AA_CONNECT_TIMEOUT_MS = 8_000L
         /** Re-fire the AA launch intent up to this many times before resetting the car socket. */
         private const val MAX_AA_LAUNCH_RETRIES = 3
+        /** Times to retry port bind on EADDRINUSE before giving up. */
+        private const val BIND_RETRY_MAX = 10
+        /** Delay between bind retries (ms). 10 retries × 300ms = 3s max wait. */
+        private const val BIND_RETRY_DELAY_MS = 300L
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -84,9 +88,24 @@ class TcpAdvertiser(
 
         scope.launch {
             try {
+                // Retry bind briefly to handle EADDRINUSE race when the service
+                // is restarted quickly (e.g. BT reconnect triggers start within
+                // milliseconds of the previous stop). The OS may not have released
+                // the port yet even though we called serverSocket.close().
                 val server = ServerSocket()
                 server.reuseAddress = true
-                server.bind(InetSocketAddress(PORT))
+                var bindAttempt = 0
+                while (true) {
+                    try {
+                        server.bind(InetSocketAddress(PORT))
+                        break
+                    } catch (e: java.net.BindException) {
+                        bindAttempt++
+                        if (bindAttempt >= BIND_RETRY_MAX) throw e
+                        CompanionLog.w(TAG, "Port $PORT in use, retrying in ${BIND_RETRY_DELAY_MS}ms (attempt $bindAttempt/$BIND_RETRY_MAX)")
+                        delay(BIND_RETRY_DELAY_MS)
+                    }
+                }
                 serverSocket = server
                 CompanionLog.i(TAG, "Listening on 0.0.0.0:$PORT")
 

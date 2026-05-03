@@ -25,27 +25,39 @@ class TransparentTriggerActivity : Activity() {
         }
 
         if (targetIntent != null) {
-            CompanionLog.i(TAG, "Launching AA via Activity...")
+            val port = targetIntent.getIntExtra("PARAM_SERVICE_PORT", 5288)
+            // Try the broadcast path first — it works reliably on all known AA
+            // versions and avoids the ~8s watchdog penalty when WirelessStartupActivity
+            // doesn't exist (e.g. Pixel 9+/AA 13+).
+            var broadcastSent = false
+            try {
+                val receiverIntent = Intent().apply {
+                    setClassName(
+                        "com.google.android.projection.gearhead",
+                        "com.google.android.apps.auto.wireless.setup.receiver.WirelessStartupReceiver"
+                    )
+                    action = "com.google.android.apps.auto.wireless.setup.receiver.wirelessstartup.START"
+                    putExtra("ip_address", "127.0.0.1")
+                    putExtra("projection_port", port)
+                    addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                }
+                sendBroadcast(receiverIntent)
+                broadcastSent = true
+                CompanionLog.i(TAG, "Broadcast sent (port=$port)")
+            } catch (e: Exception) {
+                CompanionLog.w(TAG, "Broadcast failed: ${e.message}")
+            }
+
+            // Also fire the Activity intent as a fallback for older AA versions
+            // that need it. Failure here is non-fatal if broadcast already sent.
             try {
                 startActivity(targetIntent)
+                CompanionLog.i(TAG, "Activity launch succeeded (port=$port)")
             } catch (e: Exception) {
-                CompanionLog.w(TAG, "Activity launch failed: ${e.message}. Trying broadcast fallback...")
-                try {
-                    val port = targetIntent.getIntExtra("PARAM_SERVICE_PORT", 5288)
-                    val receiverIntent = Intent().apply {
-                        setClassName(
-                            "com.google.android.projection.gearhead",
-                            "com.google.android.apps.auto.wireless.setup.receiver.WirelessStartupReceiver"
-                        )
-                        action = "com.google.android.apps.auto.wireless.setup.receiver.wirelessstartup.START"
-                        putExtra("ip_address", "127.0.0.1")
-                        putExtra("projection_port", port)
-                        addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                    }
-                    sendBroadcast(receiverIntent)
-                    CompanionLog.i(TAG, "Broadcast fallback sent")
-                } catch (e2: Exception) {
-                    CompanionLog.e(TAG, "Both triggers failed: ${e.message} / ${e2.message}")
+                if (!broadcastSent) {
+                    CompanionLog.e(TAG, "Both triggers failed: ${e.message}")
+                } else {
+                    CompanionLog.d(TAG, "Activity launch skipped (not available on this AA version): ${e.message}")
                 }
             }
         }
