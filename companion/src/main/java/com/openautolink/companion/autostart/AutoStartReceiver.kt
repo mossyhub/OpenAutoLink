@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.openautolink.companion.CompanionPrefs
 import com.openautolink.companion.diagnostics.CompanionLog
@@ -54,13 +56,8 @@ class AutoStartReceiver : BroadcastReceiver() {
 
                 CompanionLog.i(TAG, "Starting CompanionService via BT auto-start")
 
-                // Pre-warm AA immediately so it's receptive by the time the car
-                // establishes its TCP connection (~10s later). Without this, AA
-                // can take 60-90s to respond to the real trigger because it starts
-                // from a stopped/deep-sleep state. The pre-warm broadcast wakes AA
-                // with a dummy port; AA starts its wireless setup service and will
-                // respond to the real port trigger almost instantly.
-                prewarmAndroidAuto(context)
+                // Cancel any pending stop from a previous BT disconnect flap.
+                cancelPendingStop()
 
                 val serviceIntent = Intent(context, CompanionService::class.java).apply {
                     action = CompanionService.ACTION_START
@@ -76,11 +73,7 @@ class AutoStartReceiver : BroadcastReceiver() {
                 CompanionLog.i(TAG, "Target BT disconnected: $deviceAddress")
                 val stopOnDisconnect = prefs.getBoolean(CompanionPrefs.BT_DISCONNECT_STOP, false)
                 if (stopOnDisconnect) {
-                    CompanionLog.i(TAG, "Stopping service (bt_disconnect_stop=true)")
-                    val serviceIntent = Intent(context, CompanionService::class.java).apply {
-                        action = CompanionService.ACTION_STOP
-                    }
-                    context.startService(serviceIntent)
+                    scheduleBtStop(context)
                 }
             }
         }
@@ -89,30 +82,49 @@ class AutoStartReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "OAL_BtAutoStart"
 
-        /**
-         * Send a broadcast to Google AA to wake it from stopped/deep-sleep state.
-         * Uses port 0 as a dummy — AA will start its wireless projection service
-         * but won't be able to connect anywhere yet. When the real trigger fires
-         * with the actual proxy port a few seconds later, AA is already warm and
-         * connects in <1s instead of 60-90s.
-         */
-        fun prewarmAndroidAuto(context: Context) {
-            try {
-                val intent = Intent().apply {
-                    setClassName(
-                        "com.google.android.projection.gearhead",
-                        "com.google.android.apps.auto.wireless.setup.receiver.WirelessStartupReceiver"
-                    )
-                    action = "com.google.android.apps.auto.wireless.setup.receiver.wirelessstartup.START"
-                    putExtra("ip_address", "127.0.0.1")
-                    putExtra("projection_port", 0)
-                    addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                }
-                context.sendBroadcast(intent)
-                CompanionLog.i(TAG, "AA pre-warm broadcast sent")
-            } catch (e: Exception) {
-                CompanionLog.w(TAG, "AA pre-warm failed: ${e.message}")
+        /** Grace period before honoring BT-disconnect-stop. BT drops immediately
+         *  after WiFi handoff on most cars — we must not stop during active AA. */
+        private const val BT_STOP_GRACE_MS = 60_000L
+
+        private val mainHandler = Handler(Looper.getMainLooper())
+        @Volatile private var pendingBtStop: Runnable? = null
+
+        private fun cancelBtStop() {
+            pendingBtStop?.let {
+                mainHandler.removeCallbacks(it)
+                pendingBtStop = null
+                CompanionLog.d(TAG, "BT disconnect stop cancelled (BT reconnected or AA active)")
             }
         }
+
+        private fun scheduleBtStop(context: Context) {
+            cancelBtStop()
+            val app = context.applicationContext
+            val r = Runnable {
+                pendingBtStop = null
+                if (!CompanionService.isRunning.value) return@Runnable
+                // Don't stop if AA is actively connected.
+                if (CompanionService.isConnected.value) {
+                    CompanionLog.i(TAG, "BT stop grace expired but AA is connected — not stopping")
+                    return@Runnable
+                }
+                CompanionLog.i(TAG, "BT stop grace expired, stopping service")
+                val stopIntent = Intent(app, CompanionService::class.java).apply {
+                    action = CompanionService.ACTION_STOP
+                }
+                try { app.startService(stopIntent) } catch (e: Exception) {
+                    CompanionLog.e(TAG, "BT stop failed: ${e.message}")
+                }
+            }
+            pendingBtStop = r
+            mainHandler.postDelayed(r, BT_STOP_GRACE_MS)
+            CompanionLog.i(TAG, "BT disconnect stop armed (${BT_STOP_GRACE_MS / 1000}s grace)")
+        }
+
+        /**
+         * Cancel any pending BT stop. Call on BT reconnect so a brief BT flap
+         * during WiFi handoff doesn't tear down the session.
+         */
+        fun cancelPendingStop() = cancelBtStop()
     }
 }
