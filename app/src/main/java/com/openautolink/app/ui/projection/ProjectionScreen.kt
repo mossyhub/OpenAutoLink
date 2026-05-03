@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +21,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -46,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 
 import androidx.compose.ui.platform.testTag
@@ -54,6 +58,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalDensity
@@ -126,6 +131,39 @@ fun ProjectionScreen(
     val cutLeft = cutoutInsets?.left ?: 0
     val cutRight = cutoutInsets?.right ?: 0
 
+    // Effective system inset = max(systemBars, displayCutout) per edge. This
+    // is what AA should treat as `content_insets` so dropdowns/dialogs avoid
+    // both the AAOS chrome (in system_ui_visible mode) and the panel's
+    // physical curves/cutouts (always). Push to SessionManager so any
+    // start()/reconnect() picks it up as fallback when user hasn't
+    // overridden the values in settings.
+    //
+    // Only push when system bars are actually drawn (system_ui_visible mode).
+    // In fullscreen_immersive the bars are hidden, but
+    // getInsetsIgnoringVisibility() still returns the would-be sizes — if
+    // we auto-merged those into content_insets, AA would reserve space for
+    // chrome that isn't there and fill it with its own gradient. Cutouts
+    // are not currently propagated to the session — set them via the
+    // Settings → Display Insets editor for vehicles with curves.
+    val sysSafeTop: Int
+    val sysSafeBottom: Int
+    val sysSafeLeft: Int
+    val sysSafeRight: Int
+    if (uiState.displayMode == "system_ui_visible") {
+        sysSafeTop = maxOf(barTop, cutTop)
+        sysSafeBottom = maxOf(barBottom, cutBottom)
+        sysSafeLeft = maxOf(barLeft, cutLeft)
+        sysSafeRight = maxOf(barRight, cutRight)
+    } else {
+        sysSafeTop = 0
+        sysSafeBottom = 0
+        sysSafeLeft = 0
+        sysSafeRight = 0
+    }
+    LaunchedEffect(sysSafeTop, sysSafeBottom, sysSafeLeft, sysSafeRight) {
+        viewModel.setSystemInsets(sysSafeTop, sysSafeBottom, sysSafeLeft, sysSafeRight)
+    }
+
     val density = LocalDensity.current
     val displayModePadding = with(density) {
         when (uiState.displayMode) {
@@ -150,62 +188,160 @@ fun ProjectionScreen(
             .padding(displayModePadding)
             .testTag("projectionScreen")
     ) {
-        // Crop: fillMaxSize — video fills entire surface, pixel_aspect tells AA to
-        // pre-distort UI so stretched pixels render correctly on wide displays.
-        // Letterbox: constrain to 16:9, no stretching needed.
-        val surfaceModifier = if (uiState.videoScalingMode == "crop") {
-            Modifier
-                .fillMaxSize()
-                .testTag("projectionSurface")
-        } else {
-            Modifier
-                .align(Alignment.Center)
-                .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
-                .testTag("projectionSurface")
+        // ── Video surface rendering ────────────────────────────────────────
+        // Two modes:
+        //
+        // "letterbox": SurfaceView constrained to 16:9, centered. Decoder
+        //   stretches codec frame to that surface (uniform when codec is 16:9).
+        //   No margin handling. Black bars visible on non-16:9 panels.
+        //
+        // "crop" (margin-zoom): SurfaceView is INFLATED beyond the parent
+        //   so the codec's *inner content rect* (codec_w − widthMargin) ×
+        //   (codec_h − heightMargin) lands at parent size. The codec's black
+        //   margin pixels extend past the parent's clipToBounds and disappear.
+        //   The decoder's non-uniform SCALE_TO_FIT is effectively uniform here
+        //   because the SurfaceView's aspect == codec frame aspect, so square
+        //   pixels survive intact. Touch coords map for free: the OnTouchListener
+        //   receives MotionEvents in the inflated SurfaceView's coord space
+        //   (only inside the parent's clipped region), and the existing linear
+        //   TouchScaler.scalePoint(eventX, eventY, viewW, viewH, codecW, codecH)
+        //   already produces the correct codec-space coordinate.
+        //
+        // Choose margins so inner aspect ≈ panel aspect for square pixels.
+        // Example: 2914×1134 panel + 1080p codec → heightMargin ≈ 358
+        // (inner 1920×722 ≈ 2.66:1 ≈ 2914:1134).
+        val codecW = uiState.videoStats.width
+        val codecH = uiState.videoStats.height
+        val userWm = uiState.aaWidthMargin.coerceAtLeast(0)
+        val userHm = uiState.aaHeightMargin.coerceAtLeast(0)
+        val autoMargins = uiState.aaAutoMargins
+        val isCropMode = uiState.videoScalingMode == "crop"
+
+        @SuppressLint("ClickableViewAccessibility")
+        val surfaceFactory: (android.content.Context) -> SurfaceView = { context ->
+            SurfaceView(context).apply {
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        viewModel.onSurfaceAvailable(
+                            holder.surface,
+                            holder.surfaceFrame.width(),
+                            holder.surfaceFrame.height()
+                        )
+                    }
+
+                    override fun surfaceChanged(
+                        holder: SurfaceHolder,
+                        format: Int,
+                        width: Int,
+                        height: Int
+                    ) {
+                        viewModel.onSurfaceAvailable(holder.surface, width, height)
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        viewModel.onSurfaceDestroyed()
+                    }
+                })
+
+                setOnTouchListener { v, event ->
+                    // Don't forward touch to AA while settings overlay is open
+                    if (!showSettings) {
+                        viewModel.onTouchEvent(event, v.width, v.height)
+                    }
+                    true
+                }
+            }
         }
 
-        // SurfaceView for video rendering — intercepts touch for forwarding to bridge
-        // Key on videoScalingMode so Compose recreates the SurfaceView when mode changes.
-        // Without this, the old SurfaceView keeps its dimensions after switching modes.
-        @SuppressLint("ClickableViewAccessibility")
-        key(uiState.videoScalingMode, uiState.displayMode) {
-        AndroidView(
-            factory = { context ->
-                SurfaceView(context).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            viewModel.onSurfaceAvailable(
-                                holder.surface,
-                                holder.surfaceFrame.width(),
-                                holder.surfaceFrame.height()
+        // Key on mode + display mode + margins so the SurfaceView is recreated
+        // when any of those change (avoids stale dimensions and re-runs holder
+        // callbacks). NOTE: we MUST always emit exactly one AndroidView at
+        // the same position in this composition slot — switching between
+        // call sites (e.g. if/else with two AndroidViews) destroys and
+        // recreates the SurfaceView mid-decode, putting MediaCodec in a bad
+        // state. Render once, vary the Modifier instead.
+        key(uiState.videoScalingMode, uiState.displayMode, userWm, userHm, autoMargins) {
+            if (isCropMode) {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds()
+                ) {
+                    val parentWPx = constraints.maxWidth
+                    val parentHPx = constraints.maxHeight
+
+                    // Default to filling the parent until codec dims arrive,
+                    // so the SurfaceView is created once and just resized
+                    // when the phone tells us its codec resolution.
+                    val surfaceModifier = if (
+                        codecW > 0 && codecH > 0 &&
+                        parentWPx > 0 && parentHPx > 0
+                    ) {
+                        // Auto vs manual margins (mirrors C++ SDR logic):
+                        //  - autoMargins=true: compute per-frame from panel
+                        //    AR so the codec inner rect fills the parent
+                        //    with square pixels.
+                        //  - autoMargins=false: use the user-set values
+                        //    literally; 0 = no margins → whole codec frame
+                        //    fills the parent (decoder may stretch).
+                        val (wm, hm) = if (autoMargins) {
+                            com.openautolink.app.video.MarginAutoCalc.compute(
+                                codecW, codecH, parentWPx, parentHPx
                             )
+                        } else {
+                            userWm to userHm
                         }
-
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder,
-                            format: Int,
-                            width: Int,
-                            height: Int
-                        ) {
-                            viewModel.onSurfaceAvailable(holder.surface, width, height)
-                        }
-
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            viewModel.onSurfaceDestroyed()
-                        }
-                    })
-
-                    setOnTouchListener { v, event ->
-                        // Don't forward touch to AA while settings overlay is open
-                        if (!showSettings) {
-                            viewModel.onTouchEvent(event, v.width, v.height)
-                        }
-                        true
+                        val innerW = (codecW - wm).coerceAtLeast(1)
+                        val innerH = (codecH - hm).coerceAtLeast(1)
+                        // Uniform scale chosen so the inner content rect at
+                        // minimum covers the parent (margin pixels overflow).
+                        val scale = maxOf(
+                            parentWPx.toFloat() / innerW.toFloat(),
+                            parentHPx.toFloat() / innerH.toFloat()
+                        )
+                        val viewWPx = (codecW * scale).toInt().coerceAtLeast(1)
+                        val viewHPx = (codecH * scale).toInt().coerceAtLeast(1)
+                        // Anchor the codec's TOP-LEFT to the parent's
+                        // top-left, not centred. The phone (observed on
+                        // both Pixel and Samsung Wireless AA) ignores
+                        // `UiConfig.margins` and top-aligns its UI inside
+                        // the codec frame when only `height_margin` is
+                        // sent (i.e. the inner content lives at codec
+                        // rows [0, codecH - hm], with the hm rows of
+                        // margin painted at the BOTTOM). Centering the
+                        // SurfaceView would crop the top of AA's UI and
+                        // reveal the bottom margin band on screen.
+                        // Same logic applies to width_margin → left-align.
+                        val offXPx = 0
+                        val offYPx = 0
+                        Modifier
+                            .offset { IntOffset(offXPx, offYPx) }
+                            .requiredSize(
+                                with(density) { viewWPx.toDp() },
+                                with(density) { viewHPx.toDp() }
+                            )
+                            .testTag("projectionSurface")
+                    } else {
+                        Modifier
+                            .fillMaxSize()
+                            .testTag("projectionSurface")
                     }
+
+                    AndroidView(
+                        factory = surfaceFactory,
+                        modifier = surfaceModifier,
+                    )
                 }
-            },
-            modifier = surfaceModifier
-        )
+            } else {
+                // Letterbox: 16:9 centered.
+                AndroidView(
+                    factory = surfaceFactory,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
+                        .testTag("projectionSurface")
+                )
+            }
         }
 
         // Connection status HUD — centered overlay, visible when not streaming

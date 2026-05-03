@@ -113,6 +113,24 @@ class SessionManager(
     val touchWidth: StateFlow<Int> = _touchWidth.asStateFlow()
     val touchHeight: StateFlow<Int> = _touchHeight.asStateFlow()
 
+    // Last-known OS-reported safe area (system bars + display cutouts) in
+    // pixels. Fed by ProjectionScreen via [setSystemInsets] whenever the
+    // composition picks up new WindowInsets. Used as fallback for AA
+    // content_insets when the user hasn't manually overridden them in
+    // settings — so a vehicle with a curved screen reports its rounded
+    // corners to AA out of the box, and the user only has to tweak if
+    // they want extra margin beyond what AAOS reports.
+    @Volatile private var sysInsetTop: Int = 0
+    @Volatile private var sysInsetBottom: Int = 0
+    @Volatile private var sysInsetLeft: Int = 0
+    @Volatile private var sysInsetRight: Int = 0
+    fun setSystemInsets(top: Int, bottom: Int, left: Int, right: Int) {
+        sysInsetTop = top.coerceAtLeast(0)
+        sysInsetBottom = bottom.coerceAtLeast(0)
+        sysInsetLeft = left.coerceAtLeast(0)
+        sysInsetRight = right.coerceAtLeast(0)
+    }
+
     // Audio player
     private var _audioPlayer: AudioPlayer? = null
     val audioPlayer: AudioPlayer? get() = _audioPlayer
@@ -292,6 +310,9 @@ class SessionManager(
         aaHeightMargin: Int = 0,
         aaPixelAspect: Int = -1,
         aaTargetLayoutWidthDp: Int = 0,
+        aaViewingDistanceMm: Int = 0,
+        aaDecoderAdditionalDepth: Int = 0,
+        aaAutoMargins: Boolean = true,
         videoFps: Int = 60,
         driveSide: String = "left",
         hideClock: Boolean = false,
@@ -457,7 +478,9 @@ class SessionManager(
             // Start direct mode session
             startSession(directTransport, hotspotSsid, hotspotPassword,
                 videoAutoNegotiate, codecPreference, aaResolution, aaDpi,
-                aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp, videoFps,
+                aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp,
+                aaViewingDistanceMm, aaDecoderAdditionalDepth, aaAutoMargins,
+                videoFps,
                 driveSide, hideClock, hideSignal, hideBattery, scalingMode,
                 manualIpAddress,
                 safeAreaTop, safeAreaBottom, safeAreaLeft, safeAreaRight)
@@ -473,7 +496,10 @@ class SessionManager(
         videoAutoNegotiate: Boolean = true, codec: String = "h264",
         aaResolution: String = "1080p", aaDpi: Int = 160,
         aaWidthMargin: Int = 0, aaHeightMargin: Int = 0, aaPixelAspect: Int = -1,
-        aaTargetLayoutWidthDp: Int = 0, videoFps: Int = 60,
+        aaTargetLayoutWidthDp: Int = 0,
+        aaViewingDistanceMm: Int = 0, aaDecoderAdditionalDepth: Int = 0,
+        aaAutoMargins: Boolean = true,
+        videoFps: Int = 60,
         driveSide: String = "left",
         hideClock: Boolean = false, hideSignal: Boolean = false, hideBattery: Boolean = false,
         scalingMode: String = "letterbox",
@@ -484,12 +510,19 @@ class SessionManager(
         _transportMode.value = directTransport
         val ctx = context ?: return
 
-        // Map resolution string to pixel dimensions
+        // Map resolution string to pixel dimensions. Strings are the AA
+        // VideoCodecResolutionType enum values; portrait variants use the
+        // `_p` suffix to distinguish from the same-pixel-count landscape
+        // tier (e.g. 1080p = 1920×1080 vs 1080p_p = 1080×1920).
         val (resW, resH) = when (aaResolution) {
             "480p" -> 800 to 480
             "720p" -> 1280 to 720
             "1440p" -> 2560 to 1440
             "4k" -> 3840 to 2160
+            "720p_p" -> 720 to 1280
+            "1080p_p" -> 1080 to 1920
+            "1440p_p" -> 1440 to 2560
+            "4k_p" -> 2160 to 3840
             else -> 1920 to 1080 // "1080p" default
         }
 
@@ -526,57 +559,30 @@ class SessionManager(
 
         // Auto-compute pixel_aspect_ratio for non-16:9 displays (crop mode).
         //
-        // pixel_aspect tells the phone "each pixel on the display is X/10000
-        // times wider than tall". AA pre-shrinks its UI horizontally so that
-        // when the decoder stretches the 16:9 video to fill the wider display,
-        // the pre-shrunk circles expand back to round.
+        // HISTORICAL NOTE: We used to compute pixel_aspect from display vs
+        // video AR, hoping the phone would pre-shrink its UI horizontally so
+        // a downstream non-uniform stretch would round circles back out. This
+        // does not work — the phone ignores pixel_aspect_ratio_e4. GM's own
+        // implementation hardcodes 10000 (= 1.0) on every config and instead
+        // reserves UI chrome via width_margin/height_margin and lets the
+        // car compositor scale the codec frame uniformly into the panel rect.
         //
-        // Formula: pixel_aspect = (displayAR / videoAR) × 10000
-        //   e.g. Blazer EV 2914×1134 at 1440p: (2.57 / 1.78) × 10000 = 14454
+        // We now mirror GM:
+        //   - Default pixel_aspect = 10000 (1.0, square pixels).
+        //   - User can manually override via the Pixel Aspect setting if a
+        //     specific phone version actually responds to non-1.0 values.
+        //   - The actual aspect-ratio fix is the Crop-mode margin-zoom render
+        //     in ProjectionScreen: SurfaceView is inflated past the parent
+        //     so codec margin pixels clip off-screen and the inner content
+        //     rect lands on the panel with uniform square-pixel scaling.
         //
-        // Manual overrides for margins and pixel_aspect are respected if set.
-        val computedWidthMargin: Int
-        val computedHeightMargin: Int
-        val computedPixelAspect: Int
-        if (aaWidthMargin > 0 || aaHeightMargin > 0) {
-            // Manual margin override
-            computedWidthMargin = aaWidthMargin
-            computedHeightMargin = aaHeightMargin
-            computedPixelAspect = if (aaPixelAspect > 0) aaPixelAspect else 0
-        } else if (aaPixelAspect > 0) {
-            // Manual pixel_aspect override
-            computedWidthMargin = 0
-            computedHeightMargin = 0
-            computedPixelAspect = aaPixelAspect
-            OalLog.i(TAG, "Manual pixel_aspect=$aaPixelAspect")
-        } else if (scalingMode == "crop") {
-            // Auto-compute pixel_aspect from display geometry (like bridge-mode)
-            val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
-            val bounds = wm.currentWindowMetrics.bounds
-            val displayW = bounds.width().toFloat()
-            val displayH = bounds.height().toFloat()
-            val displayAr = displayW / displayH
-            val videoAr = resW.toFloat() / resH.toFloat()
-            if (kotlin.math.abs(displayAr - videoAr) / videoAr > 0.02f) {
-                // Display AR differs from video AR — compensation needed
-                val pa = ((displayAr / videoAr) * 10000).toInt()
-                OalLog.i(TAG, "Auto pixel_aspect: display=${displayW.toInt()}x${displayH.toInt()} " +
-                        "(${String.format("%.2f", displayAr)}:1) video=${resW}x${resH} " +
-                        "(${String.format("%.2f", videoAr)}:1) → pixel_aspect=$pa")
-                computedWidthMargin = 0
-                computedHeightMargin = 0
-                computedPixelAspect = pa
-            } else {
-                OalLog.i(TAG, "Auto pixel_aspect: display matches video AR, no compensation needed")
-                computedWidthMargin = 0
-                computedHeightMargin = 0
-                computedPixelAspect = 0
-            }
-        } else {
-            // Letterbox mode — no compensation needed
-            computedWidthMargin = 0
-            computedHeightMargin = 0
-            computedPixelAspect = if (aaPixelAspect > 0) aaPixelAspect else 0
+        // Manual margin and pixel_aspect overrides are still respected.
+        val computedWidthMargin: Int = aaWidthMargin
+        val computedHeightMargin: Int = aaHeightMargin
+        val computedPixelAspect: Int = when {
+            aaPixelAspect > 0 -> aaPixelAspect    // explicit manual override
+            aaPixelAspect == 0 -> 0               // explicit "off" (omit field)
+            else -> 10000                         // -1 (auto) → GM-default 1.0
         }
 
         // Per-tier DPI: in manual mode (single tier), compute DPI from target dp width
@@ -595,8 +601,31 @@ class SessionManager(
 
         OalLog.i(TAG, "SDR AR config: scalingMode=$scalingMode marginW=$computedWidthMargin marginH=$computedHeightMargin pixelAspectE4=$computedPixelAspect")
 
+        // Panel dims — used by C++ for (a) landscape-vs-portrait tier
+        // selection in auto-negotiate, and (b) per-tier auto-margin calc
+        // when the user hasn't manually overridden margins.
+        val (panelW, panelH) = try {
+            val wm = ctx.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
+            val b = wm.currentWindowMetrics.bounds
+            b.width() to b.height()
+        } catch (_: Exception) {
+            0 to 0
+        }
+        OalLog.i(TAG, "Panel dims: ${panelW}x${panelH}")
+
         val session = AasdkSession(scope, ctx)
         session.transportMode = directTransport
+        // Effective AA content_insets: user-set value if > 0, else fall
+        // back to OS-reported insets (system bars + display cutouts) so a
+        // car with a curved corner reports it to AA out of the box.
+        val effSafeTop = if (safeAreaTop > 0) safeAreaTop else sysInsetTop
+        val effSafeBottom = if (safeAreaBottom > 0) safeAreaBottom else sysInsetBottom
+        val effSafeLeft = if (safeAreaLeft > 0) safeAreaLeft else sysInsetLeft
+        val effSafeRight = if (safeAreaRight > 0) safeAreaRight else sysInsetRight
+        OalLog.i(TAG, "Effective AA content_insets: top=$effSafeTop bottom=$effSafeBottom " +
+                "left=$effSafeLeft right=$effSafeRight (user=$safeAreaTop/$safeAreaBottom/" +
+                "$safeAreaLeft/$safeAreaRight, sys=$sysInsetTop/$sysInsetBottom/$sysInsetLeft/$sysInsetRight)")
+
         session.manualIpAddress = manualIpAddress
         session.sdrConfig = AasdkSdrConfig(
             videoWidth = resW,
@@ -617,13 +646,18 @@ class SessionManager(
             autoNegotiate = videoAutoNegotiate,
             videoCodec = codec,
             // realDensity removed — interferes with pixel_aspect_ratio_e4 on some AA versions
-            safeAreaTop = safeAreaTop,
-            safeAreaBottom = safeAreaBottom,
-            safeAreaLeft = safeAreaLeft,
-            safeAreaRight = safeAreaRight,
+            safeAreaTop = effSafeTop,
+            safeAreaBottom = effSafeBottom,
+            safeAreaLeft = effSafeLeft,
+            safeAreaRight = effSafeRight,
             targetLayoutWidthDp = computedTargetLayoutWidthDp,
             fuelTypes = fuelTypes.map { it }.toIntArray(),
             evConnectorTypes = evConnectorTypes.map { it }.toIntArray(),
+            viewingDistanceMm = aaViewingDistanceMm,
+            decoderAdditionalDepth = aaDecoderAdditionalDepth,
+            panelWidth = panelW,
+            panelHeight = panelH,
+            autoMargins = aaAutoMargins,
         )
         _touchWidth.value = resW
         _touchHeight.value = resH
@@ -832,6 +866,9 @@ class SessionManager(
         aaHeightMargin: Int = 0,
         aaPixelAspect: Int = -1,
         aaTargetLayoutWidthDp: Int = 0,
+        aaViewingDistanceMm: Int = 0,
+        aaDecoderAdditionalDepth: Int = 0,
+        aaAutoMargins: Boolean = true,
         videoFps: Int = 60,
         driveSide: String = "left",
         hideClock: Boolean = false,
@@ -851,7 +888,8 @@ class SessionManager(
             start(
                 codecPreference, micSourcePreference, scalingMode, directTransport,
                 hotspotSsid, hotspotPassword, videoAutoNegotiate, aaResolution,
-                aaDpi, aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp, videoFps,
+                aaDpi, aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp,
+                aaViewingDistanceMm, aaDecoderAdditionalDepth, aaAutoMargins, videoFps,
                 driveSide, hideClock, hideSignal, hideBattery,
                 volumeOffsetMedia, volumeOffsetNavigation, volumeOffsetAssistant,
                 manualIpAddress, safeAreaTop, safeAreaBottom, safeAreaLeft, safeAreaRight,
@@ -886,6 +924,7 @@ class SessionManager(
                     codecPreference, micSourcePreference, scalingMode, directTransport,
                     hotspotSsid, hotspotPassword, videoAutoNegotiate, aaResolution,
                     aaDpi, aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp,
+                    aaViewingDistanceMm, aaDecoderAdditionalDepth, aaAutoMargins,
                     videoFps, driveSide, hideClock, hideSignal, hideBattery,
                     volumeOffsetMedia, volumeOffsetNavigation, volumeOffsetAssistant,
                     manualIpAddress, safeAreaTop, safeAreaBottom, safeAreaLeft, safeAreaRight,
@@ -904,7 +943,10 @@ class SessionManager(
         directTransport: String, hotspotSsid: String, hotspotPassword: String,
         videoAutoNegotiate: Boolean, aaResolution: String, aaDpi: Int,
         aaWidthMargin: Int, aaHeightMargin: Int, aaPixelAspect: Int,
-        aaTargetLayoutWidthDp: Int, videoFps: Int, driveSide: String,
+        aaTargetLayoutWidthDp: Int,
+        aaViewingDistanceMm: Int, aaDecoderAdditionalDepth: Int,
+        aaAutoMargins: Boolean,
+        videoFps: Int, driveSide: String,
         hideClock: Boolean, hideSignal: Boolean, hideBattery: Boolean,
         volumeOffsetMedia: Int, volumeOffsetNavigation: Int, volumeOffsetAssistant: Int,
         manualIpAddress: String?,
@@ -955,7 +997,9 @@ class SessionManager(
 
             startSession(directTransport, hotspotSsid, hotspotPassword,
                 videoAutoNegotiate, codecPreference, aaResolution, aaDpi,
-                aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp, videoFps,
+                aaWidthMargin, aaHeightMargin, aaPixelAspect, aaTargetLayoutWidthDp,
+                aaViewingDistanceMm, aaDecoderAdditionalDepth, aaAutoMargins,
+                videoFps,
                 driveSide, hideClock, hideSignal, hideBattery, scalingMode,
                 manualIpAddress,
                 safeAreaTop, safeAreaBottom, safeAreaLeft, safeAreaRight)
