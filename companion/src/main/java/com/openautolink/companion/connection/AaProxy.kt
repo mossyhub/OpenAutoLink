@@ -51,6 +51,20 @@ class AaProxy(
     /** Returns true if at least one AA bridge is active (AA connected and streaming). */
     fun hasActiveBridge(): Boolean = activeBridges.get() > 0
 
+    @Volatile private var pendingCarSocket: Socket? = null
+
+    /**
+     * Replace the car-side socket used for the next bridge session.
+     * Safe to call while waiting for AA to connect (no active bridge).
+     * If a bridge is already active this is a no-op — the active session
+     * owns its socket until it completes.
+     */
+    fun updateCarSocket(newCarSocket: Socket) {
+        if (activeBridges.get() > 0) return  // active bridge owns its socket
+        pendingCarSocket = newCarSocket
+        CompanionLog.d(TAG, "Car socket updated (pending AA connect)")
+    }
+
     /** Start the proxy server. Returns the localhost port AA should connect to. */
     fun start(): Int {
         val server = ServerSocket(0)
@@ -85,8 +99,11 @@ class AaProxy(
                 activeBridges.incrementAndGet()
                 listener?.onConnected()
 
-                carSocket = preConnectedSocket
-                    ?: throw IllegalStateException("No pre-connected socket available")
+                // Use the most-recently-updated car socket (from a reconnect
+                // while waiting for AA), falling back to the original socket.
+                carSocket = pendingCarSocket?.also { pendingCarSocket = null }
+                    ?: preConnectedSocket
+                    ?: throw IllegalStateException("No car socket available")
                 activeCarSocket = carSocket
 
                 CompanionLog.i(TAG, "Bridge established: AA <-> Car")

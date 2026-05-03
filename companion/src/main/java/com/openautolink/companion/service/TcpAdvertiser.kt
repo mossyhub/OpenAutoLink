@@ -262,7 +262,25 @@ class TcpAdvertiser(
     }
 
     private fun handleCarConnection(carSocket: Socket) {
-        // Close any previous session
+        val proxy = activeProxy
+        // If a proxy is already listening and AA hasn't connected yet, reuse it:
+        // swap in the new car socket so the next AA connection bridges to the
+        // freshest car TCP session. This avoids throwing away a proxy whose port
+        // we already broadcast to AA — AA may still be cold-starting and will
+        // connect to that same port imminently.
+        if (proxy != null && !proxy.hasActiveBridge()) {
+            CompanionLog.i(TAG, "Car reconnected while waiting for AA — reusing proxy on port ${proxy.localPort}")
+            activeCarSocket?.let { runCatching { it.close() } }
+            activeCarSocket = carSocket
+            proxy.updateCarSocket(carSocket)
+            // Re-fire the trigger in case AA missed the previous one
+            fireAaLaunchIntent(proxy.localPort)
+            // Reset the watchdog with the full budget
+            startAaConnectWatchdog(carSocket)
+            return
+        }
+
+        // AA was connected (bridge active) or no proxy exists — start fresh
         activeProxy?.stop()
         activeCarSocket?.let { runCatching { it.close() } }
         activeCarSocket = carSocket
@@ -338,12 +356,13 @@ class TcpAdvertiser(
     }
 
     /**
-     * If Google AA doesn't connect to our proxy within [AA_CONNECT_TIMEOUT_MS]
-     * the AA app on the phone is dead/stuck/in-the-wrong-state. Attempt
-     * recovery without requiring the user to tap Stop+Start:
-     *   - Retry the launch intent up to [MAX_AA_LAUNCH_RETRIES] times.
-     *   - If that still fails, force-close the car socket so the car-side
-     *     reconnects with a fresh TCP session and we start over.
+     * Watchdog that re-fires the AA launch trigger if AA hasn't connected within
+     * [AA_CONNECT_TIMEOUT_MS]. After [MAX_AA_LAUNCH_RETRIES] quick retries,
+     * closes the car socket so the car reconnects — but keeps the proxy alive
+     * on its existing port so that any delayed AA connection still lands.
+     * AA can take 60-90s to cold-start; letting the proxy survive across car
+     * reconnects means the first successful AA launch connects regardless of
+     * which car socket cycle it arrives on.
      */
     private fun startAaConnectWatchdog(carSocket: Socket) {
         aaConnectWatchdog?.cancel()
@@ -359,15 +378,17 @@ class TcpAdvertiser(
                 if (port > 0) fireAaLaunchIntent(port)
                 startAaConnectWatchdog(carSocket)
             } else {
+                // Out of quick retries. Close the car socket so the car reconnects
+                // (which will call handleCarConnection → reuse proxy path above).
+                // Do NOT stop the proxy — AA may still be starting and will connect
+                // to the same proxy port when ready.
                 CompanionLog.w(TAG,
-                    "AA never connected after $MAX_AA_LAUNCH_RETRIES retries — force-resetting car socket")
+                    "AA still not connected after $MAX_AA_LAUNCH_RETRIES retries — " +
+                    "cycling car socket, keeping proxy alive on port ${proxy.localPort}")
                 aaLaunchAttempts = 0
                 runCatching { carSocket.close() }
-                activeProxy?.stop()
-                activeProxy = null
-                activeCarSocket = null
-                isLaunching = false
-                stateListener.onProxyDisconnected()
+                // activeCarSocket will be refreshed when the car reconnects.
+                // Do not null out activeProxy — we want to reuse it.
             }
         }
     }
