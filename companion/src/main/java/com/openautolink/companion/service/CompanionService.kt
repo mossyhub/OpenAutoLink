@@ -98,6 +98,10 @@ class CompanionService : Service(), NearbyAdvertiser.StateListener {
         nearbyAdvertiser?.stop()
         tcpAdvertiser?.stop()
 
+        // Pre-warm AA as early as possible so it's receptive when the car
+        // TCP-connects a few seconds later.
+        com.openautolink.companion.autostart.AutoStartReceiver.prewarmAndroidAuto(this)
+
         val prefs = getSharedPreferences(CompanionPrefs.NAME, MODE_PRIVATE)
         // Nearby mode is disabled in the UI for now (see MainScreen) because
         // the car-side app can't get the system permissions needed for the

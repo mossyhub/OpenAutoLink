@@ -53,6 +53,15 @@ class AutoStartReceiver : BroadcastReceiver() {
                 }
 
                 CompanionLog.i(TAG, "Starting CompanionService via BT auto-start")
+
+                // Pre-warm AA immediately so it's receptive by the time the car
+                // establishes its TCP connection (~10s later). Without this, AA
+                // can take 60-90s to respond to the real trigger because it starts
+                // from a stopped/deep-sleep state. The pre-warm broadcast wakes AA
+                // with a dummy port; AA starts its wireless setup service and will
+                // respond to the real port trigger almost instantly.
+                prewarmAndroidAuto(context)
+
                 val serviceIntent = Intent(context, CompanionService::class.java).apply {
                     action = CompanionService.ACTION_START
                 }
@@ -79,5 +88,31 @@ class AutoStartReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "OAL_BtAutoStart"
+
+        /**
+         * Send a broadcast to Google AA to wake it from stopped/deep-sleep state.
+         * Uses port 0 as a dummy — AA will start its wireless projection service
+         * but won't be able to connect anywhere yet. When the real trigger fires
+         * with the actual proxy port a few seconds later, AA is already warm and
+         * connects in <1s instead of 60-90s.
+         */
+        fun prewarmAndroidAuto(context: Context) {
+            try {
+                val intent = Intent().apply {
+                    setClassName(
+                        "com.google.android.projection.gearhead",
+                        "com.google.android.apps.auto.wireless.setup.receiver.WirelessStartupReceiver"
+                    )
+                    action = "com.google.android.apps.auto.wireless.setup.receiver.wirelessstartup.START"
+                    putExtra("ip_address", "127.0.0.1")
+                    putExtra("projection_port", 0)
+                    addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                }
+                context.sendBroadcast(intent)
+                CompanionLog.i(TAG, "AA pre-warm broadcast sent")
+            } catch (e: Exception) {
+                CompanionLog.w(TAG, "AA pre-warm failed: ${e.message}")
+            }
+        }
     }
 }
