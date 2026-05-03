@@ -9,11 +9,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.metheos.companion.openautolink"
+        applicationId = "com.openautolink.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "1.1.0"
+        versionCode = 1
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
