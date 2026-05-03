@@ -51,8 +51,11 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val AA_DPI = intPreferencesKey("aa_dpi")
         val AA_WIDTH_MARGIN = intPreferencesKey("aa_width_margin")
         val AA_HEIGHT_MARGIN = intPreferencesKey("aa_height_margin")
+        val AA_AUTO_MARGINS = booleanPreferencesKey("aa_auto_margins")
         val AA_PIXEL_ASPECT = intPreferencesKey("aa_pixel_aspect")
         val AA_TARGET_LAYOUT_WIDTH_DP = intPreferencesKey("aa_target_layout_width_dp")
+        val AA_VIEWING_DISTANCE_MM = intPreferencesKey("aa_viewing_distance_mm")
+        val AA_DECODER_ADDITIONAL_DEPTH = intPreferencesKey("aa_decoder_additional_depth")
 
         // App-side settings
         val DRIVE_SIDE = stringPreferencesKey("drive_side")
@@ -162,8 +165,25 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_AA_DPI = 160
         const val DEFAULT_AA_WIDTH_MARGIN = 0
         const val DEFAULT_AA_HEIGHT_MARGIN = 0
+        // When true, ignore the WIDTH/HEIGHT_MARGIN values and compute
+        // per-tier margins so the codec's inner rect matches panel AR.
+        // The renderer (Crop mode) uses the same formula on the decoded
+        // frame so square pixels arrive on the panel. Disable to send
+        // exactly the user-set width/height margin values (or 0 for no
+        // margins, letting the panel stretch the full codec frame).
+        const val DEFAULT_AA_AUTO_MARGINS = true
         const val DEFAULT_AA_PIXEL_ASPECT = -1  // -1 = auto-compute from display/video AR in crop mode
         const val DEFAULT_AA_TARGET_LAYOUT_WIDTH_DP = 0  // 0 = disabled (use DPI slider directly)
+        // Viewing distance from driver eye to display, in millimetres. GM
+        // sends this in their VideoConfiguration so the phone can pick text
+        // sizes that look correct at the actual seating distance. 700mm is
+        // the typical mid-IP-screen distance GM uses; tune per vehicle from
+        // a tape measure or VHAL prop if available. 0 = omit field.
+        const val DEFAULT_AA_VIEWING_DISTANCE_MM = 700
+        // Number of additional decoded frames the car can buffer beyond the
+        // codec's reorder requirement. GM hard-codes 1; matching this is
+        // safest cross-phone. 0 = omit field.
+        const val DEFAULT_AA_DECODER_ADDITIONAL_DEPTH = 1
         const val DEFAULT_DRIVE_SIDE = "left"
         const val DEFAULT_GPS_FORWARDING = true
         const val DEFAULT_CLUSTER_NAVIGATION = true
@@ -310,12 +330,24 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         prefs[AA_HEIGHT_MARGIN] ?: DEFAULT_AA_HEIGHT_MARGIN
     }
 
+    val aaAutoMargins: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[AA_AUTO_MARGINS] ?: DEFAULT_AA_AUTO_MARGINS
+    }
+
     val aaPixelAspect: Flow<Int> = dataStore.data.map { prefs ->
         prefs[AA_PIXEL_ASPECT] ?: DEFAULT_AA_PIXEL_ASPECT
     }
 
     val aaTargetLayoutWidthDp: Flow<Int> = dataStore.data.map { prefs ->
         prefs[AA_TARGET_LAYOUT_WIDTH_DP] ?: DEFAULT_AA_TARGET_LAYOUT_WIDTH_DP
+    }
+
+    val aaViewingDistanceMm: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[AA_VIEWING_DISTANCE_MM] ?: DEFAULT_AA_VIEWING_DISTANCE_MM
+    }
+
+    val aaDecoderAdditionalDepth: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[AA_DECODER_ADDITIONAL_DEPTH] ?: DEFAULT_AA_DECODER_ADDITIONAL_DEPTH
     }
 
     val driveSide: Flow<String> = dataStore.data.map { prefs ->
@@ -410,12 +442,24 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         dataStore.edit { it[AA_HEIGHT_MARGIN] = margin }
     }
 
+    suspend fun setAaAutoMargins(value: Boolean) {
+        dataStore.edit { it[AA_AUTO_MARGINS] = value }
+    }
+
     suspend fun setAaPixelAspect(value: Int) {
         dataStore.edit { it[AA_PIXEL_ASPECT] = value }
     }
 
     suspend fun setAaTargetLayoutWidthDp(value: Int) {
         dataStore.edit { it[AA_TARGET_LAYOUT_WIDTH_DP] = value }
+    }
+
+    suspend fun setAaViewingDistanceMm(value: Int) {
+        dataStore.edit { it[AA_VIEWING_DISTANCE_MM] = value }
+    }
+
+    suspend fun setAaDecoderAdditionalDepth(value: Int) {
+        dataStore.edit { it[AA_DECODER_ADDITIONAL_DEPTH] = value }
     }
 
     suspend fun setVideoAutoNegotiate(enabled: Boolean) {
