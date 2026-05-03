@@ -31,6 +31,7 @@ import kotlinx.coroutines.runBlocking
  *   aa_resolution       --es svalue <str>      480p, 720p, 1080p, 1440p, 4k
  *   aa_width_margin     --ei value <int>       0+
  *   aa_height_margin    --ei value <int>       0+
+ *   aa_auto_margins     --ez bvalue <bool>     true/false
  *   aa_target_layout_dp --ei value <int>       0=off, 960/1280/1920
  *   video_scaling_mode  --es svalue <str>      crop, letterbox
  *   video_auto_negotiate --ez bvalue <bool>    true/false
@@ -75,6 +76,12 @@ class SettingsReceiver : BroadcastReceiver() {
                 "aa_height_margin" -> {
                     val v = intent.getIntExtra("value", -1)
                     if (v >= 0) { prefs.setAaHeightMargin(v); log("aa_height_margin=$v") }
+                }
+                "aa_auto_margins" -> {
+                    if (intent.hasExtra("bvalue")) {
+                        val v = intent.getBooleanExtra("bvalue", true)
+                        prefs.setAaAutoMargins(v); log("aa_auto_margins=$v")
+                    }
                 }
                 "aa_target_layout_dp" -> {
                     val v = intent.getIntExtra("value", -1)
@@ -162,6 +169,9 @@ class SettingsReceiver : BroadcastReceiver() {
                     aaHeightMargin = prefs.aaHeightMargin.first(),
                     aaPixelAspect = prefs.aaPixelAspect.first(),
                     aaTargetLayoutWidthDp = prefs.aaTargetLayoutWidthDp.first(),
+                    aaViewingDistanceMm = prefs.aaViewingDistanceMm.first(),
+                    aaDecoderAdditionalDepth = prefs.aaDecoderAdditionalDepth.first(),
+                    aaAutoMargins = prefs.aaAutoMargins.first(),
                     videoFps = prefs.videoFps.first(),
                     driveSide = prefs.driveSide.first(),
                     manualIpAddress = if (prefs.manualIpEnabled.first())

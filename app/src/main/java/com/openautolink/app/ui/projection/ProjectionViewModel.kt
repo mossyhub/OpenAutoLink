@@ -65,6 +65,9 @@ data class ProjectionUiState(
     val videoScalingMode: String = AppPreferences.DEFAULT_VIDEO_SCALING_MODE,
     val aaPixelAspect: Int = -1,
     val aaDpi: Int = 160,
+    val aaWidthMargin: Int = 0,
+    val aaHeightMargin: Int = 0,
+    val aaAutoMargins: Boolean = AppPreferences.DEFAULT_AA_AUTO_MARGINS,
     val fileLoggingActive: Boolean = false,
     val fileLoggingPath: String? = null,
     val fileLoggingEnabled: Boolean = false,
@@ -88,6 +91,16 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
 
     /** Suppress config_echo DataStore writes while Settings is open. */
     fun setSettingsOpen(open: Boolean) {
+    }
+
+    /**
+     * Push the OS-reported safe-area insets (system bars ∪ display cutouts)
+     * down to SessionManager so the next start()/reconnect() can use them
+     * as fallback for AA `content_insets` when the user hasn't manually
+     * overridden them in settings.
+     */
+    fun setSystemInsets(top: Int, bottom: Int, left: Int, right: Int) {
+        sessionManager.setSystemInsets(top, bottom, left, right)
     }
 
     private val touchForwarder: TouchForwarder = TouchForwarderImpl { touchMessage ->
@@ -173,6 +186,9 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         sessionManager.wifiFrequencyMhz,
         preferences.aaDpi,
         preferences.aaPixelAspect,
+        preferences.aaWidthMargin,
+        preferences.aaHeightMargin,
+        preferences.aaAutoMargins,
         _fileLoggingActive,
         _fileLoggingPath,
         preferences.fileLoggingEnabled,
@@ -198,9 +214,12 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             wifiFrequencyMhz = values[17] as Int,
             aaDpi = values[18] as Int,
             aaPixelAspect = values[19] as Int,
-            fileLoggingActive = values[20] as Boolean,
-            fileLoggingPath = values[21] as? String,
-            fileLoggingEnabled = values[22] as Boolean,
+            aaWidthMargin = values[20] as Int,
+            aaHeightMargin = values[21] as Int,
+            aaAutoMargins = values[22] as Boolean,
+            fileLoggingActive = values[23] as Boolean,
+            fileLoggingPath = values[24] as? String,
+            fileLoggingEnabled = values[25] as Boolean,
         )
     }.stateIn(
         viewModelScope,
@@ -350,6 +369,9 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
             val aaHM = preferences.aaHeightMargin.first()
             val aaPA = preferences.aaPixelAspect.first()
             val aaTargetLayoutDp = preferences.aaTargetLayoutWidthDp.first()
+            val aaViewDistMm = preferences.aaViewingDistanceMm.first()
+            val aaDecAddDepth = preferences.aaDecoderAdditionalDepth.first()
+            val aaAutoM = preferences.aaAutoMargins.first()
             val videoFps = preferences.videoFps.first()
             val driveSide = preferences.driveSide.first()
             val hideClock = preferences.hideAaClock.first()
@@ -457,6 +479,9 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
                 aaHeightMargin = aaHM,
                 aaPixelAspect = aaPA,
                 aaTargetLayoutWidthDp = aaTargetLayoutDp,
+                aaViewingDistanceMm = aaViewDistMm,
+                aaDecoderAdditionalDepth = aaDecAddDepth,
+                aaAutoMargins = aaAutoM,
                 videoFps = videoFps,
                 driveSide = driveSide,
                 hideClock = hideClock,

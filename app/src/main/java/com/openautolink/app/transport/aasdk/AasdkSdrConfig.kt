@@ -27,6 +27,14 @@ class AasdkSdrConfig(
     /** Stable inset height margin in pixels. */
     @JvmField val marginHeight: Int = 0,
 
+    /**
+     * When true (default), C++ ignores [marginWidth]/[marginHeight] and
+     * auto-computes per-tier margins from [panelWidth]/[panelHeight] so the
+     * codec's inner rect matches panel AR. When false, use the literal
+     * margin values (0 = stretch full codec frame onto panel).
+     */
+    @JvmField val autoMargins: Boolean = true,
+
     /** Pixel aspect ratio × 10000 (0 = square pixels). */
     @JvmField val pixelAspectE4: Int = 0,
 
@@ -82,4 +90,32 @@ class AasdkSdrConfig(
 
     /** EV connector types from VHAL INFO_EV_CONNECTOR_TYPE (e.g. [1,5] = J1772+CCS1). */
     @JvmField val evConnectorTypes: IntArray = intArrayOf(),
+
+    /**
+     * Distance from driver eye to display surface, in millimetres.
+     * Sent in VideoConfiguration.viewing_distance — phones use it to pick
+     * text/icon sizes that look correct at the actual seating distance.
+     * GM uses 700 mm for typical centre-IP screens. 0 = omit field.
+     */
+    @JvmField val viewingDistanceMm: Int = 0,
+
+    /**
+     * VideoConfiguration.decoder_additional_depth — number of extra decoded
+     * frames the head unit can buffer beyond the codec's reorder requirement.
+     * GM hard-codes 1; matching keeps phone-side encoder pacing predictable.
+     * 0 = omit field.
+     */
+    @JvmField val decoderAdditionalDepth: Int = 0,
+
+    /**
+     * Panel rect in pixels — used by C++ to (a) auto-pick landscape vs.
+     * portrait codec tiers when auto-negotiating, and (b) compute per-tier
+     * width_margin / height_margin so the inner content rect of the codec
+     * frame matches the panel aspect ratio. Renderer (ProjectionScreen)
+     * uses the SAME formula on the decoded frame so the inner rect lands
+     * on the panel and margin pixels clip off-screen → square pixels.
+     * 0 = unknown (auto-margin disabled, falls back to user override).
+     */
+    @JvmField val panelWidth: Int = 0,
+    @JvmField val panelHeight: Int = 0,
 )

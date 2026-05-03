@@ -29,8 +29,11 @@ data class SettingsUiState(
     val aaDpi: Int = AppPreferences.DEFAULT_AA_DPI,
     val aaWidthMargin: Int = AppPreferences.DEFAULT_AA_WIDTH_MARGIN,
     val aaHeightMargin: Int = AppPreferences.DEFAULT_AA_HEIGHT_MARGIN,
+    val aaAutoMargins: Boolean = AppPreferences.DEFAULT_AA_AUTO_MARGINS,
     val aaPixelAspect: Int = AppPreferences.DEFAULT_AA_PIXEL_ASPECT,
     val aaTargetLayoutWidthDp: Int = AppPreferences.DEFAULT_AA_TARGET_LAYOUT_WIDTH_DP,
+    val aaViewingDistanceMm: Int = AppPreferences.DEFAULT_AA_VIEWING_DISTANCE_MM,
+    val aaDecoderAdditionalDepth: Int = AppPreferences.DEFAULT_AA_DECODER_ADDITIONAL_DEPTH,
     // App-side
     val driveSide: String = AppPreferences.DEFAULT_DRIVE_SIDE,
     val gpsForwarding: Boolean = AppPreferences.DEFAULT_GPS_FORWARDING,
@@ -82,8 +85,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.aaDpi,
         preferences.aaWidthMargin,
         preferences.aaHeightMargin,
+        preferences.aaAutoMargins,
         preferences.aaPixelAspect,
         preferences.aaTargetLayoutWidthDp,
+        preferences.aaViewingDistanceMm,
+        preferences.aaDecoderAdditionalDepth,
         preferences.driveSide,
         preferences.gpsForwarding,
         preferences.clusterNavigation,
@@ -120,32 +126,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             aaDpi = values[7] as Int,
             aaWidthMargin = values[8] as Int,
             aaHeightMargin = values[9] as Int,
-            aaPixelAspect = values[10] as Int,
-            aaTargetLayoutWidthDp = values[11] as Int,
-            driveSide = values[12] as String,
-            gpsForwarding = values[13] as Boolean,
-            clusterNavigation = values[14] as Boolean,
-            overlaySettingsButton = values[15] as Boolean,
-            overlayStatsButton = values[16] as Boolean,
-            fileLoggingEnabled = values[17] as Boolean,
-            logcatCaptureEnabled = values[18] as Boolean,
-            syncAaTheme = values[19] as Boolean,
-            hideAaClock = values[20] as Boolean,
-            hidePhoneSignal = values[21] as Boolean,
-            hideBatteryLevel = values[22] as Boolean,
-            sendImuSensors = values[23] as Boolean,
-            distanceUnits = values[24] as String,
-            safeAreaTop = values[25] as Int,
-            safeAreaBottom = values[26] as Int,
-            safeAreaLeft = values[27] as Int,
-            safeAreaRight = values[28] as Int,
-            keyRemap = values[29] as String,
-            volumeOffsetMedia = values[30] as Int,
-            volumeOffsetNavigation = values[31] as Int,
-            volumeOffsetAssistant = values[32] as Int,
-            defaultPhoneName = values[33] as String,
-            manualIpEnabled = values[34] as Boolean,
-            manualIpAddress = values[35] as String,
+            aaAutoMargins = values[10] as Boolean,
+            aaPixelAspect = values[11] as Int,
+            aaTargetLayoutWidthDp = values[12] as Int,
+            aaViewingDistanceMm = values[13] as Int,
+            aaDecoderAdditionalDepth = values[14] as Int,
+            driveSide = values[15] as String,
+            gpsForwarding = values[16] as Boolean,
+            clusterNavigation = values[17] as Boolean,
+            overlaySettingsButton = values[18] as Boolean,
+            overlayStatsButton = values[19] as Boolean,
+            fileLoggingEnabled = values[20] as Boolean,
+            logcatCaptureEnabled = values[21] as Boolean,
+            syncAaTheme = values[22] as Boolean,
+            hideAaClock = values[23] as Boolean,
+            hidePhoneSignal = values[24] as Boolean,
+            hideBatteryLevel = values[25] as Boolean,
+            sendImuSensors = values[26] as Boolean,
+            distanceUnits = values[27] as String,
+            safeAreaTop = values[28] as Int,
+            safeAreaBottom = values[29] as Int,
+            safeAreaLeft = values[30] as Int,
+            safeAreaRight = values[31] as Int,
+            keyRemap = values[32] as String,
+            volumeOffsetMedia = values[33] as Int,
+            volumeOffsetNavigation = values[34] as Int,
+            volumeOffsetAssistant = values[35] as Int,
+            defaultPhoneName = values[36] as String,
+            manualIpEnabled = values[37] as Boolean,
+            manualIpAddress = values[38] as String,
         )
     }.stateIn(
         viewModelScope,
@@ -314,12 +323,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { preferences.setAaHeightMargin(margin) }
     }
 
+    fun updateAaAutoMargins(value: Boolean) {
+        viewModelScope.launch { preferences.setAaAutoMargins(value) }
+    }
+
     fun updateAaPixelAspect(value: Int) {
         viewModelScope.launch { preferences.setAaPixelAspect(value) }
     }
 
     fun updateAaTargetLayoutWidthDp(value: Int) {
         viewModelScope.launch { preferences.setAaTargetLayoutWidthDp(value) }
+    }
+
+    fun updateAaViewingDistanceMm(value: Int) {
+        viewModelScope.launch { preferences.setAaViewingDistanceMm(value) }
+    }
+
+    fun updateAaDecoderAdditionalDepth(value: Int) {
+        viewModelScope.launch { preferences.setAaDecoderAdditionalDepth(value) }
     }
 
     fun updateDriveSide(side: String) {
@@ -444,6 +465,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val aaHM = preferences.aaHeightMargin.first()
             val aaPA = preferences.aaPixelAspect.first()
             val aaTargetLayoutDp = preferences.aaTargetLayoutWidthDp.first()
+            val aaViewDistMm = preferences.aaViewingDistanceMm.first()
+            val aaDecAddDepth = preferences.aaDecoderAdditionalDepth.first()
+            val aaAutoM = preferences.aaAutoMargins.first()
             val videoFps = preferences.videoFps.first()
             val driveSide = preferences.driveSide.first()
             val hideClock = preferences.hideAaClock.first()
@@ -472,6 +496,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 aaHeightMargin = aaHM,
                 aaPixelAspect = aaPA,
                 aaTargetLayoutWidthDp = aaTargetLayoutDp,
+                aaViewingDistanceMm = aaViewDistMm,
+                aaDecoderAdditionalDepth = aaDecAddDepth,
+                aaAutoMargins = aaAutoM,
                 videoFps = videoFps,
                 driveSide = driveSide,
                 hideClock = hideClock,

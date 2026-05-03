@@ -12,6 +12,8 @@
 #include "jni_channel_handlers.h"
 
 #include <android/log.h>
+#include <cmath>
+#include <utility>
 #include <vector>
 
 // Protobuf messages for SDR building
@@ -252,6 +254,11 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
     sdrConfig_.safeAreaLeft = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "safeAreaLeft", "I"));
     sdrConfig_.safeAreaRight = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "safeAreaRight", "I"));
     sdrConfig_.targetLayoutWidthDp = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "targetLayoutWidthDp", "I"));
+    sdrConfig_.viewingDistanceMm = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "viewingDistanceMm", "I"));
+    sdrConfig_.decoderAdditionalDepth = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "decoderAdditionalDepth", "I"));
+    sdrConfig_.panelWidth = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "panelWidth", "I"));
+    sdrConfig_.panelHeight = env->GetIntField(sdrConfig, env->GetFieldID(sdrClass, "panelHeight", "I"));
+    sdrConfig_.autoMargins = env->GetBooleanField(sdrConfig, env->GetFieldID(sdrClass, "autoMargins", "Z")) != JNI_FALSE;
 
     // Read int arrays: fuelTypes and evConnectorTypes
     auto readIntArray = [&](const char* field) -> std::vector<int> {
@@ -269,10 +276,11 @@ void JniSession::start(JNIEnv* env, jobject transportPipe, jobject callback, job
 
     env->DeleteLocalRef(sdrClass);
 
-    LOGI("Starting session: video=%dx%d@%dfps dpi=%d realDpi=%d pixelAspect=%d marginW=%d marginH=%d autoNeg=%d codec=%s targetLayoutDp=%d",
+    LOGI("Starting session: video=%dx%d@%dfps dpi=%d realDpi=%d pixelAspect=%d marginW=%d marginH=%d viewDistMm=%d decAddDepth=%d autoNeg=%d codec=%s targetLayoutDp=%d",
          sdrConfig_.videoWidth, sdrConfig_.videoHeight,
          sdrConfig_.videoFps, sdrConfig_.videoDpi, sdrConfig_.realDensity,
          sdrConfig_.pixelAspectE4, sdrConfig_.marginWidth, sdrConfig_.marginHeight,
+         sdrConfig_.viewingDistanceMm, sdrConfig_.decoderAdditionalDepth,
          sdrConfig_.autoNegotiate, sdrConfig_.videoCodec.c_str(),
          sdrConfig_.targetLayoutWidthDp);
     if (sdrConfig_.safeAreaTop > 0 || sdrConfig_.safeAreaBottom > 0 ||
@@ -1104,13 +1112,48 @@ void JniSession::buildServiceDiscoveryResponse(
 
       using VRes = aap_protobuf::service::media::sink::message::VideoCodecResolutionType;
       using VFps = aap_protobuf::service::media::sink::message::VideoFrameRateType;
-      auto res = VRes::VIDEO_1920x1080;
-      if (sdrConfig_.videoHeight <= 480) res = VRes::VIDEO_800x480;
-      else if (sdrConfig_.videoHeight <= 720) res = VRes::VIDEO_1280x720;
-      else if (sdrConfig_.videoHeight <= 1080) res = VRes::VIDEO_1920x1080;
-      else if (sdrConfig_.videoHeight <= 1440) res = VRes::VIDEO_2560x1440;
-      else res = VRes::VIDEO_3840x2160;
       auto fps = sdrConfig_.videoFps >= 60 ? VFps::VIDEO_FPS_60 : VFps::VIDEO_FPS_30;
+
+      // Codec frame size for each VRes enum value. Index 0 unused. 1-5 land-
+      // scape tiers, 6-9 portrait variants of 720p/1080p/1440p/4K.
+      struct CodecDims { int w, h; };
+      static constexpr CodecDims kDims[] = {
+          {0, 0},                 // 0 unused
+          {800, 480},             // 1 VIDEO_800x480
+          {1280, 720},            // 2 VIDEO_1280x720
+          {1920, 1080},           // 3 VIDEO_1920x1080
+          {2560, 1440},           // 4 VIDEO_2560x1440
+          {3840, 2160},           // 5 VIDEO_3840x2160
+          {720, 1280},            // 6 VIDEO_720x1280
+          {1080, 1920},           // 7 VIDEO_1080x1920
+          {1440, 2560},           // 8 VIDEO_1440x2560
+          {2160, 3840},           // 9 VIDEO_2160x3840
+      };
+
+      // Auto-margin: pick wm/hm so the inner content rect of the codec
+      // frame has the same aspect ratio as the panel. Renderer then zooms
+      // and clips the margin pixels off-screen → uniform square-pixel scale.
+      // Returns (wm, hm). Both 0 when codec aspect already matches panel.
+      auto autoMargins = [&](int codecW, int codecH) -> std::pair<int,int> {
+          if (sdrConfig_.panelWidth <= 0 || sdrConfig_.panelHeight <= 0) {
+              return {0, 0};
+          }
+          double codecAR = static_cast<double>(codecW) / codecH;
+          double panelAR = static_cast<double>(sdrConfig_.panelWidth) /
+                           sdrConfig_.panelHeight;
+          if (std::abs(codecAR - panelAR) / panelAR < 0.005) return {0, 0};
+          if (codecAR > panelAR) {
+              // Codec wider than panel → trim left/right
+              int innerW = static_cast<int>(std::lround(codecH * panelAR));
+              int wm = std::max(0, codecW - innerW);
+              return {wm, 0};
+          } else {
+              // Codec taller than panel → trim top/bottom
+              int innerH = static_cast<int>(std::lround(codecW / panelAR));
+              int hm = std::max(0, codecH - innerH);
+              return {0, hm};
+          }
+      };
 
       bool hasSafeArea = sdrConfig_.safeAreaTop > 0 || sdrConfig_.safeAreaBottom > 0 ||
                          sdrConfig_.safeAreaLeft > 0 || sdrConfig_.safeAreaRight > 0;
@@ -1124,57 +1167,119 @@ void JniSession::buildServiceDiscoveryResponse(
           }
       };
 
-      auto applyCommonVideoFields = [&](auto* vc) {
-          if (sdrConfig_.marginWidth > 0) vc->set_width_margin(sdrConfig_.marginWidth);
-          if (sdrConfig_.marginHeight > 0) vc->set_height_margin(sdrConfig_.marginHeight);
+      auto applyVideoConfig = [&](auto* vc, int tier) {
+          // Margins:
+          //  - autoMargins=true (default): compute from panel AR per tier.
+          //  - autoMargins=false: send literal user-set marginWidth/Height
+          //    (0 = no margins, decoder stretches full codec frame).
+          int wm = 0;
+          int hm = 0;
+          if (sdrConfig_.autoMargins) {
+              auto pr = autoMargins(kDims[tier].w, kDims[tier].h);
+              wm = pr.first;
+              hm = pr.second;
+          } else {
+              wm = sdrConfig_.marginWidth;
+              hm = sdrConfig_.marginHeight;
+          }
+          if (wm > 0) vc->set_width_margin(wm);
+          if (hm > 0) vc->set_height_margin(hm);
+          // Mirror GM: split the margin half/half via UiConfig.margins so
+          // the phone centers its UI inside the inner rect. Without this,
+          // the phone is free to place the entire margin on one side
+          // (observed: bottom-only) which doesn't match our renderer's
+          // centred zoom-and-clip and looks "shifted".
+          if (wm > 0 || hm > 0) {
+              auto* margins = vc->mutable_ui_config()->mutable_margins();
+              if (wm > 0) {
+                  margins->set_left(wm / 2);
+                  margins->set_right((wm + 1) / 2);
+              }
+              if (hm > 0) {
+                  margins->set_top(hm / 2);
+                  margins->set_bottom((hm + 1) / 2);
+              }
+          }
           if (sdrConfig_.pixelAspectE4 > 0) vc->set_pixel_aspect_ratio_e4(sdrConfig_.pixelAspectE4);
           if (sdrConfig_.realDensity > 0) vc->set_real_density(sdrConfig_.realDensity);
+          if (sdrConfig_.viewingDistanceMm > 0) vc->set_viewing_distance(sdrConfig_.viewingDistanceMm);
+          if (sdrConfig_.decoderAdditionalDepth > 0) vc->set_decoder_additional_depth(sdrConfig_.decoderAdditionalDepth);
           applySafeArea(vc);
       };
 
-      if (sdrConfig_.autoNegotiate) {
-          // Auto mode: H.265 at all tiers, then H.264 fallback
-          // Landscape tier pixel widths indexed by VRes enum (1-5)
-          static constexpr int tierWidths[] = {0, 800, 1280, 1920, 2560, 3840};
-          int tiers[] = {5, 4, 3, 2, 1};
-          for (int t : tiers) {
-              auto* vc = ms->add_video_configs();
-              vc->set_codec_resolution(static_cast<VRes>(t));
-              vc->set_frame_rate(fps);
-              if (sdrConfig_.targetLayoutWidthDp > 0) {
-                  // Per-tier DPI: scale so each tier produces the same dp width
-                  int dpi = (tierWidths[t] * 160) / sdrConfig_.targetLayoutWidthDp;
-                  vc->set_density(std::max(dpi, 80));
-              } else {
-                  vc->set_density(sdrConfig_.videoDpi);
-              }
-              vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
-              applyCommonVideoFields(vc);
+      auto computeDensity = [&](int tier) -> int {
+          if (sdrConfig_.targetLayoutWidthDp > 0) {
+              int dpi = (kDims[tier].w * 160) / sdrConfig_.targetLayoutWidthDp;
+              return std::max(dpi, 80);
           }
-          for (int t : {3, 2, 1}) {
+          return sdrConfig_.videoDpi;
+      };
+
+      if (sdrConfig_.autoNegotiate) {
+          // Auto mode: advertise tiers matching the panel orientation.
+          // Landscape panel → {800x480, 720p, 1080p, 1440p, 4K} landscape.
+          // Portrait panel  → {720p, 1080p, 1440p, 4K} portrait (no 480p).
+          // Sent largest-to-smallest at H.265, then H.264 fallback at the
+          // common tiers (H.264 BP doesn't reliably support 1440p+).
+          bool portrait = (sdrConfig_.panelWidth > 0 &&
+                           sdrConfig_.panelHeight > 0 &&
+                           sdrConfig_.panelWidth < sdrConfig_.panelHeight);
+          // Order matters: phone iterates and picks the first it accepts.
+          int h265Tiers[5];
+          int h265Count;
+          int h264Tiers[3];
+          int h264Count;
+          if (portrait) {
+              h265Tiers[0] = 9; h265Tiers[1] = 8; h265Tiers[2] = 7; h265Tiers[3] = 6;
+              h265Count = 4;
+              h264Tiers[0] = 7; h264Tiers[1] = 6;
+              h264Count = 2;
+          } else {
+              h265Tiers[0] = 5; h265Tiers[1] = 4; h265Tiers[2] = 3; h265Tiers[3] = 2; h265Tiers[4] = 1;
+              h265Count = 5;
+              h264Tiers[0] = 3; h264Tiers[1] = 2; h264Tiers[2] = 1;
+              h264Count = 3;
+          }
+          for (int i = 0; i < h265Count; ++i) {
+              int t = h265Tiers[i];
               auto* vc = ms->add_video_configs();
               vc->set_codec_resolution(static_cast<VRes>(t));
               vc->set_frame_rate(fps);
-              if (sdrConfig_.targetLayoutWidthDp > 0) {
-                  int dpi = (tierWidths[t] * 160) / sdrConfig_.targetLayoutWidthDp;
-                  vc->set_density(std::max(dpi, 80));
-              } else {
-                  vc->set_density(sdrConfig_.videoDpi);
-              }
+              vc->set_density(computeDensity(t));
+              vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+              applyVideoConfig(vc, t);
+          }
+          for (int i = 0; i < h264Count; ++i) {
+              int t = h264Tiers[i];
+              auto* vc = ms->add_video_configs();
+              vc->set_codec_resolution(static_cast<VRes>(t));
+              vc->set_frame_rate(fps);
+              vc->set_density(computeDensity(t));
               vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
-              applyCommonVideoFields(vc);
+              applyVideoConfig(vc, t);
           }
       } else {
-          // Manual mode: single config at the selected resolution and codec
+          // Manual mode: single config at the selected resolution and codec.
+          // Pick tier by exact W×H match against kDims (supports all 9 enum
+          // values). Falls back to landscape 1080p if the requested combo
+          // isn't a known AA enum value.
+          int tier = 3;  // fallback VIDEO_1920x1080
+          for (int i = 1; i <= 9; ++i) {
+              if (kDims[i].w == sdrConfig_.videoWidth &&
+                  kDims[i].h == sdrConfig_.videoHeight) {
+                  tier = i;
+                  break;
+              }
+          }
           auto codecType = (sdrConfig_.videoCodec == "h264")
               ? aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP
               : aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265;
           auto* vc = ms->add_video_configs();
-          vc->set_codec_resolution(res);
+          vc->set_codec_resolution(static_cast<VRes>(tier));
           vc->set_frame_rate(fps);
-          vc->set_density(sdrConfig_.videoDpi);
+          vc->set_density(computeDensity(tier));
           vc->set_video_codec_type(codecType);
-          applyCommonVideoFields(vc);
+          applyVideoConfig(vc, tier);
       }
     }
 

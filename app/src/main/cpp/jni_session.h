@@ -319,6 +319,17 @@ private:
         int targetLayoutWidthDp = 0;
         std::vector<int> fuelTypes;
         std::vector<int> evConnectorTypes;
+        int viewingDistanceMm = 0;
+        int decoderAdditionalDepth = 0;
+        // Panel rect in pixels — used to (a) auto-pick landscape vs portrait
+        // codec tiers when auto-negotiating, and (b) compute per-tier
+        // width/height margins so the inner content rect matches panel AR.
+        // 0 = unknown (skip auto-margin; fall back to user override).
+        int panelWidth = 0;
+        int panelHeight = 0;
+        // When true, ignore marginWidth/marginHeight and auto-compute from
+        // panel AR. When false, send the literal user-set values.
+        bool autoMargins = true;
     };
     SdrConfig sdrConfig_;
 

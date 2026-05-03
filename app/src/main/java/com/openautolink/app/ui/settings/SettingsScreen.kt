@@ -621,7 +621,13 @@ private fun DisplayTab(
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Insets the AA projection from the display edges.",
+            text = "Tells the phone where to keep critical AA UI (dropdowns, " +
+                    "dialogs, FAB buttons) so they don't land on physical " +
+                    "curves, AAOS chrome, or anywhere you don't want. " +
+                    "Leave at 0 to use what AAOS reports (system bars + " +
+                    "display cutouts). Set values to add extra padding for " +
+                    "vehicles whose curves AAOS doesn't expose (e.g. Blazer " +
+                    "EV's rounded top-right corner).",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -1064,7 +1070,7 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        val isHighRes = uiState.aaResolution in listOf("1440p", "4k")
+        val isHighRes = uiState.aaResolution in listOf("1440p", "4k", "1440p_p", "4k_p")
         listOf(
             Triple("h264", "H.264", if (isHighRes) "" else " (Recommended)"),
             Triple("h265", "H.265 / HEVC", if (isHighRes) " (Recommended)" else ""),
@@ -1157,6 +1163,12 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             Triple("1080p", "1080p (1920×1080)", false),
             Triple("1440p", "1440p (2560×1440)", true),
             Triple("4k", "4K (3840×2160)", true),
+            // Portrait variants — AA enum has 9:16 mirrors of 720p+ for tall
+            // panels. No 480p portrait in the spec.
+            Triple("720p_p", "720p portrait (720×1280)", false),
+            Triple("1080p_p", "1080p portrait (1080×1920)", false),
+            Triple("1440p_p", "1440p portrait (1440×2560)", true),
+            Triple("4k_p", "4K portrait (2160×3840)", true),
         ).forEach { (key, label, isHighRes) ->
             val warningColor = Color(0xFFFFB74D)
             Row(
@@ -1525,13 +1537,34 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Override how AA layouts its UI within the video frame. " +
-                    "0 = auto-computed from your display aspect ratio. " +
-                    "Use these to adjust if AA buttons appear behind letterbox bars or display curves.",
+            text = "Tells the phone to letterbox its UI inside the encoded video. " +
+                    "Crop mode renders only the inner (non-margin) rect onto the panel " +
+                    "with uniform square-pixel scaling. Auto computes margins per-tier " +
+                    "from panel aspect ratio so any AA codec resolution lands correctly. " +
+                    "Disable Auto to send the literal values below " +
+                    "(0/0 = no margins, decoder stretches the full codec frame).",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Auto-compute margins",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(220.dp),
+            )
+            Switch(
+                checked = uiState.aaAutoMargins,
+                onCheckedChange = { viewModel.updateAaAutoMargins(it) },
+                modifier = Modifier.testTag("aaAutoMargins"),
+            )
+        }
 
         // Width Margin
         Row(
@@ -1583,6 +1616,80 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("px", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- Viewing Distance / Decoder Depth (GM SDR fields) ---
+        // GM puts viewing_distance + decoder_additional_depth in every
+        // VideoConfiguration. The phone uses viewing_distance (mm from driver
+        // eye to screen) to pick text/icon sizes that look right at the
+        // actual seating distance. decoder_additional_depth tells the phone
+        // how many extra reordered frames the car can buffer (GM uses 1).
+        Text(
+            text = "Viewing distance & decoder depth (advanced)",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        )
+        Text(
+            text = "Sent in VideoConfiguration. Viewing distance = mm from driver eye " +
+                    "to display (GM uses ~700 for centre IP screens; tune per vehicle). " +
+                    "Decoder depth = extra reordered frames the head unit can buffer " +
+                    "(GM uses 1; raise only if you see B-frame stalls). 0 = omit field.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Viewing Distance",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(140.dp),
+            )
+            OutlinedTextField(
+                value = if (uiState.aaViewingDistanceMm == 0) "" else uiState.aaViewingDistanceMm.toString(),
+                onValueChange = { value ->
+                    val mm = value.filter { it.isDigit() }.toIntOrNull() ?: 0
+                    viewModel.updateAaViewingDistanceMm(mm.coerceIn(0, 5000))
+                },
+                placeholder = { Text("0 (omit)") },
+                singleLine = true,
+                modifier = Modifier.width(120.dp).testTag("aaViewingDistanceMm"),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("mm", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Decoder Add'l Depth",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.width(140.dp),
+            )
+            OutlinedTextField(
+                value = if (uiState.aaDecoderAdditionalDepth == 0) "" else uiState.aaDecoderAdditionalDepth.toString(),
+                onValueChange = { value ->
+                    val depth = value.filter { it.isDigit() }.toIntOrNull() ?: 0
+                    viewModel.updateAaDecoderAdditionalDepth(depth.coerceIn(0, 8))
+                },
+                placeholder = { Text("0 (omit)") },
+                singleLine = true,
+                modifier = Modifier.width(120.dp).testTag("aaDecoderAdditionalDepth"),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("frames", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
