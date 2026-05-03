@@ -330,6 +330,30 @@ class TcpAdvertiser(
     }
 
     private fun fireAaLaunchIntent(localPort: Int) {
+        CompanionLog.i(TAG, "Launching AA, proxy port=$localPort")
+
+        // Send the broadcast directly from the service context — this works
+        // from background and locked screen without BAL restrictions.
+        // The TransparentTriggerActivity path is kept as a supplement for
+        // AA versions that need the activity launch instead of the broadcast.
+        try {
+            val broadcastIntent = Intent().apply {
+                setClassName(
+                    "com.google.android.projection.gearhead",
+                    "com.google.android.apps.auto.wireless.setup.receiver.WirelessStartupReceiver"
+                )
+                action = "com.google.android.apps.auto.wireless.setup.receiver.wirelessstartup.START"
+                putExtra("ip_address", "127.0.0.1")
+                putExtra("projection_port", localPort)
+                addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            }
+            context.sendBroadcast(broadcastIntent)
+            CompanionLog.i(TAG, "AA broadcast sent (port=$localPort)")
+        } catch (e: Exception) {
+            CompanionLog.w(TAG, "AA broadcast failed: ${e.message}")
+        }
+
+        // Also attempt the activity path (works when foregrounded, no-op when locked).
         val aaIntent = Intent().apply {
             setClassName(
                 "com.google.android.projection.gearhead",
@@ -345,14 +369,16 @@ class TcpAdvertiser(
             putExtra("ip_address", "127.0.0.1")
             putExtra("projection_port", localPort)
         }
-
-        CompanionLog.i(TAG, "Launching AA via TransparentTrigger, proxy port=$localPort")
         val triggerIntent =
             Intent(context, TransparentTriggerActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                 putExtra("intent", aaIntent)
             }
-        context.startActivity(triggerIntent)
+        try {
+            context.startActivity(triggerIntent)
+        } catch (e: Exception) {
+            CompanionLog.d(TAG, "Activity trigger skipped (locked/background): ${e.message}")
+        }
     }
 
     /**
