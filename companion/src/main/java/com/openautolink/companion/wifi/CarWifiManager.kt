@@ -1,11 +1,15 @@
 package com.openautolink.companion.wifi
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
+import android.net.wifi.WifiNetworkSuggestion
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.openautolink.companion.diagnostics.CompanionLog
@@ -13,14 +17,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Manages WifiNetworkSpecifier lifecycle to ensure the phone connects to
- * a car's WiFi hotspot, even when already on another WiFi (e.g. home).
+ * Manages WiFi connectivity to the car's hotspot using a two-layer approach:
  *
- * Runs as a pure additive layer — TcpAdvertiser on 0.0.0.0 is unaffected.
- * This class simply ensures the car's WiFi is reachable as an interface.
+ * 1. **WifiNetworkSuggestion**: Persistent background preference — Android
+ *    auto-connects on future scans without any UI.
+ *
+ * 2. **WifiNetworkSpecifier** + **requestNetwork**: Forces an *immediate*
+ *    connection attempt so the car can TCP-connect within seconds of BT
+ *    pairing, without waiting for the OS to action the suggestion.
+ *    The callback is **unregistered immediately after onAvailable** so the
+ *    "Searching for device / Stay connected?" system dialog dismisses as soon
+ *    as the network is found. If onUnavailable fires (SSID not in range yet),
+ *    we retry after a short delay.
  *
  * Retry strategy: each requestNetwork() scans ~30s. On failure, wait 5s
- * and retry, up to [MAX_ATTEMPTS] times (~7 min total coverage).
+ * and retry, up to [MAX_ATTEMPTS] times.
  */
 class CarWifiManager(private val context: Context) {
 
@@ -33,6 +44,8 @@ class CarWifiManager(private val context: Context) {
 
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val wifiManager =
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val handler = Handler(Looper.getMainLooper())
 
     private val _state = MutableStateFlow<State>(State.Idle)
@@ -43,6 +56,7 @@ class CarWifiManager(private val context: Context) {
     private var attempt = 0
     private var running = false
     private var retryRunnable: Runnable? = null
+    private var activeSuggestions: List<WifiNetworkSuggestion> = emptyList()
 
     fun start(carWifiEntries: List<CarWifiEntry>) {
         if (carWifiEntries.isEmpty()) {
@@ -53,17 +67,57 @@ class CarWifiManager(private val context: Context) {
         running = true
         attempt = 0
         CompanionLog.i(TAG, "Starting car WiFi manager for ${entries.size} SSID(s)")
-        tryConnect()
+        registerSuggestions()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tryConnect()
     }
 
     fun stop() {
         running = false
         cancelRetry()
         releaseCallback()
+        removeSuggestions()
         _state.value = State.Idle
         CompanionLog.i(TAG, "Stopped")
     }
 
+    private fun registerSuggestions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val suggestions = entries.map { entry ->
+                val builder = WifiNetworkSuggestion.Builder()
+                    .setSsid(entry.ssid)
+                    .setWpa2Passphrase(entry.password)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    builder.setIsInitialAutojoinEnabled(true)
+                }
+                builder.build()
+            }
+            if (activeSuggestions.isNotEmpty()) {
+                wifiManager.removeNetworkSuggestions(activeSuggestions)
+            }
+            val status = wifiManager.addNetworkSuggestions(suggestions)
+            activeSuggestions = if (status == WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
+                CompanionLog.i(TAG, "Registered ${suggestions.size} WiFi suggestion(s) for auto-connect")
+                suggestions
+            } else {
+                CompanionLog.w(TAG, "WifiNetworkSuggestion registration failed (status=$status) — specifier-only mode")
+                emptyList()
+            }
+        } catch (e: Exception) {
+            CompanionLog.w(TAG, "WifiNetworkSuggestion error: ${e.message}")
+        }
+    }
+
+    private fun removeSuggestions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (activeSuggestions.isEmpty()) return
+        try { wifiManager.removeNetworkSuggestions(activeSuggestions) } catch (_: Exception) {}
+        CompanionLog.d(TAG, "Removed ${activeSuggestions.size} WiFi suggestion(s)")
+        activeSuggestions = emptyList()
+    }
+
+    @SuppressLint("NewApi")
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
     private fun tryConnect() {
         if (!running) return
         if (attempt >= MAX_ATTEMPTS) {
@@ -76,8 +130,6 @@ class CarWifiManager(private val context: Context) {
         attempt++
         _state.value = State.Scanning(attempt, MAX_ATTEMPTS)
 
-        // Use the first entry for now. Multi-car: scan for which SSID is
-        // in range and pick the matching one. For most users there is one car.
         val entry = entries.first()
         CompanionLog.i(TAG, "Attempt $attempt/$MAX_ATTEMPTS: requesting \"${entry.ssid}\"")
 
@@ -98,13 +150,16 @@ class CarWifiManager(private val context: Context) {
                 if (!running) return
                 CompanionLog.i(TAG, "Connected to \"${entry.ssid}\" on attempt $attempt")
                 _state.value = State.Connected(entry.ssid)
-                // Reset attempt counter so reconnections get full retry budget
                 attempt = 0
+                // Keep the callback registered — unregistering here would tear down
+                // the secondary WiFi network, removing the phone's IP on the car's
+                // subnet and making the car unable to reach our server ports.
+                // The callback is released in stop().
             }
 
             override fun onUnavailable() {
                 if (!running) return
-                CompanionLog.w(TAG, "Attempt $attempt failed (SSID not found or declined)")
+                CompanionLog.w(TAG, "Attempt $attempt failed (SSID not in range yet)")
                 scheduleRetry()
             }
 
@@ -112,7 +167,6 @@ class CarWifiManager(private val context: Context) {
                 if (!running) return
                 CompanionLog.w(TAG, "Car WiFi \"${entry.ssid}\" lost")
                 _state.value = State.Scanning(attempt, MAX_ATTEMPTS)
-                // Debounce: wait before retrying to avoid thrashing on WiFi flaps
                 scheduleRetry(LOST_RETRY_DELAY_MS)
             }
         }
@@ -123,7 +177,7 @@ class CarWifiManager(private val context: Context) {
 
     private fun scheduleRetry(delayMs: Long = RETRY_DELAY_MS) {
         cancelRetry()
-        val r = Runnable { tryConnect() }
+        val r = Runnable { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) tryConnect() }
         retryRunnable = r
         handler.postDelayed(r, delayMs)
     }
@@ -135,11 +189,7 @@ class CarWifiManager(private val context: Context) {
 
     private fun releaseCallback() {
         currentCallback?.let {
-            try {
-                connectivityManager.unregisterNetworkCallback(it)
-            } catch (_: Exception) {
-                // Already unregistered or never registered
-            }
+            try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}
         }
         currentCallback = null
     }
