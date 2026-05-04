@@ -470,89 +470,103 @@ fun ProjectionScreen(
         }
 
         // Floating overlay buttons — bottom-right, above nav bar. Draggable.
-        Column(
+        // Use BoxWithConstraints to get available bounds and pass them to
+        // buttons so they can clamp positions when display mode changes.
+        BoxWithConstraints(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 16.dp),
         ) {
-            // Settings button — draggable
-            DraggableOverlayButton(
-                icon = Icons.Default.Settings,
-                contentDescription = "Settings",
-                onClick = { showSettings = true },
-                positionKey = "overlay_settings",
-                modifier = Modifier.testTag("settingsButton"),
-            )
+            val maxBoundsX = this.maxWidth.value
+            val maxBoundsY = this.maxHeight.value
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Switch Phone button — Car Hotspot mode only. Tapping opens a
-            // centered chooser overlay; the underlying AA session keeps
-            // streaming until the user explicitly picks a different phone.
-            if (isCarHotspotMode) {
+            Column {
+                // Settings button — draggable
                 DraggableOverlayButton(
-                    icon = Icons.Default.PhoneAndroid,
-                    contentDescription = "Switch Phone",
-                    onClick = { viewModel.showCarHotspotChooser() },
-                    positionKey = "overlay_switch_phone",
-                    containerColor = if (carHotspotSwitching) {
-                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
-                    } else {
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                    },
-                    tint = if (carHotspotSwitching) {
-                        MaterialTheme.colorScheme.onTertiary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    modifier = Modifier.testTag("switchPhoneButton"),
+                    icon = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    onClick = { showSettings = true },
+                    positionKey = "overlay_settings",
+                    modifier = Modifier.testTag("settingsButton"),
+                    maxBoundsX = maxBoundsX,
+                    maxBoundsY = maxBoundsY,
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Switch Phone button — Car Hotspot mode only. Tapping opens a
+                // centered chooser overlay; the underlying AA session keeps
+                // streaming until the user explicitly picks a different phone.
+                if (isCarHotspotMode) {
+                    DraggableOverlayButton(
+                        icon = Icons.Default.PhoneAndroid,
+                        contentDescription = "Switch Phone",
+                        onClick = { viewModel.showCarHotspotChooser() },
+                        positionKey = "overlay_switch_phone",
+                        containerColor = if (carHotspotSwitching) {
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
+                        } else {
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                        },
+                        tint = if (carHotspotSwitching) {
+                            MaterialTheme.colorScheme.onTertiary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.testTag("switchPhoneButton"),
+                        maxBoundsX = maxBoundsX,
+                        maxBoundsY = maxBoundsY,
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Stats button — draggable
+                DraggableOverlayButton(
+                    icon = Icons.Default.Info,
+                    contentDescription = "Stats for nerds",
+                    onClick = { viewModel.toggleStats() },
+                    positionKey = "overlay_stats",
+                    containerColor = if (uiState.showStats) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                    },
+                    tint = if (uiState.showStats) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.testTag("statsButton"),
+                    maxBoundsX = maxBoundsX,
+                    maxBoundsY = maxBoundsY,
+                )
+
+                // File logging button — only shown when enabled in Settings → Diagnostics
+                if (uiState.fileLoggingEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                DraggableOverlayButton(
+                    icon = Icons.Default.FiberManualRecord,
+                    contentDescription = "File Logging",
+                    onClick = { viewModel.toggleFileLogging() },
+                    positionKey = "overlay_file_log",
+                    containerColor = if (uiState.fileLoggingActive) {
+                        Color.Red.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                    },
+                    tint = if (uiState.fileLoggingActive) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    modifier = Modifier.testTag("fileLogButton"),
+                    maxBoundsX = maxBoundsX,
+                    maxBoundsY = maxBoundsY,
+                )
+                } // end fileLoggingEnabled
             }
-
-            // Stats button — draggable
-            DraggableOverlayButton(
-                icon = Icons.Default.Info,
-                contentDescription = "Stats for nerds",
-                onClick = { viewModel.toggleStats() },
-                positionKey = "overlay_stats",
-                containerColor = if (uiState.showStats) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                },
-                tint = if (uiState.showStats) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.testTag("statsButton"),
-            )
-
-            // File logging button — only shown when enabled in Settings → Diagnostics
-            if (uiState.fileLoggingEnabled) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            DraggableOverlayButton(
-                icon = Icons.Default.FiberManualRecord,
-                contentDescription = "File Logging",
-                onClick = { viewModel.toggleFileLogging() },
-                positionKey = "overlay_file_log",
-                containerColor = if (uiState.fileLoggingActive) {
-                    Color.Red.copy(alpha = 0.7f)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                },
-                tint = if (uiState.fileLoggingActive) {
-                    Color.White
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.testTag("fileLogButton"),
-            )
-            } // end fileLoggingEnabled
-
         }
 
         // Stats overlay panel — bottom-left
