@@ -263,6 +263,13 @@ private:
     std::atomic<bool> aborted_{false};
     std::atomic<bool> sessionStoppedFired_{false};
     std::atomic<int> negotiatedCodecType_{0};
+    // Current video focus state for the main display.
+    // 1 = VIDEO_FOCUS_PROJECTED (default — we always project on AAOS).
+    // Tracking this lets onVideoFocusRequest reply with our actual current
+    // state (mirroring GM's GALDisplayManager.onVideoFocusRequest), so we
+    // stay correct if/when we ever surrender focus (e.g. cluster work, or
+    // a future "back to AAOS Home while AA stays alive" feature).
+    std::atomic<int> currentVideoFocus_{1};
     std::atomic<int64_t> pingSentAtMs_{0};
 
     // Channel-error coalescing + escalation tracking (guarded by errorMu_)

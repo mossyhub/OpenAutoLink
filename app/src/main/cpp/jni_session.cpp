@@ -837,7 +837,10 @@ void JniSession::onMediaChannelSetupRequest(
 
     // Send VIDEO_FOCUS_PROJECTED immediately after setup — the phone's
     // ProjectionWindowManager waits for this before it can start projection.
-    LOGI("Sending VIDEO_FOCUS_PROJECTED after setup");
+    // unsolicited=true: we're declaring our state proactively (not in reply).
+    currentVideoFocus_.store(
+        aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+    LOGI("Sending VIDEO_FOCUS_PROJECTED after setup (unsolicited)");
     aap_protobuf::service::media::video::message::VideoFocusNotification focus;
     focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
     focus.set_unsolicited(true);
@@ -855,6 +858,8 @@ void JniSession::onMediaChannelStartIndication(
          indication.session_id(), indication.configuration_index());
     logProtoRaw("VideoStart", indication);
 
+    currentVideoFocus_.store(
+        aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
     aap_protobuf::service::media::video::message::VideoFocusNotification focus;
     focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
     focus.set_unsolicited(false);
@@ -972,16 +977,24 @@ void JniSession::onVideoFocusRequest(
     // The phone sends VideoFocusRequest when its projection state machine needs
     // to re-arbitrate focus — e.g., day/night theme transitions (tunnel entry),
     // phone-screen-off, or returning from a phone-native UI. The phone STALLS
-    // projection until we reply with a VideoFocusIndication, which manifests on
-    // the car as a black screen during a night-mode flip. Mirror openauto:
-    // always reassert PROJECTED so frames resume immediately.
+    // projection until we reply with a VideoFocusIndication, which on the car
+    // manifests as a black screen during a night-mode flip.
+    //
+    // Mirror GM's GALDisplayManager.onVideoFocusRequest pattern: reply with our
+    // *current* focus state, not the requested mode. On AAOS we are always
+    // projecting, so currentVideoFocus_ is PROJECTED unless a future feature
+    // (cluster surrender, back-to-Home-while-AA-alive) explicitly changes it.
+    // unsolicited=false: this IS a reply to a request.
     int mode = request.has_mode() ? static_cast<int>(request.mode()) : -1;
     int reason = request.has_reason() ? static_cast<int>(request.reason()) : -1;
-    LOGI("Video focus request from phone: mode=%d reason=%d (1=PROJECTED 2=NATIVE 3=NATIVE_TRANSIENT; "
-         "reason 1=PHONE_SCREEN_OFF 2=LAUNCH_NATIVE)", mode, reason);
+    int reply = currentVideoFocus_.load();
+    LOGI("Video focus request from phone: mode=%d reason=%d -> replying with current=%d "
+         "(focus 1=PROJECTED 2=NATIVE 3=NATIVE_TRANSIENT; "
+         "reason 1=PHONE_SCREEN_OFF 2=LAUNCH_NATIVE)", mode, reason, reply);
 
     aap_protobuf::service::media::video::message::VideoFocusNotification focus;
-    focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+    focus.set_focus(
+        static_cast<aap_protobuf::service::media::video::message::VideoFocusMode>(reply));
     focus.set_unsolicited(false);
     auto promise = aasdk::channel::SendPromise::defer(*strand_);
     promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
