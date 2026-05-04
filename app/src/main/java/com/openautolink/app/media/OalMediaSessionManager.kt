@@ -170,6 +170,15 @@ class OalMediaSessionManager(private val context: Context) {
             }
 
             session.setMetadata(builder.build())
+
+            // Nudge PlaybackState so consumers that only react to onPlaybackStateChanged
+            // (notably the AAOS cluster media tile) re-read the new metadata. We don't
+            // know the current position on a metadata-only update, so reuse 0 with the
+            // last known playing state. setState is idempotent if nothing actually changed
+            // for consumers that DO listen to onMetadataChanged.
+            val playing = lastPushedPlaying ?: false
+            val st = if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
+            session.setPlaybackState(buildPlaybackState(st, 0L))
         }
     }
 
@@ -179,7 +188,10 @@ class OalMediaSessionManager(private val context: Context) {
     fun updatePlaybackState(playing: Boolean, positionMs: Long) {
         synchronized(sessionLock) {
             val session = mediaSession ?: return
-            if (playing == lastPushedPlaying) return
+            // Don't dedup on `playing` alone: position resets to 0 on track change while
+            // playing stays true, and the AAOS cluster media tile only re-reads metadata
+            // when PlaybackState changes. Skipping the push leaves the cluster stuck on
+            // the previous track's title/art until nav takes over and is cancelled.
             lastPushedPlaying = playing
 
             val state = if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
