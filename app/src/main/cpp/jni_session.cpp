@@ -967,9 +967,26 @@ void JniSession::onMediaIndication(const aasdk::common::DataConstBuffer& buffer)
 }
 
 void JniSession::onVideoFocusRequest(
-    const aap_protobuf::service::media::video::message::VideoFocusRequestNotification& /*request*/)
+    const aap_protobuf::service::media::video::message::VideoFocusRequestNotification& request)
 {
-    LOGI("Video focus request from phone");
+    // The phone sends VideoFocusRequest when its projection state machine needs
+    // to re-arbitrate focus — e.g., day/night theme transitions (tunnel entry),
+    // phone-screen-off, or returning from a phone-native UI. The phone STALLS
+    // projection until we reply with a VideoFocusIndication, which manifests on
+    // the car as a black screen during a night-mode flip. Mirror openauto:
+    // always reassert PROJECTED so frames resume immediately.
+    int mode = request.has_mode() ? static_cast<int>(request.mode()) : -1;
+    int reason = request.has_reason() ? static_cast<int>(request.reason()) : -1;
+    LOGI("Video focus request from phone: mode=%d reason=%d (1=PROJECTED 2=NATIVE 3=NATIVE_TRANSIENT; "
+         "reason 1=PHONE_SCREEN_OFF 2=LAUNCH_NATIVE)", mode, reason);
+
+    aap_protobuf::service::media::video::message::VideoFocusNotification focus;
+    focus.set_focus(aap_protobuf::service::media::video::message::VIDEO_FOCUS_PROJECTED);
+    focus.set_unsolicited(false);
+    auto promise = aasdk::channel::SendPromise::defer(*strand_);
+    promise->then([]() {}, [this](const auto& e) { this->onChannelError(e); });
+    videoChannel_->sendVideoFocusIndication(focus, std::move(promise));
+
     videoChannel_->receive(shared_from_this());
 }
 
