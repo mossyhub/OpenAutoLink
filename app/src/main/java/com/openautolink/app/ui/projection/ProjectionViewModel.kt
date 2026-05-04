@@ -1257,20 +1257,60 @@ class ProjectionViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    /** Forward a touch event from the projection surface to the bridge. */
-    fun onTouchEvent(event: MotionEvent, surfaceWidth: Int, surfaceHeight: Int) {
-        // Use video stats dimensions — the phone renders AA at whatever resolution
-        // it negotiated, and touch coordinates map to that render space.
+    /**
+     * Forward a touch event from the projection surface to the bridge.
+     *
+     * In Crop margin-zoom rendering, the SurfaceView is INFLATED beyond the
+     * panel and anchored top-left, so codec [0..innerW]x[0..innerH] maps
+     * directly to the visible panel rect. Touch coords from the SurfaceView's
+     * MotionEvent come in inflated-view space, but only the visible portion
+     * (the panel rect) is reachable.
+     *
+     * Map by: codec_xy = event_xy / scale, where scale was the inflate factor
+     * the renderer chose. Equivalently: codec_xy = event_xy * innerW /
+     * panelW. We pass [innerW]/[innerH] explicitly so the touch math doesn't
+     * have to re-derive margins from prefs.
+     */
+    fun onTouchEvent(
+        event: MotionEvent,
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+        innerW: Int = 0,
+        innerH: Int = 0,
+        panelW: Int = 0,
+        panelH: Int = 0,
+    ) {
         val stats = _videoStats.value
-        val tw = if (stats.width > 0) stats.width else sessionManager.touchWidth.value
-        val th = if (stats.height > 0) stats.height else sessionManager.touchHeight.value
-        if (tw <= 0 || th <= 0) return
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            val sx = event.x * tw / surfaceWidth
-            val sy = event.y * th / surfaceHeight
-            Log.d("TouchDebug", "surface=${surfaceWidth}x${surfaceHeight} touch=${tw}x${th} raw=(${event.x.toInt()},${event.y.toInt()}) scaled=(${sx.toInt()},${sy.toInt()})")
+        val codecW = if (stats.width > 0) stats.width else sessionManager.touchWidth.value
+        val codecH = if (stats.height > 0) stats.height else sessionManager.touchHeight.value
+        if (codecW <= 0 || codecH <= 0) return
+        // When inner+panel are provided, pretend the view is the panel rect
+        // and the codec is the inner rect — this maps edge-of-panel to
+        // edge-of-AA-UI (codec col innerW, row innerH) regardless of how the
+        // SurfaceView is sized/clipped.
+        val effSurfW: Int
+        val effSurfH: Int
+        val effCodecW: Int
+        val effCodecH: Int
+        if (innerW > 0 && innerH > 0 && panelW > 0 && panelH > 0) {
+            effSurfW = panelW
+            effSurfH = panelH
+            effCodecW = innerW
+            effCodecH = innerH
+        } else {
+            effSurfW = surfaceWidth
+            effSurfH = surfaceHeight
+            effCodecW = codecW
+            effCodecH = codecH
         }
-        touchForwarder.onTouch(event, surfaceWidth, surfaceHeight, tw, th)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val sx = event.x * effCodecW / effSurfW
+            val sy = event.y * effCodecH / effSurfH
+            Log.d("TouchDebug", "viewSurf=${surfaceWidth}x${surfaceHeight} " +
+                "effSurf=${effSurfW}x${effSurfH} effCodec=${effCodecW}x${effCodecH} " +
+                "raw=(${event.x.toInt()},${event.y.toInt()}) scaled=(${sx.toInt()},${sy.toInt()})")
+        }
+        touchForwarder.onTouch(event, effSurfW, effSurfH, effCodecW, effCodecH)
     }
 
     /** Handle a steering wheel key event. Returns true if consumed. */

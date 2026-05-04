@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -71,6 +72,7 @@ import com.openautolink.app.session.SessionState
 import com.openautolink.app.ui.components.DraggableOverlayButton
 import com.openautolink.app.video.VideoStats
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun ProjectionScreen(
     viewModel: ProjectionViewModel = viewModel(),
@@ -242,14 +244,13 @@ fun ProjectionScreen(
                         viewModel.onSurfaceDestroyed()
                     }
                 })
-
-                setOnTouchListener { v, event ->
-                    // Don't forward touch to AA while settings overlay is open
-                    if (!showSettings) {
-                        viewModel.onTouchEvent(event, v.width, v.height)
-                    }
-                    true
-                }
+                // No touch listener here — touches are captured by an
+                // overlay sitting over the parent's visible rect (see Crop
+                // and Letterbox branches below) which knows the panel and
+                // codec inner-rect dims explicitly. Attaching a touch
+                // listener to the inflated SurfaceView produced inconsistent
+                // edge-of-panel mappings depending on Android version /
+                // clip behaviour.
             }
         }
 
@@ -331,16 +332,82 @@ fun ProjectionScreen(
                         factory = surfaceFactory,
                         modifier = surfaceModifier,
                     )
+
+                    // Touch overlay: covers the parent's visible rect (the
+                    // panel area). pointerInteropFilter delivers MotionEvents
+                    // with coords in this modifier's local space, which is
+                    // the panel rect — exactly what we want to map to the
+                    // codec inner rect (where AA's UI lives, top-left
+                    // anchored).
+                    val touchInnerW: Int
+                    val touchInnerH: Int
+                    if (codecW > 0 && codecH > 0 && parentWPx > 0 && parentHPx > 0) {
+                        val (wm, hm) = if (autoMargins) {
+                            com.openautolink.app.video.MarginAutoCalc.compute(
+                                codecW, codecH, parentWPx, parentHPx
+                            )
+                        } else {
+                            userWm to userHm
+                        }
+                        touchInnerW = (codecW - wm).coerceAtLeast(1)
+                        touchInnerH = (codecH - hm).coerceAtLeast(1)
+                    } else {
+                        touchInnerW = 0
+                        touchInnerH = 0
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInteropFilter { ev ->
+                                if (!showSettings) {
+                                    viewModel.onTouchEvent(
+                                        ev,
+                                        parentWPx, parentHPx,
+                                        touchInnerW, touchInnerH,
+                                        parentWPx, parentHPx,
+                                    )
+                                }
+                                true
+                            }
+                            .testTag("projectionTouch")
+                    )
                 }
             } else {
-                // Letterbox: 16:9 centered.
-                AndroidView(
-                    factory = surfaceFactory,
+                // Letterbox: 16:9 centered, with a touch overlay sitting
+                // exactly over the same rect (so its local space ↔ codec
+                // space is a uniform 1:1 ratio).
+                androidx.compose.foundation.layout.BoxWithConstraints(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
-                        .testTag("projectionSurface")
-                )
+                ) {
+                    val ltrW = constraints.maxWidth
+                    val ltrH = constraints.maxHeight
+                    AndroidView(
+                        factory = surfaceFactory,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("projectionSurface")
+                    )
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInteropFilter { ev ->
+                                if (!showSettings) {
+                                    // No margin in letterbox — codec frame
+                                    // = full surface, so inner = codec.
+                                    viewModel.onTouchEvent(
+                                        ev,
+                                        ltrW, ltrH,
+                                        codecW, codecH,
+                                        ltrW, ltrH,
+                                    )
+                                }
+                                true
+                            }
+                            .testTag("projectionTouch")
+                    )
+                }
             }
         }
 
