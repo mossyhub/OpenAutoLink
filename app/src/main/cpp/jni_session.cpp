@@ -822,9 +822,10 @@ void JniSession::onMediaChannelSetupRequest(
     config.set_status(aap_protobuf::service::media::shared::message::Config::STATUS_READY);
     config.set_max_unacked(30);
     if (sdrConfig_.autoNegotiate) {
-        // Auto mode: accept all configurations
-        // SDR has 5 H.265 + 3 H.264 = 8 total
-        for (int i = 0; i < 8; i++) {
+        // Auto mode: accept every config we advertised.
+        int n = advertisedVideoConfigCount_.load();
+        if (n <= 0) n = 1;
+        for (int i = 0; i < n; i++) {
             config.add_configuration_indices(i);
         }
     } else {
@@ -1246,48 +1247,63 @@ void JniSession::buildServiceDiscoveryResponse(
       };
 
       if (sdrConfig_.autoNegotiate) {
-          // Auto mode: advertise tiers matching the panel orientation.
-          // Landscape panel → {800x480, 720p, 1080p, 1440p, 4K} landscape.
-          // Portrait panel  → {720p, 1080p, 1440p, 4K} portrait (no 480p).
-          // Sent largest-to-smallest at H.265, then H.264 fallback at the
-          // common tiers (H.264 BP doesn't reliably support 1440p+).
+          // Auto mode: advertise multiple resolution tiers for the user's
+          // chosen codec only. We do NOT mix H.264 + H.265 in the same SDR:
+          // the phone picks the first acceptable config, which historically
+          // meant H.265 always won and triggered the ~30-60s "green startup"
+          // from tiny seed IDRs. By advertising only one codec, the phone is
+          // forced into that family.
+          //
+          // Codec preference (videoCodec):
+          //   "h264" (default, recommended) → safe, instant clean startup, capped at 1080p
+          //   "h265"                        → up to 4K, but tolerates green-startup window
+          //   else → fall back to h264
+          //
+          // Mirrors GM's GALDisplayManager.getVideoConfigList() which only
+          // ever advertises H.264 BP at [1920x1080, 1280x720, 800x480].
+          bool useH265 = (sdrConfig_.videoCodec == "h265" ||
+                          sdrConfig_.videoCodec == "hevc");
           bool portrait = (sdrConfig_.panelWidth > 0 &&
                            sdrConfig_.panelHeight > 0 &&
                            sdrConfig_.panelWidth < sdrConfig_.panelHeight);
-          // Order matters: phone iterates and picks the first it accepts.
-          int h265Tiers[5];
-          int h265Count;
-          int h264Tiers[3];
-          int h264Count;
-          if (portrait) {
-              h265Tiers[0] = 9; h265Tiers[1] = 8; h265Tiers[2] = 7; h265Tiers[3] = 6;
-              h265Count = 4;
-              h264Tiers[0] = 7; h264Tiers[1] = 6;
-              h264Count = 2;
+          // Tier order: largest-to-smallest. Phone iterates and picks the
+          // first it accepts. H.264 BP is reliable up to 1080p; H.265 is
+          // needed for 1440p / 4K.
+          int tiers[5];
+          int tierCount;
+          auto codecType = useH265
+              ? aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265
+              : aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP;
+          if (useH265) {
+              if (portrait) {
+                  tiers[0] = 9; tiers[1] = 8; tiers[2] = 7; tiers[3] = 6;
+                  tierCount = 4;
+              } else {
+                  tiers[0] = 5; tiers[1] = 4; tiers[2] = 3; tiers[3] = 2; tiers[4] = 1;
+                  tierCount = 5;
+              }
           } else {
-              h265Tiers[0] = 5; h265Tiers[1] = 4; h265Tiers[2] = 3; h265Tiers[3] = 2; h265Tiers[4] = 1;
-              h265Count = 5;
-              h264Tiers[0] = 3; h264Tiers[1] = 2; h264Tiers[2] = 1;
-              h264Count = 3;
+              // H.264 BP: cap at 1080p. Match GM exactly for landscape.
+              if (portrait) {
+                  tiers[0] = 7; tiers[1] = 6;
+                  tierCount = 2;
+              } else {
+                  tiers[0] = 3; tiers[1] = 2; tiers[2] = 1;  // 1080p, 720p, 480p
+                  tierCount = 3;
+              }
           }
-          for (int i = 0; i < h265Count; ++i) {
-              int t = h265Tiers[i];
+          LOGI("Auto SDR: codec=%s tiers=%d portrait=%d",
+               useH265 ? "H.265" : "H.264 BP", tierCount, portrait ? 1 : 0);
+          for (int i = 0; i < tierCount; ++i) {
+              int t = tiers[i];
               auto* vc = ms->add_video_configs();
               vc->set_codec_resolution(static_cast<VRes>(t));
               vc->set_frame_rate(fps);
               vc->set_density(computeDensity(t));
-              vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H265);
+              vc->set_video_codec_type(codecType);
               applyVideoConfig(vc, t);
           }
-          for (int i = 0; i < h264Count; ++i) {
-              int t = h264Tiers[i];
-              auto* vc = ms->add_video_configs();
-              vc->set_codec_resolution(static_cast<VRes>(t));
-              vc->set_frame_rate(fps);
-              vc->set_density(computeDensity(t));
-              vc->set_video_codec_type(aap_protobuf::service::media::shared::message::MEDIA_CODEC_VIDEO_H264_BP);
-              applyVideoConfig(vc, t);
-          }
+          advertisedVideoConfigCount_.store(tierCount);
       } else {
           // Manual mode: single config at the selected resolution and codec.
           // Pick tier by exact W×H match against kDims (supports all 9 enum
@@ -1310,6 +1326,7 @@ void JniSession::buildServiceDiscoveryResponse(
           vc->set_density(computeDensity(tier));
           vc->set_video_codec_type(codecType);
           applyVideoConfig(vc, tier);
+          advertisedVideoConfigCount_.store(1);
       }
     }
 

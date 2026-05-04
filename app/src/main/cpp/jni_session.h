@@ -270,6 +270,10 @@ private:
     // stay correct if/when we ever surrender focus (e.g. cluster work, or
     // a future "back to AAOS Home while AA stays alive" feature).
     std::atomic<int> currentVideoFocus_{1};
+    // Number of video configs we advertised in our SDR. Used by the video-
+    // setup handler to populate configuration_indices honestly. Set during
+    // buildServiceDiscoveryResponse(); read on the IO strand only after.
+    std::atomic<int> advertisedVideoConfigCount_{0};
     std::atomic<int64_t> pingSentAtMs_{0};
 
     // Channel-error coalescing + escalation tracking (guarded by errorMu_)

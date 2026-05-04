@@ -52,6 +52,7 @@ class MediaCodecDecoder(
     override val stats: StateFlow<VideoStats> = _stats.asStateFlow()
 
     @Volatile private var codec: MediaCodec? = null
+    @Volatile private var activeDecoderName: String? = null
     @Volatile private var surface: Surface? = null
     private var surfaceWidth: Int = 0
     private var surfaceHeight: Int = 0
@@ -475,8 +476,8 @@ class MediaCodecDecoder(
         _decoderState.value = DecoderState.CONFIGURING
 
         try {
-            val decoderName = CodecSelector.findDecoder(mimeType)
-            if (decoderName == null) {
+            val candidates = CodecSelector.decoderCandidates(mimeType)
+            if (candidates.isEmpty()) {
                 Log.e(TAG, "No decoder available for $mimeType")
                 DiagnosticLog.e("video", "No decoder available for $mimeType")
                 _decoderState.value = DecoderState.ERROR
@@ -505,20 +506,50 @@ class MediaCodecDecoder(
             Log.i(TAG, "Configuring codec with video dims: ${configWidth}x${configHeight} " +
                     "(parsed=${spsDims != null}, pending=${pendingWidth}x${pendingHeight}, surface: ${surfaceWidth}x${surfaceHeight})")
 
-            val format = MediaFormat.createVideoFormat(mimeType, configWidth, configHeight)
-            format.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(configData))
-            // Low-latency hints for real-time video stream
-            format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            try { format.setInteger("priority", 0) } catch (_: Exception) {} // 0 = realtime priority
+            // Try each candidate (HW first, SW fallback) with up to 2 retries.
+            // Mirrors GM ProjectionRenderer.initializeCodec (CODEC_START_ATTEMPT_ALLOWANCE)
+            // and persist.hw.decoder.aa SW fallback. Cheap reliability insurance.
+            var lastError: Throwable? = null
+            var configured = false
+            outer@ for (decoderName in candidates) {
+                for (attempt in 1..2) {
+                    var mc: MediaCodec? = null
+                    try {
+                        val format = MediaFormat.createVideoFormat(mimeType, configWidth, configHeight)
+                        format.setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(configData))
+                        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                        try { format.setInteger("priority", 0) } catch (_: Exception) {}
 
-            val mc = MediaCodec.createByCodecName(decoderName)
-            mc.configure(format, surface, null, 0)
-            try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
-            catch (_: Exception) {}
-            mc.start()
-            try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
-            catch (_: Exception) {}
-            codec = mc
+                        mc = MediaCodec.createByCodecName(decoderName)
+                        mc.configure(format, surface, null, 0)
+                        try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
+                        catch (_: Exception) {}
+                        mc.start()
+                        try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
+                        catch (_: Exception) {}
+                        codec = mc
+                        activeDecoderName = decoderName
+                        configured = true
+                        Log.i(TAG, "Codec configured: $decoderName ($mimeType, attempt=$attempt)")
+                        DiagnosticLog.i("video", "Codec selected: $decoderName ($mimeType)")
+                        break@outer
+                    } catch (e: Throwable) {
+                        lastError = e
+                        Log.w(TAG, "Codec init failed ($decoderName attempt $attempt): ${e.message}")
+                        try { mc?.reset() } catch (_: Throwable) {}
+                        try { mc?.release() } catch (_: Throwable) {}
+                    }
+                }
+                Log.w(TAG, "All retries exhausted for $decoderName, trying next candidate")
+            }
+
+            if (!configured) {
+                Log.e(TAG, "Failed to configure any decoder for $mimeType", lastError)
+                DiagnosticLog.e("video", "All decoders failed for $mimeType: ${lastError?.message}")
+                _decoderState.value = DecoderState.ERROR
+                return
+            }
+
             firstFrameRendered = false
             // Set outputFormatReceived based on whether we have reliable dimensions.
             // When SPS was successfully parsed, dimensions match the stream — no
@@ -531,12 +562,10 @@ class MediaCodecDecoder(
             renderingEnabled = false  // Don't render until first IDR is queued
 
             // Start output drain thread
-            startDrainThread(mc)
+            startDrainThread(codec!!)
 
             _decoderState.value = DecoderState.DECODING
-            updateStats(decoderName)
-            Log.i(TAG, "Codec configured: $decoderName ($mimeType, scaling=$scalingMode)")
-            DiagnosticLog.i("video", "Codec selected: $decoderName ($mimeType)")
+            updateStats(activeDecoderName)
 
             // Replay cached IDR if one arrived while codec was configuring
             val cachedIdr = cachedIdrFrame
@@ -561,8 +590,8 @@ class MediaCodecDecoder(
         _decoderState.value = DecoderState.CONFIGURING
 
         try {
-            val decoderName = CodecSelector.findDecoder(mimeType)
-            if (decoderName == null) {
+            val candidates = CodecSelector.decoderCandidates(mimeType)
+            if (candidates.isEmpty()) {
                 Log.e(TAG, "No decoder available for $mimeType")
                 DiagnosticLog.e("video", "No decoder available for $mimeType")
                 _decoderState.value = DecoderState.ERROR
@@ -571,27 +600,51 @@ class MediaCodecDecoder(
 
             Log.i(TAG, "Configuring codec direct: ${width}x${height} ($mimeType)")
 
-            val format = MediaFormat.createVideoFormat(mimeType, width, height)
-            // No csd-0 — VP9/AV1 decoders extract params from the bitstream
-            format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            try { format.setInteger("priority", 0) } catch (_: Exception) {}
+            var lastError: Throwable? = null
+            var configured = false
+            outer@ for (decoderName in candidates) {
+                for (attempt in 1..2) {
+                    var mc: MediaCodec? = null
+                    try {
+                        val format = MediaFormat.createVideoFormat(mimeType, width, height)
+                        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                        try { format.setInteger("priority", 0) } catch (_: Exception) {}
 
-            val mc = MediaCodec.createByCodecName(decoderName)
-            mc.configure(format, surface, null, 0)
-            mc.start()
-            try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
-            catch (_: Exception) {}
-            codec = mc
+                        mc = MediaCodec.createByCodecName(decoderName)
+                        mc.configure(format, surface, null, 0)
+                        mc.start()
+                        try { mc.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT) }
+                        catch (_: Exception) {}
+                        codec = mc
+                        activeDecoderName = decoderName
+                        configured = true
+                        Log.i(TAG, "Codec configured direct: $decoderName ($mimeType, attempt=$attempt)")
+                        DiagnosticLog.i("video", "Codec selected: $decoderName ($mimeType)")
+                        break@outer
+                    } catch (e: Throwable) {
+                        lastError = e
+                        Log.w(TAG, "Codec direct init failed ($decoderName attempt $attempt): ${e.message}")
+                        try { mc?.reset() } catch (_: Throwable) {}
+                        try { mc?.release() } catch (_: Throwable) {}
+                    }
+                }
+            }
+
+            if (!configured) {
+                Log.e(TAG, "Failed to configure any decoder for $mimeType (direct)", lastError)
+                DiagnosticLog.e("video", "All decoders failed for $mimeType: ${lastError?.message}")
+                _decoderState.value = DecoderState.ERROR
+                return
+            }
+
             firstFrameRendered = false
             decodeStartTimeMs = System.currentTimeMillis()
             renderingEnabled = true  // VP9/AV1: no reference dependency, render immediately
 
-            startDrainThread(mc)
+            startDrainThread(codec!!)
 
             _decoderState.value = DecoderState.DECODING
-            updateStats(decoderName)
-            Log.i(TAG, "Codec configured direct: $decoderName ($mimeType, scaling=$scalingMode)")
-            DiagnosticLog.i("video", "Codec selected: $decoderName ($mimeType)")
+            updateStats(activeDecoderName)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to configure codec direct", e)
             DiagnosticLog.e("video", "Failed to configure codec: ${e.message}")
@@ -753,6 +806,7 @@ class MediaCodecDecoder(
             DiagnosticLog.i("video", "Codec released (reset #$codecResetCount), renderGate -> false")
         }
         codec = null
+        activeDecoderName = null
         receivedIdr = false
         renderingEnabled = false
         seedIdrTimeMs = 0

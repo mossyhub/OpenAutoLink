@@ -1038,8 +1038,9 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
 
         Text(
             text = "Video codec the phone uses to encode the AA stream. " +
-                    "H.265 is recommended for 1440p/4K. H.264 may work at higher resolutions " +
-                    "depending on your phone.",
+                    "H.264 is the safe default — instant clean startup, capped at 1080p. " +
+                    "H.265 supports up to 4K but may show a brief green/distorted picture " +
+                    "for the first 30–60 seconds while the phone's encoder warms up.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
@@ -1047,8 +1048,8 @@ private fun VideoTab(viewModel: SettingsViewModel, uiState: SettingsUiState) {
 
         val isHighRes = uiState.aaResolution in listOf("1440p", "4k", "1440p_p", "4k_p")
         listOf(
-            Triple("h264", "H.264", if (isHighRes) "" else " (Recommended)"),
-            Triple("h265", "H.265 / HEVC", if (isHighRes) " (Recommended)" else ""),
+            Triple("h264", "H.264", " (Recommended)"),
+            Triple("h265", "H.265 / HEVC", if (isHighRes) " — needed for 1440p/4K" else " — green-startup risk"),
             Triple("vp9", "VP9", ""),
         ).forEach { (key, label, suffix) ->
             Row(

@@ -90,6 +90,30 @@ object CodecSelector {
     }
 
     /**
+     * Returns an ordered list of decoder candidates for the given MIME type,
+     * HW (C2 preferred) first, then SW fallbacks. Used to drive a retry
+     * loop in MediaCodecDecoder so a flaky HW decoder falls back to SW
+     * automatically (mirrors GM's persist.hw.decoder.aa fallback pattern).
+     */
+    fun decoderCandidates(mimeType: String): List<String> {
+        val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+        val hw = mutableListOf<MediaCodecInfo>()
+        val sw = mutableListOf<MediaCodecInfo>()
+        for (info in codecList.codecInfos) {
+            if (info.isEncoder) continue
+            val types = info.supportedTypes
+            if (types.none { it.equals(mimeType, ignoreCase = true) }) continue
+            if (info.isHardwareAccelerated) hw.add(info) else sw.add(info)
+        }
+        // HW: c2.* first, then OMX
+        val hwSorted = hw.sortedBy { if (it.name.startsWith("c2.")) 0 else 1 }
+        val swSorted = sw.sortedBy { if (it.name.startsWith("c2.")) 0 else 1 }
+        val ordered = (hwSorted + swSorted).map { it.name }
+        Log.i(TAG, "Decoder candidates for $mimeType: $ordered")
+        return ordered
+    }
+
+    /**
      * List all available decoder names for a MIME type (for diagnostics).
      */
     fun listDecoders(mimeType: String): List<String> {
