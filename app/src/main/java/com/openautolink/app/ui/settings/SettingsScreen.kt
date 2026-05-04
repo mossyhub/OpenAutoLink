@@ -803,36 +803,11 @@ private fun DisplayTab(
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Show or hide floating overlay buttons during streaming.",
+            text = "Customize floating overlay buttons during streaming.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp)
         )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Settings Button",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "Floating gear icon to access settings during projection.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = uiState.overlaySettingsButton,
-                onCheckedChange = { viewModel.updateOverlaySettingsButton(it) },
-                modifier = Modifier.testTag("overlaySettingsToggle"),
-            )
-        }
 
         Row(
             modifier = Modifier

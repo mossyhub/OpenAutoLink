@@ -38,7 +38,6 @@ data class SettingsUiState(
     val driveSide: String = AppPreferences.DEFAULT_DRIVE_SIDE,
     val gpsForwarding: Boolean = AppPreferences.DEFAULT_GPS_FORWARDING,
     val clusterNavigation: Boolean = AppPreferences.DEFAULT_CLUSTER_NAVIGATION,
-    val overlaySettingsButton: Boolean = AppPreferences.DEFAULT_OVERLAY_SETTINGS_BUTTON,
     val overlayStatsButton: Boolean = AppPreferences.DEFAULT_OVERLAY_STATS_BUTTON,
     val fileLoggingEnabled: Boolean = AppPreferences.DEFAULT_FILE_LOGGING_ENABLED,
     val logcatCaptureEnabled: Boolean = AppPreferences.DEFAULT_LOGCAT_CAPTURE_ENABLED,
@@ -93,7 +92,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.driveSide,
         preferences.gpsForwarding,
         preferences.clusterNavigation,
-        preferences.overlaySettingsButton,
         preferences.overlayStatsButton,
         preferences.fileLoggingEnabled,
         preferences.logcatCaptureEnabled,
@@ -134,27 +132,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             driveSide = values[15] as String,
             gpsForwarding = values[16] as Boolean,
             clusterNavigation = values[17] as Boolean,
-            overlaySettingsButton = values[18] as Boolean,
-            overlayStatsButton = values[19] as Boolean,
-            fileLoggingEnabled = values[20] as Boolean,
-            logcatCaptureEnabled = values[21] as Boolean,
-            syncAaTheme = values[22] as Boolean,
-            hideAaClock = values[23] as Boolean,
-            hidePhoneSignal = values[24] as Boolean,
-            hideBatteryLevel = values[25] as Boolean,
-            sendImuSensors = values[26] as Boolean,
-            distanceUnits = values[27] as String,
-            safeAreaTop = values[28] as Int,
-            safeAreaBottom = values[29] as Int,
-            safeAreaLeft = values[30] as Int,
-            safeAreaRight = values[31] as Int,
-            keyRemap = values[32] as String,
-            volumeOffsetMedia = values[33] as Int,
-            volumeOffsetNavigation = values[34] as Int,
-            volumeOffsetAssistant = values[35] as Int,
-            defaultPhoneName = values[36] as String,
-            manualIpEnabled = values[37] as Boolean,
-            manualIpAddress = values[38] as String,
+            overlayStatsButton = values[18] as Boolean,
+            fileLoggingEnabled = values[19] as Boolean,
+            logcatCaptureEnabled = values[20] as Boolean,
+            syncAaTheme = values[21] as Boolean,
+            hideAaClock = values[22] as Boolean,
+            hidePhoneSignal = values[23] as Boolean,
+            hideBatteryLevel = values[24] as Boolean,
+            sendImuSensors = values[25] as Boolean,
+            distanceUnits = values[26] as String,
+            safeAreaTop = values[27] as Int,
+            safeAreaBottom = values[28] as Int,
+            safeAreaLeft = values[29] as Int,
+            safeAreaRight = values[30] as Int,
+            keyRemap = values[31] as String,
+            volumeOffsetMedia = values[32] as Int,
+            volumeOffsetNavigation = values[33] as Int,
+            volumeOffsetAssistant = values[34] as Int,
+            defaultPhoneName = values[35] as String,
+            manualIpEnabled = values[36] as Boolean,
+            manualIpAddress = values[37] as String,
         )
     }.stateIn(
         viewModelScope,
@@ -353,10 +350,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateClusterNavigation(enabled: Boolean) {
         viewModelScope.launch { preferences.setClusterNavigation(enabled) }
-    }
-
-    fun updateOverlaySettingsButton(visible: Boolean) {
-        viewModelScope.launch { preferences.setOverlaySettingsButton(visible) }
     }
 
     fun updateOverlayStatsButton(visible: Boolean) {

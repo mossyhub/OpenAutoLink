@@ -61,7 +61,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         val DRIVE_SIDE = stringPreferencesKey("drive_side")
         val GPS_FORWARDING = booleanPreferencesKey("gps_forwarding")
         val CLUSTER_NAVIGATION = booleanPreferencesKey("cluster_navigation")
-        val OVERLAY_SETTINGS_BUTTON = booleanPreferencesKey("overlay_settings_button")
         val OVERLAY_STATS_BUTTON = booleanPreferencesKey("overlay_stats_button")
         val FILE_LOGGING_ENABLED = booleanPreferencesKey("file_logging_enabled")
         val LOGCAT_CAPTURE_ENABLED = booleanPreferencesKey("logcat_capture_enabled")
@@ -187,7 +186,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         const val DEFAULT_DRIVE_SIDE = "left"
         const val DEFAULT_GPS_FORWARDING = true
         const val DEFAULT_CLUSTER_NAVIGATION = true
-        const val DEFAULT_OVERLAY_SETTINGS_BUTTON = true
         const val DEFAULT_OVERLAY_STATS_BUTTON = true
         const val DEFAULT_FILE_LOGGING_ENABLED = false
         const val DEFAULT_LOGCAT_CAPTURE_ENABLED = false
@@ -362,10 +360,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
         prefs[CLUSTER_NAVIGATION] ?: DEFAULT_CLUSTER_NAVIGATION
     }
 
-    val overlaySettingsButton: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[OVERLAY_SETTINGS_BUTTON] ?: DEFAULT_OVERLAY_SETTINGS_BUTTON
-    }
-
     val overlayStatsButton: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[OVERLAY_STATS_BUTTON] ?: DEFAULT_OVERLAY_STATS_BUTTON
     }
@@ -520,10 +514,6 @@ class AppPreferences private constructor(private val dataStore: DataStore<Prefer
 
     suspend fun setClusterNavigation(enabled: Boolean) {
         dataStore.edit { it[CLUSTER_NAVIGATION] = enabled }
-    }
-
-    suspend fun setOverlaySettingsButton(visible: Boolean) {
-        dataStore.edit { it[OVERLAY_SETTINGS_BUTTON] = visible }
     }
 
     suspend fun setOverlayStatsButton(visible: Boolean) {
