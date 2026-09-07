@@ -42,10 +42,9 @@
       "drivingWhPerKm": 170,
       "maxChargeKw": 55
     },
-    
     "Chevrolet|Bolt|2027": {
       "displayName": "Bolt",
-      "drivingWhPerKm": 163,
+      "drivingWhPerKm": 175,
       "maxChargeKw": 150
     },
     "Chevrolet|C234|2024": {
